@@ -1,0 +1,195 @@
+package dev.zenith.generator;
+
+import dev.zenith.ast.AnnotationDef;
+import dev.zenith.ast.FieldDef;
+import dev.zenith.ast.TypeRef;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class TypeHelper {
+
+    public static String toJavaType(TypeRef type) {
+        String name = type.getName();
+        if (type.isList()) {
+            return "java.util.List<" + toJavaType(TypeRef.simple(type.getGenericType())) + ">";
+        }
+        switch (name.toLowerCase()) {
+            case "string":
+            case "text":
+                return "String";
+            case "int":
+            case "integer":
+                return "Integer";
+            case "long":
+                return "Long";
+            case "decimal":
+            case "bigdecimal":
+                return "java.math.BigDecimal";
+            case "double":
+                return "Double";
+            case "float":
+                return "Float";
+            case "bool":
+            case "boolean":
+                return "Boolean";
+            case "datetime":
+            case "localdatetime":
+                return "java.time.LocalDateTime";
+            case "date":
+            case "localdate":
+                return "java.time.LocalDate";
+            case "uuid":
+                return "java.util.UUID";
+            case "bytearray":
+            case "bytes":
+                return "byte[]";
+            default:
+                // Custom model or enum
+                return name;
+        }
+    }
+
+    public static String toSimpleJavaType(TypeRef type) {
+        String full = toJavaType(type);
+        int lastDot = full.lastIndexOf('.');
+        return lastDot >= 0 ? full.substring(lastDot + 1) : full;
+    }
+
+    public static String toSqlColumnType(FieldDef field) {
+        String typeName = field.getType().getName().toLowerCase();
+        if (field.hasAnnotation("text")) {
+            return "TEXT";
+        }
+        switch (typeName) {
+            case "string":
+                Object len = field.getType().getParams().get("length");
+                if (len == null) len = field.getType().getParams().get("max");
+                return len != null ? "VARCHAR(" + len + ")" : "VARCHAR(255)";
+            case "int":
+            case "integer":
+                return "INTEGER";
+            case "long":
+                return "BIGINT";
+            case "decimal":
+            case "bigdecimal":
+                Object prec = field.getType().getParams().get("precision");
+                Object scale = field.getType().getParams().get("scale");
+                if (prec != null && scale != null) {
+                    return "NUMERIC(" + prec + ", " + scale + ")";
+                }
+                return "NUMERIC(19, 4)";
+            case "double":
+                return "DOUBLE PRECISION";
+            case "bool":
+            case "boolean":
+                return "BOOLEAN";
+            case "datetime":
+            case "localdatetime":
+                return "TIMESTAMP";
+            case "date":
+            case "localdate":
+                return "DATE";
+            case "uuid":
+                return "UUID";
+            default:
+                return "VARCHAR(255)";
+        }
+    }
+
+    public static List<String> toValidationAnnotations(FieldDef field) {
+        List<String> list = new ArrayList<>();
+        String javaType = toSimpleJavaType(field.getType());
+
+        if (!field.isOptional() && !field.hasAnnotation("id") && !field.hasAnnotation("auto") && !field.hasAnnotation("autoNow") && !field.hasAnnotation("autoUpdate")) {
+            if ("String".equals(javaType)) {
+                list.add("@jakarta.validation.constraints.NotBlank(message = \"" + field.getName() + " cannot be blank\")");
+            } else {
+                list.add("@jakarta.validation.constraints.NotNull(message = \"" + field.getName() + " cannot be null\")");
+            }
+        }
+
+        // Check params min/max
+        Object min = field.getType().getParams().get("min");
+        Object max = field.getType().getParams().get("max");
+        if ("String".equals(javaType) && (min != null || max != null)) {
+            String mPart = min != null ? "min = " + min : "";
+            String mxPart = max != null ? "max = " + max : "";
+            String join = (!mPart.isEmpty() && !mxPart.isEmpty()) ? ", " : "";
+            list.add("@jakarta.validation.constraints.Size(" + mPart + join + mxPart + ")");
+        } else if (("Integer".equals(javaType) || "Long".equals(javaType)) && (min != null || max != null)) {
+            if (min != null) list.add("@jakarta.validation.constraints.Min(" + min + ")");
+            if (max != null) list.add("@jakarta.validation.constraints.Max(" + max + ")");
+        }
+
+        if (field.hasAnnotation("positive")) {
+            list.add("@jakarta.validation.constraints.Positive");
+        }
+        if (field.hasAnnotation("positiveOrZero")) {
+            list.add("@jakarta.validation.constraints.PositiveOrZero");
+        }
+        if (field.hasAnnotation("email")) {
+            list.add("@jakarta.validation.constraints.Email");
+        }
+        if (field.hasAnnotation("min")) {
+            Object val = field.getAnnotation("min").getArguments().getOrDefault("0", field.getAnnotation("min").getArgument("value"));
+            if (val != null) {
+                list.add("@jakarta.validation.constraints.Min(" + val + ")");
+            }
+        }
+        if (field.hasAnnotation("max")) {
+            Object val = field.getAnnotation("max").getArguments().getOrDefault("0", field.getAnnotation("max").getArgument("value"));
+            if (val != null) {
+                list.add("@jakarta.validation.constraints.Max(" + val + ")");
+            }
+        }
+
+        return list;
+    }
+
+    public static String toSnakeCase(String str) {
+        if (str == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            if (Character.isUpperCase(c)) {
+                if (i > 0) sb.append('_');
+                sb.append(Character.toLowerCase(c));
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    public static String capitalize(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return Character.toUpperCase(str.charAt(0)) + str.substring(1);
+    }
+
+    public static String pluralize(String str) {
+        if (str == null || str.isEmpty()) return str;
+        if (str.endsWith("y") && !str.endsWith("ay") && !str.endsWith("ey") && !str.endsWith("oy") && !str.endsWith("uy")) {
+            return str.substring(0, str.length() - 1) + "ies";
+        }
+        if (str.endsWith("s") || str.endsWith("x") || str.endsWith("z") || str.endsWith("ch") || str.endsWith("sh")) {
+            return str + "es";
+        }
+        return str + "s";
+    }
+
+    public static String toEndpointMethodName(String httpMethod, String path) {
+        String cleaned = path.replaceAll("\\{[^}]+\\}", "");
+        cleaned = cleaned.replaceAll("[^a-zA-Z0-9]+", " ").trim();
+        if (cleaned.isEmpty()) {
+            return httpMethod.toLowerCase();
+        }
+        String[] parts = cleaned.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        sb.append(parts[0].toLowerCase());
+        for (int i = 1; i < parts.length; i++) {
+            sb.append(capitalize(parts[i].toLowerCase()));
+        }
+        return sb.toString();
+    }
+}

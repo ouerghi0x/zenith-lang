@@ -1,0 +1,176 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Zenith Logo" width="180" style="border-radius: 24px;" />
+</p>
+
+# ⚡ Zenith DSL
+
+> **A modern, concise language on top of Java that eliminates Spring Boot boilerplate.**
+
+Zenith is a domain-specific language designed to abstract away the ceremony-heavy parts of enterprise Java. Instead of manually writing 7 to 9 separate files (Entity, DTOs, Repository, Service, ServiceImpl, Controller, Mapper, and Exception Handlers) and dozens of repetitive annotations for every database table, you declare your models, relationships, validation rules, and REST APIs in a single, clean `.zen` file.
+
+Zenith then transpiles your specification into **production-grade Spring Boot 3 + Java 17** code in milliseconds.
+
+---
+
+## 🥊 The Problem: Java's 9-File Ceremony
+
+To expose a standard CRUD endpoint with validation, pagination, and relationships in idiomatic Spring Boot, Java requires:
+
+```
+src/main/java/com/example/store/
+├── entity/Product.java                     (~60 lines: @Entity, @Table, @Id, @Column, getters/setters)
+├── dto/CreateProductRequest.java           (~30 lines: Java record with @NotBlank, @Positive, etc.)
+├── dto/UpdateProductRequest.java           (~25 lines: Java record)
+├── dto/ProductResponse.java                (~25 lines: Java record)
+├── mapper/ProductMapper.java               (~40 lines: mapping DTOs <-> Entities)
+├── repository/ProductRepository.java       (~20 lines: @Repository, JpaRepository, custom queries)
+├── service/ProductService.java             (~15 lines: Service interface)
+├── service/impl/ProductServiceImpl.java    (~70 lines: @Service, @Transactional, paging, search)
+└── controller/ProductController.java       (~60 lines: @RestController, @GetMapping, @PostMapping...)
+```
+👉 **Total:** **9 files, ~350 lines of boilerplate** per resource!
+
+---
+
+## ✨ The Zenith Solution
+
+With Zenith, the exact same resource is expressed in **18 lines of clean, readable code**:
+
+```zen
+model Product {
+    id: Long @id @auto
+    sku: String(length = 32) @unique
+    name: String(min = 3, max = 150)
+    description: String? @text
+    price: Decimal(precision = 12, scale = 2) @positive
+    stock: Int @min(0) = 0
+    status: ProductStatus = ACTIVE
+    createdAt: DateTime @autoNow
+    updatedAt: DateTime @autoUpdate
+
+    relations {
+        category: Category @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            search: [name, sku]
+            filter: [status]
+            sort: [price, createdAt]
+        }
+
+        post "/{id}/archive" -> ProductResponse {
+            description: "Archives a product"
+            guard: status != ProductStatus.ARCHIVED, "Product is already archived"
+            action: {
+                status = ProductStatus.ARCHIVED,
+                stock = 0
+            }
+        }
+    }
+}
+```
+
+---
+
+## 🛠️ CLI Commands & DX (Phase 4)
+
+Zenith includes self-contained launcher scripts in the `bin/` directory:
+
+* **Windows (Command Prompt):** `.\bin\zenith.bat <command>`
+* **Windows (PowerShell):** `.\bin\zenith.ps1 <command>`
+* **Linux / macOS:** `./bin/zenith <command>`
+
+### 1. `zenith watch <file.zen> [-o <out-dir>]` 🔥 *(Hot Reload)*
+Monitors your `.zen` file and automatically re-compiles the entire Spring Boot backend in milliseconds whenever you save:
+```cmd
+.\bin\zenith.bat watch examples\ecommerce.zen -o generated\shopsphere
+```
+Output:
+```
+>> Watching file: examples\ecommerce.zen
+>> Target output: generated\shopsphere
+   [SUCCESS] Recompiled in 120ms -> 56 files up-to-date (4 models)
+
+>> File changed at 22:15:20. Recompiling...
+   [SUCCESS] Recompiled in 115ms -> 56 files up-to-date (4 models)
+```
+
+### 2. `zenith build <file.zen> [-o <output-dir>]`
+Compiles your schema and generates the complete Spring Boot 3 application.
+
+### 3. `zenith inspect <file.zen>`
+Analyzes and prints all parsed models, relations, field constraints, and REST API paths.
+
+### 4. `zenith validate <file.zen>`
+Validates schema syntax, types, and foreign key references.
+
+### 5. `zenith init [file.zen]`
+Scaffolds a new starter schema file.
+
+---
+
+## 🎨 VS Code Extension (Phase 4)
+
+A dedicated VS Code extension is included under `editors/vscode/`:
+* **Syntax Highlighting**: Keywords (`config`, `model`, `enum`, `guard`, `action`, `endpoints`, `crud`), HTTP methods, decorators (`@id`, `@password`, `@role`), and operators.
+* **Auto-closing pairs**: Braces `{}`, brackets `[]`, and quotes.
+* **Snippets**: Instant scaffolding for `config`, `model`, `enum`, and `endpoint`.
+
+**Installation**:
+The extension is pre-installed at `%USERPROFILE%\.vscode\extensions\zenith-dsl`. Simply open any `.zen` file in VS Code or Antigravity to experience syntax highlighting!
+
+---
+
+## 🔒 Enterprise Features (Phase 2 & 3)
+
+### 1. Spring Security 6 & JWT Authentication
+Set `auth: jwt` in `config` and designate a model with `@password` and `@role`:
+```zen
+model Customer {
+    id: Long @id @auto
+    email: String @unique @email
+    password: String @password
+    role: UserRole = CUSTOMER @role
+}
+```
+Zenith generates:
+* `SecurityConfig.java`: Stateless session, CORS, CSRF disabled, BCrypt encoder.
+* `JwtService.java` & `JwtAuthenticationFilter.java`: Bearer token authorization.
+* `AuthController.java`: `POST /api/v1/auth/login` and `POST /api/v1/auth/register`.
+* Passwords are automatically hidden and excluded from all Response DTOs.
+
+### 2. Interactive Swagger UI / OpenAPI 3
+* Live interactive Swagger UI at: `http://localhost:8080/swagger-ui.html`
+* `@Tag` and `@Operation` auto-documented on all endpoints.
+
+### 3. Flyway Database Migrations
+* Generates `src/main/resources/db/migration/V1__initial_schema.sql` with exact DDL, foreign keys, and indexes.
+
+### 4. Declarative Logic & Guard Blocks (Phase 3)
+Declare conditions and mutations directly inside endpoints:
+```zen
+post "/{id}/ship" -> OrderResponse {
+    guard: status == OrderStatus.PAID, "Only paid orders can be shipped"
+    action: {
+        status = OrderStatus.SHIPPED
+    }
+}
+```
+
+---
+
+## 🧪 Testing the Generated Project
+
+```cmd
+cd generated\shopsphere
+mvn spring-boot:run
+```
+
+Available endpoints:
+* `Swagger UI`: `http://localhost:8080/swagger-ui.html`
+* `Auth Login`: `POST http://localhost:8080/api/v1/auth/login`
+* `Auth Register`: `POST http://localhost:8080/api/v1/auth/register`
+* `Products`: `GET/POST http://localhost:8080/api/v1/products`
+* `H2 Console`: `http://localhost:8080/h2-console`

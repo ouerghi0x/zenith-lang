@@ -1,0 +1,60 @@
+{
+  "Zenith Config": {
+    "prefix": "config",
+    "body": [
+      "config {",
+      "    app: \"${1:MyApplication}\"",
+      "    package: \"${2:com.example.app}\"",
+      "    basePath: \"${3:/api/v1}\"",
+      "    port: ${4:8080}",
+      "    database: ${5:postgres}",
+      "    auth: jwt",
+      "    swagger: true",
+      "    flyway: true",
+      "}"
+    ],
+    "description": "Scaffold Zenith application config"
+  },
+  "Zenith Model": {
+    "prefix": "model",
+    "body": [
+      "model ${1:Resource} {",
+      "    id: Long @id @auto",
+      "    ${2:name}: String(min = 2, max = 100)",
+      "    createdAt: DateTime @autoNow",
+      "    updatedAt: DateTime @autoUpdate",
+      "",
+      "    endpoints {",
+      "        crud {",
+      "            paginate: true",
+      "            search: [${2:name}]",
+      "        }",
+      "    }",
+      "}"
+    ],
+    "description": "Scaffold a Zenith Model with CRUD"
+  },
+  "Zenith Enum": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:Status} {",
+      "    ${2:ACTIVE},",
+      "    ${3:INACTIVE}",
+      "}"
+    ],
+    "description": "Scaffold a Zenith Enum"
+  },
+  "Zenith Endpoint": {
+    "prefix": "endpoint",
+    "body": [
+      "${1|post,get,put,delete|} \"/${2:{id}/action}\" -> ${3:Response} {",
+      "    description: \"${4:Endpoint description}\"",
+      "    guard: ${5:status != Status.ARCHIVED}, \"${6:Error message}\"",
+      "    action: {",
+      "        ${7:status = Status.ARCHIVED}",
+      "    }",
+      "}"
+    ],
+    "description": "Scaffold a Zenith custom endpoint with guard and action"
+  }
+}
