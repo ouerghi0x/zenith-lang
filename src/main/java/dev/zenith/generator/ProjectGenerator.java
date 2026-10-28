@@ -57,7 +57,13 @@ public class ProjectGenerator {
             files.add(ControllerGenerator.generate(model, file));
         }
 
-        // 9. Project README.md with generated API documentation
+        // 9. Phase 5: Full-Stack TypeScript / React Query SDK
+        files.addAll(TypeScriptSdkGenerator.generate(file));
+
+        // 10. Phase 5: Containerization (Dockerfile & docker-compose.yml)
+        files.addAll(DockerGenerator.generate(file));
+
+        // 11. Project README.md with generated API documentation
         files.add(generateReadme(file));
 
         return files;

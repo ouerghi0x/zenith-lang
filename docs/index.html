@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zenith DSL — Next-Gen Web DSL for Java & Spring Boot</title>
+  <meta name="description" content="Eliminate 350+ lines of Spring Boot ceremony. Declare backend models, relationships, security, and endpoints in a single .zen file." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Ambient background glow -->
+  <div class="glow-sphere glow-top"></div>
+  <div class="glow-sphere glow-bottom"></div>
+
+  <!-- Navigation -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="#" class="nav-brand">
+        <img src="assets/logo.png" alt="Zenith Logo" class="brand-logo" />
+        <span class="brand-text">Zenith<span class="brand-accent">.</span></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#comparison">Compare</a>
+        <a href="#code">Syntax</a>
+        <a href="#fullstack">Full-Stack</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/ouerghi0x/zenith-lang" target="_blank" class="github-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="container hero-container">
+      <div class="badge-pill">
+        <span class="pulse-dot"></span>
+        <span>Zenith DSL v1.0.0 is Live &bull; Java 17 + Spring Boot 3</span>
+      </div>
+      <h1 class="hero-title">
+        The Web DSL That Kills <br />
+        <span class="gradient-text">Spring Boot Ceremony</span>
+      </h1>
+      <p class="hero-subtitle">
+        Declare database models, validation, relations, JWT security, and RESTful endpoints in a clean <code>.zen</code> file. Zenith transpiles directly into production-grade Java and full-stack TypeScript client SDKs in milliseconds.
+      </p>
+
+      <div class="hero-cta-group">
+        <a href="#install" class="btn btn-primary">Get Started in 60s</a>
+        <a href="#code" class="btn btn-secondary">Explore Schema Syntax</a>
+      </div>
+
+      <!-- Quick Command Copy -->
+      <div class="cli-pill" onclick="copyCliCommand(this)">
+        <span class="terminal-prompt">$</span>
+        <code id="cli-cmd">scoop bucket add zenith https://github.com/ouerghi0x/zenith-bucket &amp;&amp; scoop install zenith</code>
+        <button class="copy-btn" title="Copy to clipboard">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Code / Feature Showcase -->
+  <section id="code" class="code-section">
+    <div class="container">
+      <div class="section-header text-center">
+        <h2 class="section-title">One File. Infinite Power.</h2>
+        <p class="section-desc">Look at how clean your backend definitions become. No boilerplate, no tedious annotations.</p>
+      </div>
+
+      <div class="code-showcase-box">
+        <div class="showcase-tabs">
+          <button class="tab-btn active" onclick="switchTab('zenith')">
+            <span class="tab-icon">⚡</span> schema.zen
+          </button>
+          <button class="tab-btn" onclick="switchTab('typescript')">
+            <span class="tab-icon">📘</span> sdk/client.ts
+          </button>
+          <button class="tab-btn" onclick="switchTab('react')">
+            <span class="tab-icon">⚛️</span> sdk/react-query.ts
+          </button>
+          <button class="tab-btn" onclick="switchTab('docker')">
+            <span class="tab-icon">🐳</span> docker-compose.yml
+          </button>
+        </div>
+
+        <div class="showcase-content">
+          <!-- Zenith Tab -->
+          <pre id="tab-zenith" class="code-panel active"><code><span class="kw">config</span> {
+    <span class="prop">app</span>: <span class="str">"ShopSphere"</span>
+    <span class="prop">package</span>: <span class="str">"com.shopsphere.backend"</span>
+    <span class="prop">basePath</span>: <span class="str">"/api/v1"</span>
+    <span class="prop">port</span>: <span class="num">8080</span>
+    <span class="prop">database</span>: <span class="str">postgres</span>
+    <span class="prop">auth</span>: <span class="str">jwt</span>
+}
+
+<span class="kw">model</span> <span class="type">Product</span> {
+    <span class="prop">id</span>: <span class="type">Long</span> <span class="ann">@id</span> <span class="ann">@auto</span>
+    <span class="prop">sku</span>: <span class="type">String</span>(length = <span class="num">32</span>) <span class="ann">@unique</span>
+    <span class="prop">title</span>: <span class="type">String</span>(min = <span class="num">3</span>, max = <span class="num">150</span>)
+    <span class="prop">price</span>: <span class="type">Decimal</span>(precision = <span class="num">12</span>, scale = <span class="num">2</span>) <span class="ann">@positive</span>
+    <span class="prop">stock</span>: <span class="type">Int</span> <span class="ann">@min</span>(<span class="num">0</span>) = <span class="num">0</span>
+    <span class="prop">status</span>: <span class="type">ProductStatus</span> = ACTIVE
+    <span class="prop">createdAt</span>: <span class="type">DateTime</span> <span class="ann">@autoNow</span>
+
+    <span class="kw">relations</span> {
+        <span class="prop">category</span>: <span class="type">Category</span> <span class="ann">@relation</span>(manyToOne)
+    }
+
+    <span class="kw">endpoints</span> {
+        <span class="kw">crud</span> {
+            <span class="prop">paginate</span>: <span class="bool">true</span>
+            <span class="prop">search</span>: [title, sku]
+            <span class="prop">filter</span>: [status]
+        }
+
+        <span class="kw">post</span> <span class="str">"/{id}/archive"</span> -> <span class="type">ProductResponse</span> {
+            <span class="prop">guard</span>: status != ProductStatus.ARCHIVED, <span class="str">"Already archived"</span>
+            <span class="prop">action</span>: {
+                status = ProductStatus.ARCHIVED,
+                stock = <span class="num">0</span>
+            }
+        }
+    }
+}</code></pre>
+
+          <!-- TypeScript Tab -->
+          <pre id="tab-typescript" class="code-panel"><code><span class="kw">import</span> { createClient } <span class="kw">from</span> <span class="str">'@shopsphere/sdk'</span>;
+
+<span class="comment">// Fully typed client with zero external dependencies</span>
+<span class="kw">const</span> api = createClient({
+  baseUrl: <span class="str">'http://localhost:8080'</span>,
+  getToken: () => localStorage.getItem(<span class="str">'jwt_token'</span>)
+});
+
+<span class="comment">// 1. Strongly-typed query with search and pagination</span>
+<span class="kw">const</span> page = <span class="kw">await</span> api.products.list({
+  page: <span class="num">0</span>,
+  size: <span class="num">20</span>,
+  search: <span class="str">'sneakers'</span>,
+  status: <span class="str">'ACTIVE'</span>
+});
+
+<span class="comment">// 2. Typed creation payload</span>
+<span class="kw">const</span> product = <span class="kw">await</span> api.products.create({
+  sku: <span class="str">'SNK-9001'</span>,
+  title: <span class="str">'Aero Velocity Sneakers'</span>,
+  price: <span class="num">129.99</span>,
+  stock: <span class="num">50</span>
+});
+
+<span class="comment">// 3. Auto-generated custom endpoint action</span>
+<span class="kw">await</span> api.products.postArchive(product.id);</code></pre>
+
+          <!-- React Query Tab -->
+          <pre id="tab-react" class="code-panel"><code><span class="kw">import</span> React <span class="kw">from</span> <span class="str">'react'</span>;
+<span class="kw">import</span> { useProductList, useCreateProduct } <span class="kw">from</span> <span class="str">'@shopsphere/sdk/react-query'</span>;
+
+<span class="kw">export function</span> <span class="type">ProductGrid</span>() {
+  <span class="comment">// Instant data hook with caching and loading state</span>
+  <span class="kw">const</span> { data, isLoading } = useProductList(api, { page: <span class="num">0</span>, size: <span class="num">12</span> });
+  
+  <span class="comment">// Mutation hook with auto query invalidation</span>
+  <span class="kw">const</span> createMutation = useCreateProduct(api);
+
+  <span class="kw">if</span> (isLoading) <span class="kw">return</span> &lt;div&gt;Loading catalog...&lt;/div&gt;;
+
+  <span class="kw">return</span> (
+    &lt;div className=<span class="str">"grid"</span>&gt;
+      {data?.content.map(p => (
+        &lt;div key={p.id} className=<span class="str">"card"</span>&gt;
+          &lt;h3&gt;{p.title}&lt;/h3&gt;
+          &lt;p&gt;${p.price.toFixed(<span class="num">2</span>)}&lt;/p&gt;
+        &lt;/div&gt;
+      ))}
+    &lt;/div&gt;
+  );
+}</code></pre>
+
+          <!-- Docker Compose Tab -->
+          <pre id="tab-docker" class="code-panel"><code><span class="prop">version</span>: <span class="str">'3.8'</span>
+
+<span class="prop">services</span>:
+  <span class="prop">api</span>:
+    <span class="prop">build</span>: .
+    <span class="prop">ports</span>:
+      - <span class="str">"8080:8080"</span>
+    <span class="prop">environment</span>:
+      <span class="prop">SPRING_DATASOURCE_URL</span>: jdbc:postgresql://db:5432/shopsphere_db
+      <span class="prop">SPRING_DATASOURCE_USERNAME</span>: zenith
+      <span class="prop">SPRING_DATASOURCE_PASSWORD</span>: zenith_secret
+    <span class="prop">depends_on</span>:
+      <span class="prop">db</span>:
+        <span class="prop">condition</span>: service_healthy
+
+  <span class="prop">db</span>:
+    <span class="prop">image</span>: postgres:15-alpine
+    <span class="prop">environment</span>:
+      <span class="prop">POSTGRES_DB</span>: shopsphere_db
+      <span class="prop">POSTGRES_USER</span>: zenith
+      <span class="prop">POSTGRES_PASSWORD</span>: zenith_secret
+    <span class="prop">healthcheck</span>:
+      <span class="prop">test</span>: [<span class="str">"CMD-SHELL"</span>, <span class="str">"pg_isready -U zenith"</span>]</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- The Comparison Section -->
+  <section id="comparison" class="comparison-section">
+    <div class="container">
+      <div class="section-header text-center">
+        <h2 class="section-title">Java Ceremony vs. Zenith</h2>
+        <p class="section-desc">Why write 9 files of boilerplate when you can describe intent in one?</p>
+      </div>
+
+      <div class="comparison-grid">
+        <div class="comp-card legacy-card">
+          <div class="card-badge legacy-badge">Traditional Java / Spring Boot</div>
+          <h3 class="comp-card-title">9 Files &bull; ~350 Lines per Model</h3>
+          <ul class="comp-list">
+            <li><span>❌</span> <code>Entity.java</code> with 8+ Hibernate annotations</li>
+            <li><span>❌</span> <code>CreateRequest.java</code> record with validation</li>
+            <li><span>❌</span> <code>UpdateRequest.java</code> record with partial keys</li>
+            <li><span>❌</span> <code>Response.java</code> duplicate record</li>
+            <li><span>❌</span> <code>Mapper.java</code> hand-wired converters</li>
+            <li><span>❌</span> <code>Repository.java</code> interfaces with queries</li>
+            <li><span>❌</span> <code>Service.java</code> interface</li>
+            <li><span>❌</span> <code>ServiceImpl.java</code> tedious paging &amp; mapping</li>
+            <li><span>❌</span> <code>Controller.java</code> verbose routing boilerplate</li>
+          </ul>
+        </div>
+
+        <div class="comp-card zenith-card">
+          <div class="card-badge zenith-badge">Zenith DSL Solution</div>
+          <h3 class="comp-card-title">1 Schema &bull; 18 Lines &bull; &lt; 200ms Build</h3>
+          <ul class="comp-list">
+            <li><span>⚡</span> <strong>1 clean file</strong> describes the entire domain</li>
+            <li><span>⚡</span> <strong>Spring Security 6 + JWT</strong> auto-configured</li>
+            <li><span>⚡</span> <strong>OpenAPI 3 / Swagger UI</strong> auto-documented</li>
+            <li><span>⚡</span> <strong>Flyway SQL Migrations</strong> generated automatically</li>
+            <li><span>⚡</span> <strong>Declarative Business Logic</strong> with <code>guard:</code> blocks</li>
+            <li><span>⚡</span> <strong>TypeScript Client &amp; React Query</strong> included</li>
+            <li><span>⚡</span> <strong>Multi-stage Dockerfile</strong> ready to deploy</li>
+            <li><span>⚡</span> <strong>Sub-150ms Watch Mode</strong> hot reload</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Grid -->
+  <section id="features" class="features-section">
+    <div class="container">
+      <div class="section-header text-center">
+        <h2 class="section-title">Built for Real Enterprise Demands</h2>
+        <p class="section-desc">Not a toy DSL. Zenith generates battle-tested, idiomatic Spring Boot 3 code you'd proudly push to production.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3>Spring Security 6 &amp; JWT</h3>
+          <p>Activate with <code>auth: jwt</code>. Passwords annotated with <code>@password</code> are BCrypt hashed and stripped from response records. Roles integrate with Spring Security authorities.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📚</div>
+          <h3>Swagger UI &amp; OpenAPI 3</h3>
+          <p>Every controller, route, and DTO is pre-annotated with <code>@Tag</code> and <code>@Operation</code>. Access interactive API documentation instantly on <code>/swagger-ui.html</code>.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🗄️</div>
+          <h3>Flyway Database Migrations</h3>
+          <p>Generates idempotent <code>V1__initial_schema.sql</code> scripts with identity auto-increment, correct SQL data types, foreign keys, and indexes.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🧠</div>
+          <h3>Guards &amp; Action Blocks</h3>
+          <p>Declare business conditions directly inside endpoints. Zenith transpiles <code>guard:</code> conditions into structured 400 Bad Request error handlers and executes mutations cleanly.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔥</div>
+          <h3>Lightning Hot Reload</h3>
+          <p>Run <code>zenith watch schema.zen</code>. In less than 150ms, your entire Java architecture is regenerated and kept synchronized with your ideas.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">💻</div>
+          <h3>VS Code Extension</h3>
+          <p>Full language tooling with rich syntax highlighting, auto-closing braces, and snippets for models, enums, and endpoints.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Installation Section -->
+  <section id="install" class="install-section">
+    <div class="container install-container">
+      <div class="section-header text-center">
+        <h2 class="section-title">Install in Seconds</h2>
+        <p class="section-desc">Get the Zenith CLI running on your machine with your preferred tool.</p>
+      </div>
+
+      <div class="install-card">
+        <div class="install-tabs">
+          <button class="inst-tab active" onclick="switchInstall('scoop')">Windows (Scoop)</button>
+          <button class="inst-tab" onclick="switchInstall('manual')">Manual Binary / JAR</button>
+          <button class="inst-tab" onclick="switchInstall('vscode')">VS Code Extension</button>
+        </div>
+
+        <div class="install-body">
+          <div id="inst-scoop" class="inst-panel active">
+            <p>Install via the official Zenith Scoop bucket:</p>
+            <div class="terminal-box">
+              <code>scoop bucket add zenith https://github.com/ouerghi0x/zenith-bucket<br />scoop install zenith</code>
+            </div>
+          </div>
+
+          <div id="inst-manual" class="inst-panel">
+            <p>Download the standalone <code>zenith.jar</code> from GitHub Releases and run with Java 17+:</p>
+            <div class="terminal-box">
+              <code>curl -LO https://github.com/ouerghi0x/zenith-lang/releases/download/v1.0.0/zenith.jar<br />java -jar zenith.jar build schema.zen -o my-backend</code>
+            </div>
+          </div>
+
+          <div id="inst-vscode" class="inst-panel">
+            <p>Install the <code>.vsix</code> package directly into VS Code or VSCodium:</p>
+            <div class="terminal-box">
+              <code>code --install-extension editors/vscode/zenith-1.0.0.vsix</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-container">
+      <div class="footer-left">
+        <img src="assets/logo.png" alt="Zenith Logo" class="footer-logo" />
+        <span class="footer-brand">Zenith DSL</span>
+        <span class="footer-copy">&copy; 2026 Ouerghi. MIT License.</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/ouerghi0x/zenith-lang" target="_blank">GitHub Repository</a>
+        <a href="https://github.com/ouerghi0x/zenith-bucket" target="_blank">Scoop Bucket</a>
+        <a href="https://github.com/ouerghi0x/zenith-lang/releases" target="_blank">Releases</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

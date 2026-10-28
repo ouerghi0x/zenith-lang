@@ -161,6 +161,58 @@ post "/{id}/ship" -> OrderResponse {
 
 ---
 
+---
+
+## 🌐 Full-Stack Code Generation (Phase 5)
+
+Zenith bridges the gap between backend and frontend by generating complete client SDKs and container infrastructure directly from your `.zen` definition:
+
+### 1. TypeScript & React Query Client SDK (`sdk/typescript/`)
+Zenith automatically generates an end-to-end typed client for your frontend:
+* **Strict TypeScript Interfaces** (`src/types.ts`): Model interfaces, Create/Update request payloads, enums, pagination models, and auth responses.
+* **Pure Fetch HTTP Client** (`src/client.ts`): Zero-dependency API client with built-in JWT bearer token injection:
+  ```typescript
+  import { createClient } from './sdk/typescript/src/client';
+
+  const api = createClient({
+    baseUrl: 'http://localhost:8080',
+    getToken: () => localStorage.getItem('token')
+  });
+
+  // Fully typed autocompletion:
+  const products = await api.products.list({ page: 0, size: 10, search: 'shirt' });
+  const newProduct = await api.products.create({ name: 'T-Shirt', price: 29.99 });
+  ```
+* **React Query Hooks** (`src/react-query.ts`): Instant integration with `@tanstack/react-query` v4 & v5:
+  ```tsx
+  import { useProductList, useCreateProduct } from './sdk/typescript/src/react-query';
+
+  function ProductCatalog() {
+    const { data, isLoading } = useProductList(api, { page: 0, size: 20 });
+    const createProduct = useCreateProduct(api);
+
+    if (isLoading) return <div>Loading products...</div>;
+    return (
+      <ul>
+        {data?.content.map(p => <li key={p.id}>{p.name} - ${p.price}</li>)}
+      </ul>
+    );
+  }
+  ```
+
+### 2. Instant Docker & Production Containerization
+Zenith generates multi-stage container deployment out of the box:
+* **`Dockerfile`**: Multi-stage build using `maven:3.9-eclipse-temurin-17` builder and an unprivileged alpine runtime container (`eclipse-temurin:17-jre-alpine`).
+* **`docker-compose.yml`**: Pairs your Spring Boot service with the configured database (e.g. PostgreSQL with auto healthcheck, persistent volumes, and credentials).
+* **`.dockerignore`**: Pre-configured to keep container builds fast and lightweight.
+
+Run your entire stack with one command:
+```bash
+docker-compose up --build
+```
+
+---
+
 ## 🧪 Testing the Generated Project
 
 ```cmd
