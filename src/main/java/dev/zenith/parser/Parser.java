@@ -96,8 +96,10 @@ public class Parser {
             if (cur.getType() == TokenType.RELATIONS) {
                 relations.addAll(parseRelationsBlock());
             } else if (cur.getType() == TokenType.ENDPOINTS) {
-                parseEndpointsBlock(customEndpoints);
-                // check if crud was parsed in endpoints
+                CrudConfig insideCrud = parseEndpointsBlock(customEndpoints);
+                if (insideCrud != null) {
+                    crudConfig = insideCrud;
+                }
             } else if (cur.getType() == TokenType.CRUD) {
                 crudConfig = parseCrudBlock();
             } else if (cur.getType() == TokenType.IDENTIFIER) {
@@ -254,15 +256,15 @@ public class Parser {
         return rels;
     }
 
-    private void parseEndpointsBlock(List<CustomEndpointDef> customEndpoints) {
+    private CrudConfig parseEndpointsBlock(List<CustomEndpointDef> customEndpoints) {
         consume(TokenType.ENDPOINTS, "Expected 'endpoints'");
         consume(TokenType.LBRACE, "Expected '{' after 'endpoints'");
 
+        CrudConfig crudConfig = null;
         while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
             Token cur = peek();
             if (cur.getType() == TokenType.CRUD) {
-                // skip or handle in outer
-                parseCrudBlock();
+                crudConfig = parseCrudBlock();
             } else if (isHttpMethod(cur.getType())) {
                 customEndpoints.add(parseCustomEndpoint());
             } else {
@@ -271,6 +273,7 @@ public class Parser {
         }
 
         consume(TokenType.RBRACE, "Expected '}' closing endpoints block");
+        return crudConfig;
     }
 
     private CrudConfig parseCrudBlock() {

@@ -58,10 +58,13 @@ public class PomGenerator {
             sb.append("            <groupId>org.flywaydb</groupId>\n");
             sb.append("            <artifactId>flyway-core</artifactId>\n");
             sb.append("        </dependency>\n");
-            sb.append("        <dependency>\n");
-            sb.append("            <groupId>org.flywaydb</groupId>\n");
-            sb.append("            <artifactId>flyway-database-postgresql</artifactId>\n");
-            sb.append("        </dependency>\n");
+            if ("postgres".equalsIgnoreCase(file.getConfig().getDatabase()) || "postgresql".equalsIgnoreCase(file.getConfig().getDatabase())) {
+                sb.append("        <dependency>\n");
+                sb.append("            <groupId>org.flywaydb</groupId>\n");
+                sb.append("            <artifactId>flyway-database-postgresql</artifactId>\n");
+                sb.append("            <version>10.10.0</version>\n");
+                sb.append("        </dependency>\n");
+            }
         }
 
         if (file.hasAuth()) {

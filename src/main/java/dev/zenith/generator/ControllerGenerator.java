@@ -9,7 +9,8 @@ public class ControllerGenerator {
         String className = model.getName();
         String controllerName = className + "Controller";
         String serviceName = className + "Service";
-        String basePath = file.getConfig().getBasePath() + "/" + TypeHelper.toSnakeCase(TypeHelper.pluralize(className));
+        String basePath = file.getConfig().getBasePath() + "/"
+                + TypeHelper.toSnakeCase(TypeHelper.pluralize(className));
 
         FieldDef idField = model.getIdField();
         String idType = idField != null ? TypeHelper.toSimpleJavaType(idField.getType()) : "Long";
@@ -19,6 +20,9 @@ public class ControllerGenerator {
 
         sb.append("import ").append(basePkg).append(".dto.*;\n");
         sb.append("import ").append(basePkg).append(".service.").append(serviceName).append(";\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
         sb.append("import io.swagger.v3.oas.annotations.Operation;\n");
         sb.append("import io.swagger.v3.oas.annotations.tags.Tag;\n");
         sb.append("import jakarta.validation.Valid;\n");
@@ -27,11 +31,13 @@ public class ControllerGenerator {
         sb.append("import org.springframework.web.bind.annotation.*;\n");
         sb.append("import java.net.URI;\n");
         sb.append("import java.util.List;\n\n");
-
+        sb.append("import java.util.UUID;\n");
+        sb.append("import java.math.BigDecimal;\n");
         sb.append("@RestController\n");
         sb.append("@RequestMapping(\"").append(basePath).append("\")\n");
         sb.append("@CrossOrigin\n");
-        sb.append("@Tag(name = \"").append(className).append("\", description = \"Operations for managing ").append(TypeHelper.pluralize(className)).append("\")\n");
+        sb.append("@Tag(name = \"").append(className).append("\", description = \"Operations for managing ")
+                .append(TypeHelper.pluralize(className)).append("\")\n");
         sb.append("public class ").append(controllerName).append(" {\n\n");
 
         sb.append("    private final ").append(serviceName).append(" service;\n\n");
@@ -41,29 +47,49 @@ public class ControllerGenerator {
         sb.append("    }\n\n");
 
         // GET / (list)
+        StringBuilder ctrlMethodParams = new StringBuilder();
+        ctrlMethodParams.append("        @RequestParam(defaultValue = \"0\") int page,\n");
+        ctrlMethodParams.append("        @RequestParam(defaultValue = \"20\") int size,\n");
+        ctrlMethodParams.append("        @RequestParam(defaultValue = \"id\") String sort,\n");
+        ctrlMethodParams.append("        @RequestParam(defaultValue = \"asc\") String direction,\n");
+        ctrlMethodParams.append("        @RequestParam(required = false) String search");
+
+        StringBuilder serviceCallArgs = new StringBuilder("page, size, sort, direction, search");
+
+        CrudConfig crud = model.getCrudConfig();
+        if (crud != null) {
+            for (String ff : crud.getFilterFields()) {
+                FieldDef fDef = model.findField(ff);
+                if (fDef != null) {
+                    String fType = TypeHelper.toSimpleJavaType(fDef.getType());
+                    ctrlMethodParams.append(",\n        @RequestParam(required = false) ").append(fType).append(" ").append(ff);
+                    serviceCallArgs.append(", ").append(ff);
+                }
+            }
+        }
+        ctrlMethodParams.append("\n    ");
+
         sb.append("    @GetMapping\n");
-        sb.append("    @Operation(summary = \"List all ").append(TypeHelper.pluralize(className)).append(" with pagination, sorting, and search\")\n");
+        sb.append("    @Operation(summary = \"List all ").append(TypeHelper.pluralize(className))
+                .append(" with pagination, sorting, and search\")\n");
         sb.append("    public ResponseEntity<PageResponse<").append(className).append("Response>> getAll(\n");
-        sb.append("        @RequestParam(defaultValue = \"0\") int page,\n");
-        sb.append("        @RequestParam(defaultValue = \"20\") int size,\n");
-        sb.append("        @RequestParam(defaultValue = \"id\") String sort,\n");
-        sb.append("        @RequestParam(defaultValue = \"asc\") String direction,\n");
-        sb.append("        @RequestParam(required = false) String search\n");
-        sb.append("    ) {\n");
-        sb.append("        return ResponseEntity.ok(service.getAll(page, size, sort, direction, search));\n");
+        sb.append(ctrlMethodParams).append(") {\n");
+        sb.append("        return ResponseEntity.ok(service.getAll(").append(serviceCallArgs).append("));\n");
         sb.append("    }\n\n");
 
         // GET /{id}
         sb.append("    @GetMapping(\"/{id}\")\n");
         sb.append("    @Operation(summary = \"Get a ").append(className).append(" by ID\")\n");
-        sb.append("    public ResponseEntity<").append(className).append("Response> getById(@PathVariable ").append(idType).append(" id) {\n");
+        sb.append("    public ResponseEntity<").append(className).append("Response> getById(@PathVariable ")
+                .append(idType).append(" id) {\n");
         sb.append("        return ResponseEntity.ok(service.getById(id));\n");
         sb.append("    }\n\n");
 
         // POST /
         sb.append("    @PostMapping\n");
         sb.append("    @Operation(summary = \"Create a new ").append(className).append("\")\n");
-        sb.append("    public ResponseEntity<").append(className).append("Response> create(@Valid @RequestBody Create").append(className).append("Request request) {\n");
+        sb.append("    public ResponseEntity<").append(className).append("Response> create(@Valid @RequestBody Create")
+                .append(className).append("Request request) {\n");
         sb.append("        ").append(className).append("Response created = service.create(request);\n");
         sb.append("        return ResponseEntity.status(HttpStatus.CREATED).body(created);\n");
         sb.append("    }\n\n");
@@ -89,20 +115,24 @@ public class ControllerGenerator {
         // Custom endpoints
         for (CustomEndpointDef custom : model.getCustomEndpoints()) {
             String path = custom.getPath().startsWith("/") ? custom.getPath() : "/" + custom.getPath();
-            String springMethod = "@" + TypeHelper.capitalize(custom.getMethod().toLowerCase()) + "Mapping(\"" + path + "\")";
+            String springMethod = "@" + TypeHelper.capitalize(custom.getMethod().toLowerCase()) + "Mapping(\"" + path
+                    + "\")";
             String methodName = TypeHelper.toEndpointMethodName(custom.getMethod(), custom.getPath());
             String ret = "Void".equalsIgnoreCase(custom.getReturnType()) ? "void" : custom.getReturnType();
-            String summary = custom.getDescription().isEmpty() ? "Custom action: " + methodName : custom.getDescription();
+            String summary = custom.getDescription().isEmpty() ? "Custom action: " + methodName
+                    : custom.getDescription();
 
             sb.append("    ").append(springMethod).append("\n");
             sb.append("    @Operation(summary = \"").append(summary.replace("\"", "\\\"")).append("\")\n");
             if ("void".equals(ret)) {
-                sb.append("    public ResponseEntity<Void> ").append(methodName).append("(@PathVariable ").append(idType).append(" id) {\n");
+                sb.append("    public ResponseEntity<Void> ").append(methodName).append("(@PathVariable ")
+                        .append(idType).append(" id) {\n");
                 sb.append("        service.").append(methodName).append("(id);\n");
                 sb.append("        return ResponseEntity.ok().build();\n");
                 sb.append("    }\n\n");
             } else {
-                sb.append("    public ResponseEntity<").append(ret).append("> ").append(methodName).append("(@PathVariable ").append(idType).append(" id) {\n");
+                sb.append("    public ResponseEntity<").append(ret).append("> ").append(methodName)
+                        .append("(@PathVariable ").append(idType).append(" id) {\n");
                 sb.append("        return ResponseEntity.ok(service.").append(methodName).append("(id));\n");
                 sb.append("    }\n\n");
             }

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Zenith DSL logo</title>
+  <desc id="desc">A geometric gradient Z inside code brackets, with backend server stack details.</desc>
+  <defs>
+    <linearGradient id="zGrad" x1="90" y1="95" x2="420" y2="390" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A855F7"/>
+      <stop offset=".48" stop-color="#635BFF"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="lineGrad" x1="120" y1="0" x2="390" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A855F7"/><stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Code brackets -->
+  <path d="M145 112H105L55 256l50 144h40L95 256z" fill="none" stroke="url(#lineGrad)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M367 112h40l50 144-50 144h-40l50-144z" fill="none" stroke="url(#lineGrad)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Zenith Z mark -->
+  <path d="M170 145H370L190 256H342L152 367H352"
+        fill="none" stroke="url(#zGrad)" stroke-width="43" stroke-linecap="square" stroke-linejoin="bevel"/>
+  <path d="M170 145H370L190 256H342L152 367H352"
+        fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="4" stroke-linejoin="bevel"/>
+
+  <!-- Backend/server motif -->
+  <g transform="translate(330 285)" stroke="#0F172A" stroke-width="5">
+    <rect x="0" y="0" width="82" height="28" rx="8" fill="#172554"/>
+    <rect x="0" y="37" width="82" height="28" rx="8" fill="#172554"/>
+    <rect x="0" y="74" width="82" height="28" rx="8" fill="#172554"/>
+    <path d="M16 14h35M16 51h35M16 88h35" stroke="#22D3EE" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="68" cy="14" r="4" fill="#A78BFA" stroke="none"/>
+    <circle cx="68" cy="51" r="4" fill="#A78BFA" stroke="none"/>
+    <circle cx="68" cy="88" r="4" fill="#A78BFA" stroke="none"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="256" y="463" text-anchor="middle"
+        font-family="Inter, Montserrat, Arial, sans-serif"
+        font-size="54" font-weight="750" letter-spacing="-2">
+    <tspan fill="url(#zGrad)">Z</tspan><tspan fill="#172554">enith</tspan>
+  </text>
+  <path d="M178 480H334" stroke="url(#lineGrad)" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -112,4 +112,8 @@ public class AppConfig {
     public Map<String, Object> getProperties() {
         return properties;
     }
+
+    public void set(String key, Object value) {
+        this.properties.put(key, value);
+    }
 }

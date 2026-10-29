@@ -1,0 +1,49 @@
+# =====================================================================
+# Zenith - Git Ignore
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Proprietary / Pro Features (Not for Public Distribution)
+# ---------------------------------------------------------------------
+# Studio GUI backend & web assets (Zenith Studio Pro)
+src/main/java/dev/zenith/studio/
+src/main/resources/studio/
+src/main/resources/
+
+# Demo build artifacts & raw frame captures
+demo/build/
+*.wav
+
+# Internal tools & temporary scratch scripts
+tools/
+sources.txt
+*.log
+
+# ---------------------------------------------------------------------
+# Build & Compiled Outputs
+# ---------------------------------------------------------------------
+target/
+bin/target/
+*.class
+*.jar
+!bin/zenith.jar
+
+# ---------------------------------------------------------------------
+# IDE & Editor Configurations
+# ---------------------------------------------------------------------
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+.settings/
+.project
+.classpath
+
+# ---------------------------------------------------------------------
+# OS & System Files
+# ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+

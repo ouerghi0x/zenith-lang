@@ -1,0 +1,97 @@
+config {
+    app: "ShopSphere"
+    package: "com.shopsphere.backend"
+    basePath: "/api/v1"
+    port: 8080
+    database: postgres
+    auth: jwt
+    swagger: true
+    flyway: true
+}
+
+enum OrderStatus {
+    PENDING,
+    PAID,
+    SHIPPED,
+    DELIVERED,
+    CANCELLED
+}
+
+enum UserRole {
+    ADMIN,
+    CUSTOMER
+}
+
+model Category {
+    id: Long @id @auto
+    name: String(min = 2, max = 50) @unique
+    description: String? @text
+    createdAt: DateTime @autoNow
+
+    relations {
+        products: List<Product> @relation(oneToMany, mappedBy = "category")
+    }
+}
+
+model Product {
+    id: Long @id @auto
+    sku: String(length = 32) @unique
+    title: String(min = 3, max = 150)
+    description: String? @text
+    price: Decimal(precision = 12, scale = 2) @positive
+    stock: Int @min(0) = 0
+    createdAt: DateTime @autoNow
+    updatedAt: DateTime @autoUpdate
+
+    relations {
+        category: Category @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [price]
+        }
+    }
+}
+
+model Customer {
+    id: UUID @id @auto
+    email: String @email @unique
+    password: String @password
+    role: UserRole = CUSTOMER @role
+    fullName: String(min = 2, max = 100)
+    createdAt: DateTime @autoNow
+
+    relations {
+        orders: List<Order> @relation(oneToMany, mappedBy = "customer")
+    }
+}
+
+model Order {
+    id: UUID @id @auto
+    orderNumber: String(length = 20) @unique
+    totalAmount: Decimal(precision = 12, scale = 2) @positive
+    status: OrderStatus = PENDING
+    createdAt: DateTime @autoNow
+
+    relations {
+        customer: Customer @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [status]
+        }
+
+        post "/{id}/pay" -> OrderResponse {
+            description: "Pays for an order"
+            guard: status == OrderStatus.PENDING, "Only pending orders can be paid"
+            action: {
+                status = OrderStatus.PAID
+            }
+        }
+    }
+}
+

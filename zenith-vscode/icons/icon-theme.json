@@ -1,0 +1,10 @@
+{
+  "iconDefinitions": {
+    "zenith-file": {
+      "iconPath": "./zenith.svg"
+    }
+  },
+  "fileExtensions": {
+    "zen": "zenith-file"
+  }
+}

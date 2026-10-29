@@ -23,7 +23,6 @@ public class EntityGenerator {
         sb.append("import java.util.List;\n");
         sb.append("import java.util.ArrayList;\n");
         sb.append("import java.util.Objects;\n");
-
         // Check if enums are imported
         sb.append("import ").append(basePkg).append(".model.*;\n\n");
 
@@ -42,7 +41,11 @@ public class EntityGenerator {
             if (field.hasAnnotation("id")) {
                 sb.append("    @Id\n");
                 if (field.hasAnnotation("auto")) {
-                    sb.append("    @GeneratedValue(strategy = GenerationType.IDENTITY)\n");
+                    if ("UUID".equalsIgnoreCase(field.getType().getName())) {
+                        sb.append("    @GeneratedValue(strategy = GenerationType.UUID)\n");
+                    } else {
+                        sb.append("    @GeneratedValue(strategy = GenerationType.IDENTITY)\n");
+                    }
                 }
             }
 
@@ -86,8 +89,10 @@ public class EntityGenerator {
                 sb.append("    private ").append(targetModel).append(" ").append(fieldName).append(";\n\n");
             } else if (rel.getRelationType() == RelationType.ONE_TO_MANY) {
                 String mappedBy = rel.getMappedBy() != null ? rel.getMappedBy() : TypeHelper.toSnakeCase(className);
-                sb.append("    @OneToMany(mappedBy = \"").append(mappedBy).append("\", cascade = CascadeType.ALL, orphanRemoval = true)\n");
-                sb.append("    private List<").append(targetModel).append("> ").append(fieldName).append(" = new ArrayList<>();\n\n");
+                sb.append("    @OneToMany(mappedBy = \"").append(mappedBy)
+                        .append("\", cascade = CascadeType.ALL, orphanRemoval = true)\n");
+                sb.append("    private List<").append(targetModel).append("> ").append(fieldName)
+                        .append(" = new ArrayList<>();\n\n");
             } else if (rel.getRelationType() == RelationType.ONE_TO_ONE) {
                 sb.append("    @OneToOne(fetch = FetchType.LAZY)\n");
                 sb.append("    @JoinColumn(name = \"").append(TypeHelper.toSnakeCase(fieldName)).append("_id\")\n");
@@ -95,11 +100,15 @@ public class EntityGenerator {
             } else if (rel.getRelationType() == RelationType.MANY_TO_MANY) {
                 sb.append("    @ManyToMany\n");
                 sb.append("    @JoinTable(\n");
-                sb.append("        name = \"").append(tableName).append("_").append(TypeHelper.toSnakeCase(fieldName)).append("\",\n");
-                sb.append("        joinColumns = @JoinColumn(name = \"").append(TypeHelper.toSnakeCase(className)).append("_id\"),\n");
-                sb.append("        inverseJoinColumns = @JoinColumn(name = \"").append(TypeHelper.toSnakeCase(targetModel)).append("_id\")\n");
+                sb.append("        name = \"").append(tableName).append("_").append(TypeHelper.toSnakeCase(fieldName))
+                        .append("\",\n");
+                sb.append("        joinColumns = @JoinColumn(name = \"").append(TypeHelper.toSnakeCase(className))
+                        .append("_id\"),\n");
+                sb.append("        inverseJoinColumns = @JoinColumn(name = \"")
+                        .append(TypeHelper.toSnakeCase(targetModel)).append("_id\")\n");
                 sb.append("    )\n");
-                sb.append("    private List<").append(targetModel).append("> ").append(fieldName).append(" = new ArrayList<>();\n\n");
+                sb.append("    private List<").append(targetModel).append("> ").append(fieldName)
+                        .append(" = new ArrayList<>();\n\n");
             }
         }
 
@@ -139,7 +148,8 @@ public class EntityGenerator {
             sb.append("        return this.").append(field.getName()).append(";\n");
             sb.append("    }\n\n");
 
-            sb.append("    public void set").append(cap).append("(").append(fieldType).append(" ").append(field.getName()).append(") {\n");
+            sb.append("    public void set").append(cap).append("(").append(fieldType).append(" ")
+                    .append(field.getName()).append(") {\n");
             sb.append("        this.").append(field.getName()).append(" = ").append(field.getName()).append(";\n");
             sb.append("    }\n\n");
         }
@@ -153,7 +163,8 @@ public class EntityGenerator {
             sb.append("        return this.").append(fieldName).append(";\n");
             sb.append("    }\n\n");
 
-            sb.append("    public void set").append(cap).append("(").append(fieldType).append(" ").append(fieldName).append(") {\n");
+            sb.append("    public void set").append(cap).append("(").append(fieldType).append(" ").append(fieldName)
+                    .append(") {\n");
             sb.append("        this.").append(fieldName).append(" = ").append(fieldName).append(";\n");
             sb.append("    }\n\n");
         }
@@ -166,7 +177,8 @@ public class EntityGenerator {
             sb.append("        if (this == o) return true;\n");
             sb.append("        if (o == null || getClass() != o.getClass()) return false;\n");
             sb.append("        ").append(className).append(" that = (").append(className).append(") o;\n");
-            sb.append("        return Objects.equals(").append(idField.getName()).append(", that.").append(idField.getName()).append(");\n");
+            sb.append("        return Objects.equals(").append(idField.getName()).append(", that.")
+                    .append(idField.getName()).append(");\n");
             sb.append("    }\n\n");
 
             sb.append("    @Override\n");

@@ -79,14 +79,15 @@ public class DtoGenerator {
             recordComponents.add(comp.toString());
         }
 
-        // Add relation foreign keys (e.g. Long categoryId)
+        // Add relation foreign keys (e.g. Long/UUID categoryId)
         for (RelationDef rel : model.getRelations()) {
             if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
+                String fkType = resolveTargetIdType(rel.getTargetModel(), file);
                 StringBuilder comp = new StringBuilder();
                 if (!rel.isOptional()) {
                     comp.append("    @NotNull(message = \"").append(rel.getFieldName()).append("Id cannot be null\")\n");
                 }
-                comp.append("    Long ").append(rel.getFieldName()).append("Id");
+                comp.append("    ").append(fkType).append(" ").append(rel.getFieldName()).append("Id");
                 recordComponents.add(comp.toString());
             }
         }
@@ -124,7 +125,8 @@ public class DtoGenerator {
 
         for (RelationDef rel : model.getRelations()) {
             if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
-                recordComponents.add("    Long " + rel.getFieldName() + "Id");
+                String fkType = resolveTargetIdType(rel.getTargetModel(), file);
+                recordComponents.add("    " + fkType + " " + rel.getFieldName() + "Id");
             }
         }
 
@@ -158,7 +160,8 @@ public class DtoGenerator {
 
         for (RelationDef rel : model.getRelations()) {
             if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
-                recordComponents.add("    Long " + rel.getFieldName() + "Id");
+                String fkType = resolveTargetIdType(rel.getTargetModel(), file);
+                recordComponents.add("    " + fkType + " " + rel.getFieldName() + "Id");
             }
         }
 
@@ -166,5 +169,17 @@ public class DtoGenerator {
         sb.append("\n) {}\n");
 
         return new JavaSourceFile(pkgDir + className + ".java", sb.toString());
+    }
+
+    public static String resolveTargetIdType(String targetModelName, ZenithFile file) {
+        for (ModelDef m : file.getModels()) {
+            if (m.getName().equalsIgnoreCase(targetModelName)) {
+                FieldDef idField = m.getIdField();
+                if (idField != null) {
+                    return TypeHelper.toSimpleJavaType(idField.getType());
+                }
+            }
+        }
+        return "Long";
     }
 }

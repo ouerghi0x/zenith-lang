@@ -14,17 +14,20 @@ public class MapperGenerator {
 
         sb.append("import ").append(basePkg).append(".entity.").append(className).append(";\n");
         sb.append("import ").append(basePkg).append(".dto.*;\n");
+        sb.append("import java.util.UUID;\n");
         sb.append("import org.springframework.stereotype.Component;\n\n");
 
         sb.append("@Component\n");
         sb.append("public class ").append(mapperName).append(" {\n\n");
 
         // toEntity(CreateRequest)
-        sb.append("    public ").append(className).append(" toEntity(Create").append(className).append("Request request) {\n");
+        sb.append("    public ").append(className).append(" toEntity(Create").append(className)
+                .append("Request request) {\n");
         sb.append("        if (request == null) return null;\n");
         sb.append("        ").append(className).append(" entity = new ").append(className).append("();\n");
         for (FieldDef field : model.getFields()) {
-            if (field.hasAnnotation("id") || field.hasAnnotation("auto") || field.hasAnnotation("autoNow") || field.hasAnnotation("autoUpdate")) {
+            if (field.hasAnnotation("id") || field.hasAnnotation("auto") || field.hasAnnotation("autoNow")
+                    || field.hasAnnotation("autoUpdate")) {
                 continue;
             }
             String cap = TypeHelper.capitalize(field.getName());
@@ -34,21 +37,25 @@ public class MapperGenerator {
         sb.append("    }\n\n");
 
         // updateEntity(Entity, UpdateRequest)
-        sb.append("    public void updateEntity(").append(className).append(" entity, Update").append(className).append("Request request) {\n");
+        sb.append("    public void updateEntity(").append(className).append(" entity, Update").append(className)
+                .append("Request request) {\n");
         sb.append("        if (entity == null || request == null) return;\n");
         for (FieldDef field : model.getFields()) {
-            if (field.hasAnnotation("id") || field.hasAnnotation("auto") || field.hasAnnotation("autoNow") || field.hasAnnotation("autoUpdate")) {
+            if (field.hasAnnotation("id") || field.hasAnnotation("auto") || field.hasAnnotation("autoNow")
+                    || field.hasAnnotation("autoUpdate")) {
                 continue;
             }
             String cap = TypeHelper.capitalize(field.getName());
             sb.append("        if (request.").append(field.getName()).append("() != null) {\n");
-            sb.append("            entity.set").append(cap).append("(request.").append(field.getName()).append("());\n");
+            sb.append("            entity.set").append(cap).append("(request.").append(field.getName())
+                    .append("());\n");
             sb.append("        }\n");
         }
         sb.append("    }\n\n");
 
         // toResponse(Entity)
-        sb.append("    public ").append(className).append("Response toResponse(").append(className).append(" entity) {\n");
+        sb.append("    public ").append(className).append("Response toResponse(").append(className)
+                .append(" entity) {\n");
         sb.append("        if (entity == null) return null;\n");
         sb.append("        return new ").append(className).append("Response(\n");
 

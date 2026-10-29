@@ -21,6 +21,7 @@ public class RepositoryGenerator {
         sb.append("import ").append(basePkg).append(".entity.").append(className).append(";\n");
         sb.append("import ").append(basePkg).append(".model.*;\n");
         sb.append("import org.springframework.data.jpa.repository.JpaRepository;\n");
+        sb.append("import org.springframework.data.jpa.repository.JpaSpecificationExecutor;\n");
         sb.append("import org.springframework.data.jpa.repository.Query;\n");
         sb.append("import org.springframework.data.repository.query.Param;\n");
         sb.append("import org.springframework.data.domain.Page;\n");
@@ -28,17 +29,20 @@ public class RepositoryGenerator {
         sb.append("import org.springframework.stereotype.Repository;\n");
         sb.append("import java.util.Optional;\n");
         sb.append("import java.util.List;\n\n");
-
+        sb.append("import java.util.UUID;\n");
         sb.append("@Repository\n");
-        sb.append("public interface ").append(repoName).append(" extends JpaRepository<").append(className).append(", ").append(idType).append("> {\n\n");
+        sb.append("public interface ").append(repoName).append(" extends JpaRepository<").append(className).append(", ")
+                .append(idType).append(">, JpaSpecificationExecutor<").append(className).append("> {\n\n");
 
         // Unique field queries
         for (FieldDef field : model.getFields()) {
             if (field.hasAnnotation("unique") && !field.hasAnnotation("id")) {
                 String cap = TypeHelper.capitalize(field.getName());
                 String type = TypeHelper.toSimpleJavaType(field.getType());
-                sb.append("    Optional<").append(className).append("> findBy").append(cap).append("(").append(type).append(" ").append(field.getName()).append(");\n");
-                sb.append("    boolean existsBy").append(cap).append("(").append(type).append(" ").append(field.getName()).append(");\n\n");
+                sb.append("    Optional<").append(className).append("> findBy").append(cap).append("(").append(type)
+                        .append(" ").append(field.getName()).append(");\n");
+                sb.append("    boolean existsBy").append(cap).append("(").append(type).append(" ")
+                        .append(field.getName()).append(");\n\n");
             }
         }
 
@@ -49,15 +53,20 @@ public class RepositoryGenerator {
             for (String sf : crud.getSearchFields()) {
                 searchParts.add("LOWER(e." + sf + ") LIKE LOWER(CONCAT('%', :keyword, '%'))");
             }
-            sb.append("    @Query(\"SELECT e FROM ").append(className).append(" e WHERE ").append(String.join(" OR ", searchParts)).append("\")\n");
-            sb.append("    Page<").append(className).append("> search(@Param(\"keyword\") String keyword, Pageable pageable);\n\n");
+            sb.append("    @Query(\"SELECT e FROM ").append(className).append(" e WHERE ")
+                    .append(String.join(" OR ", searchParts)).append("\")\n");
+            sb.append("    Page<").append(className)
+                    .append("> search(@Param(\"keyword\") String keyword, Pageable pageable);\n\n");
         }
 
         // Relation filter queries
         for (RelationDef rel : model.getRelations()) {
             if (rel.getRelationType() == RelationType.MANY_TO_ONE) {
                 String cap = TypeHelper.capitalize(rel.getFieldName());
-                sb.append("    Page<").append(className).append("> findBy").append(cap).append("Id(Long ").append(rel.getFieldName()).append("Id, Pageable pageable);\n\n");
+                String fkType = DtoGenerator.resolveTargetIdType(rel.getTargetModel(), file);
+                sb.append("    Page<").append(className).append("> findBy").append(cap).append("Id(").append(fkType)
+                        .append(" ")
+                        .append(rel.getFieldName()).append("Id, Pageable pageable);\n\n");
             }
         }
 

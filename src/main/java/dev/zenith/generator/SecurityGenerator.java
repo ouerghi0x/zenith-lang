@@ -48,8 +48,10 @@ public class SecurityGenerator {
         String roleCap = TypeHelper.capitalize(roleName);
 
         // 1. Auth DTOs
+        FieldDef userIdField = userModel.getIdField();
+        String userIdType = userIdField != null ? TypeHelper.toSimpleJavaType(userIdField.getType()) : "Long";
         list.add(generateLoginRequest(basePkg));
-        list.add(generateAuthResponse(basePkg));
+        list.add(generateAuthResponse(basePkg, userIdType));
 
         // 2. JwtService
         list.add(generateJwtService(basePkg, file.getConfig().getJwtSecret(), file.getConfig().getJwtExpirationMs()));
@@ -81,16 +83,17 @@ public class SecurityGenerator {
         return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/dto/LoginRequest.java", content);
     }
 
-    private static JavaSourceFile generateAuthResponse(String basePkg) {
+    private static JavaSourceFile generateAuthResponse(String basePkg, String userIdType) {
         String content = "package " + basePkg + ".dto;\n\n" +
+                "import java.util.UUID;\n\n" +
                 "public record AuthResponse(\n" +
                 "    String token,\n" +
                 "    String tokenType,\n" +
-                "    Long userId,\n" +
+                "    " + userIdType + " userId,\n" +
                 "    String email,\n" +
                 "    String role\n" +
                 ") {\n" +
-                "    public static AuthResponse of(String token, Long userId, String email, String role) {\n" +
+                "    public static AuthResponse of(String token, " + userIdType + " userId, String email, String role) {\n" +
                 "        return new AuthResponse(token, \"Bearer\", userId, email, role);\n" +
                 "    }\n" +
                 "}\n";
