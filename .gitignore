@@ -13,12 +13,14 @@ src/main/resources/
 # Demo build artifacts & raw frame captures
 demo/build/
 *.wav
-
+zenith-vscode/
 # Internal tools & temporary scratch scripts
 tools/
 sources.txt
 *.log
-
+generated-app/
+demo/
+schema.zen
 # ---------------------------------------------------------------------
 # Build & Compiled Outputs
 # ---------------------------------------------------------------------
