@@ -3,7 +3,7 @@ config {
     package: "com.shopsphere.backend"
     basePath: "/api/v1"
     port: 8080
-    database: postgres
+    database: postgres // replace it with h2 if u dont have postgres running 
     springBootVersion: "3.2.5"
     javaVersion: 17
     auth: jwt
