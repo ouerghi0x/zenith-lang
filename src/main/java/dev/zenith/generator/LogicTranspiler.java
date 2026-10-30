@@ -8,6 +8,10 @@ public class LogicTranspiler {
         if (expr == null || expr.trim().isEmpty()) return "true";
         String s = expr.trim();
 
+        // 0. Logical operator normalization (case-insensitive and/or -> &&/||)
+        s = s.replaceAll("(?i)\\b(and)\\b", "&&");
+        s = s.replaceAll("(?i)\\b(or)\\b", "||");
+
         // 1. entity prefix (e.g. status == ProductStatus.ACTIVE or entity.status == ...)
         String entityVar = "entity";
         String modelLower = model.getName().toLowerCase();

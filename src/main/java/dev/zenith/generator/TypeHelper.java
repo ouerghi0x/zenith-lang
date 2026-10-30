@@ -1,7 +1,7 @@
 package dev.zenith.generator;
 
-import dev.zenith.ast.AnnotationDef;
 import dev.zenith.ast.FieldDef;
+import dev.zenith.ast.ModelDef;
 import dev.zenith.ast.TypeRef;
 
 import java.util.ArrayList;
@@ -64,7 +64,8 @@ public class TypeHelper {
         switch (typeName) {
             case "string":
                 Object len = field.getType().getParams().get("length");
-                if (len == null) len = field.getType().getParams().get("max");
+                if (len == null)
+                    len = field.getType().getParams().get("max");
                 return len != null ? "VARCHAR(" + len + ")" : "VARCHAR(255)";
             case "int":
             case "integer":
@@ -101,11 +102,14 @@ public class TypeHelper {
         List<String> list = new ArrayList<>();
         String javaType = toSimpleJavaType(field.getType());
 
-        if (!field.isOptional() && !field.hasAnnotation("id") && !field.hasAnnotation("auto") && !field.hasAnnotation("autoNow") && !field.hasAnnotation("autoUpdate")) {
+        if (!field.isOptional() && !field.hasAnnotation("id") && !field.hasAnnotation("auto")
+                && !field.hasAnnotation("autoNow") && !field.hasAnnotation("autoUpdate")) {
             if ("String".equals(javaType)) {
-                list.add("@jakarta.validation.constraints.NotBlank(message = \"" + field.getName() + " cannot be blank\")");
+                list.add("@jakarta.validation.constraints.NotBlank(message = \"" + field.getName()
+                        + " cannot be blank\")");
             } else {
-                list.add("@jakarta.validation.constraints.NotNull(message = \"" + field.getName() + " cannot be null\")");
+                list.add("@jakarta.validation.constraints.NotNull(message = \"" + field.getName()
+                        + " cannot be null\")");
             }
         }
 
@@ -118,8 +122,10 @@ public class TypeHelper {
             String join = (!mPart.isEmpty() && !mxPart.isEmpty()) ? ", " : "";
             list.add("@jakarta.validation.constraints.Size(" + mPart + join + mxPart + ")");
         } else if (("Integer".equals(javaType) || "Long".equals(javaType)) && (min != null || max != null)) {
-            if (min != null) list.add("@jakarta.validation.constraints.Min(" + min + ")");
-            if (max != null) list.add("@jakarta.validation.constraints.Max(" + max + ")");
+            if (min != null)
+                list.add("@jakarta.validation.constraints.Min(" + min + ")");
+            if (max != null)
+                list.add("@jakarta.validation.constraints.Max(" + max + ")");
         }
 
         if (field.hasAnnotation("positive")) {
@@ -132,13 +138,15 @@ public class TypeHelper {
             list.add("@jakarta.validation.constraints.Email");
         }
         if (field.hasAnnotation("min")) {
-            Object val = field.getAnnotation("min").getArguments().getOrDefault("0", field.getAnnotation("min").getArgument("value"));
+            Object val = field.getAnnotation("min").getArguments().getOrDefault("0",
+                    field.getAnnotation("min").getArgument("value"));
             if (val != null) {
                 list.add("@jakarta.validation.constraints.Min(" + val + ")");
             }
         }
         if (field.hasAnnotation("max")) {
-            Object val = field.getAnnotation("max").getArguments().getOrDefault("0", field.getAnnotation("max").getArgument("value"));
+            Object val = field.getAnnotation("max").getArguments().getOrDefault("0",
+                    field.getAnnotation("max").getArgument("value"));
             if (val != null) {
                 list.add("@jakarta.validation.constraints.Max(" + val + ")");
             }
@@ -148,12 +156,14 @@ public class TypeHelper {
     }
 
     public static String toSnakeCase(String str) {
-        if (str == null) return "";
+        if (str == null)
+            return "";
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < str.length(); i++) {
             char c = str.charAt(i);
             if (Character.isUpperCase(c)) {
-                if (i > 0) sb.append('_');
+                if (i > 0)
+                    sb.append('_');
                 sb.append(Character.toLowerCase(c));
             } else {
                 sb.append(c);
@@ -163,13 +173,16 @@ public class TypeHelper {
     }
 
     public static String capitalize(String str) {
-        if (str == null || str.isEmpty()) return str;
+        if (str == null || str.isEmpty())
+            return str;
         return Character.toUpperCase(str.charAt(0)) + str.substring(1);
     }
 
     public static String pluralize(String str) {
-        if (str == null || str.isEmpty()) return str;
-        if (str.endsWith("y") && !str.endsWith("ay") && !str.endsWith("ey") && !str.endsWith("oy") && !str.endsWith("uy")) {
+        if (str == null || str.isEmpty())
+            return str;
+        if (str.endsWith("y") && !str.endsWith("ay") && !str.endsWith("ey") && !str.endsWith("oy")
+                && !str.endsWith("uy")) {
             return str.substring(0, str.length() - 1) + "ies";
         }
         if (str.endsWith("s") || str.endsWith("x") || str.endsWith("z") || str.endsWith("ch") || str.endsWith("sh")) {
@@ -191,5 +204,130 @@ public class TypeHelper {
             sb.append(capitalize(parts[i].toLowerCase()));
         }
         return sb.toString();
+    }
+
+    public static class PathVariable {
+        private final String name;
+        private final String type;
+
+        public PathVariable(String name, String type) {
+            this.name = name;
+            this.type = type;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getType() {
+            return type;
+        }
+    }
+
+    public static String mapTypeName(String rawType) {
+        if (rawType == null || rawType.trim().isEmpty()) return "String";
+        String t = rawType.trim();
+        switch (t.toLowerCase()) {
+            case "string":
+            case "text":
+                return "String";
+            case "uuid":
+                return "UUID";
+            case "int":
+            case "integer":
+                return "Integer";
+            case "long":
+                return "Long";
+            case "decimal":
+            case "bigdecimal":
+                return "BigDecimal";
+            case "double":
+                return "Double";
+            case "float":
+                return "Float";
+            case "boolean":
+            case "bool":
+                return "Boolean";
+            case "datetime":
+                return "LocalDateTime";
+            case "date":
+                return "LocalDate";
+            default:
+                return t;
+        }
+    }
+
+    public static String sanitizePath(String path) {
+        if (path == null) return "/";
+        return path.replaceAll("\\{\\s*([a-zA-Z0-9_]+)\\s*:[^}]+\\}", "{$1}");
+    }
+
+    public static List<PathVariable> extractPathVariables(String path, ModelDef model, String idType, dev.zenith.ast.CustomEndpointDef custom) {
+        List<PathVariable> list = new ArrayList<>();
+        if (path == null) return list;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{([^}]+)\\}").matcher(path);
+        while (m.find()) {
+            String raw = m.group(1).trim();
+            String varName = raw;
+            String explicitType = null;
+
+            if (raw.contains(":")) {
+                String[] parts = raw.split(":", 2);
+                varName = parts[0].trim();
+                explicitType = mapTypeName(parts[1].trim());
+            }
+
+            if (explicitType == null && custom != null && custom.getParamTypes() != null) {
+                if (custom.getParamTypes().containsKey(varName)) {
+                    explicitType = mapTypeName(custom.getParamTypes().get(varName));
+                }
+            }
+
+            String type = explicitType;
+
+            if (type == null && custom != null && custom.getQuery() != null && !custom.getQuery().isEmpty()) {
+                String q = custom.getQuery().replaceAll("\\s+", "");
+                if (q.contains("==")) {
+                    String[] parts = q.split("==");
+                    String fieldName = parts[0].trim();
+                    String paramName = parts[1].trim();
+                    if (varName.equalsIgnoreCase(paramName)) {
+                        if ("id".equalsIgnoreCase(fieldName)) {
+                            type = idType;
+                        } else if (model != null && model.findField(fieldName) != null) {
+                            FieldDef f = model.findField(fieldName);
+                            type = f.hasAnnotation("id") ? idType : toSimpleJavaType(f.getType());
+                        }
+                    }
+                }
+            }
+
+            if (type == null) {
+                if ("id".equalsIgnoreCase(varName)) {
+                    type = idType;
+                } else if (model != null && model.findField(varName) != null) {
+                    FieldDef f = model.findField(varName);
+                    type = f.hasAnnotation("id") ? idType : toSimpleJavaType(f.getType());
+                } else if (model != null) {
+                    for (dev.zenith.ast.RelationDef r : model.getRelations()) {
+                        String rName = r.getFieldName().toLowerCase();
+                        String vLower = varName.toLowerCase();
+                        if (vLower.equals(rName) || vLower.equals(rName + "id") || vLower.equals("id" + rName)) {
+                            type = "Long";
+                            break;
+                        }
+                    }
+                }
+                if (type == null) {
+                    type = "String";
+                }
+            }
+            list.add(new PathVariable(varName, type));
+        }
+        return list;
+    }
+
+    public static List<PathVariable> extractPathVariables(String path, ModelDef model, String idType) {
+        return extractPathVariables(path, model, idType, null);
     }
 }

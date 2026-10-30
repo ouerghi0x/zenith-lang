@@ -15,8 +15,12 @@ public class ModelDef {
         this.name = name;
         this.fields = fields != null ? fields : new ArrayList<>();
         this.relations = relations != null ? relations : new ArrayList<>();
-        this.crudConfig = crudConfig != null ? crudConfig : CrudConfig.defaults();
+        this.crudConfig = crudConfig;
         this.customEndpoints = customEndpoints != null ? customEndpoints : new ArrayList<>();
+    }
+
+    public boolean hasEndpoints() {
+        return crudConfig != null || !customEndpoints.isEmpty();
     }
 
     public String getName() {

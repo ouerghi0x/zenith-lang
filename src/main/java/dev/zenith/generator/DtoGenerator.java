@@ -12,8 +12,11 @@ public class DtoGenerator {
         String basePkg = file.getConfig().getPackage();
         String pkgDir = "src/main/java/" + basePkg.replace('.', '/') + "/dto/";
 
-        list.add(generateCreateRequest(model, file, pkgDir, basePkg));
-        list.add(generateUpdateRequest(model, file, pkgDir, basePkg));
+        boolean isAuthUser = file.hasAuth() && file.getUserModel() != null && file.getUserModel().getName().equals(model.getName());
+        if (model.getCrudConfig() != null || isAuthUser) {
+            list.add(generateCreateRequest(model, file, pkgDir, basePkg));
+            list.add(generateUpdateRequest(model, file, pkgDir, basePkg));
+        }
         list.add(generateResponse(model, file, pkgDir, basePkg));
 
         return list;

@@ -67,6 +67,41 @@ public class RepositoryGenerator {
                 sb.append("    Page<").append(className).append("> findBy").append(cap).append("Id(").append(fkType)
                         .append(" ")
                         .append(rel.getFieldName()).append("Id, Pageable pageable);\n\n");
+                sb.append("    List<").append(className).append("> findBy").append(cap).append("Id(").append(fkType)
+                        .append(" ")
+                        .append(rel.getFieldName()).append("Id);\n\n");
+
+                ModelDef userModel = file.getUserModel();
+                if (userModel != null && userModel.getName().equals(rel.getTargetModel())) {
+                    FieldDef idFieldDef = userModel.findField("email");
+                    if (idFieldDef == null) idFieldDef = userModel.findField("username");
+                    if (idFieldDef == null) idFieldDef = userModel.findField("name");
+                    String idName = idFieldDef != null ? TypeHelper.capitalize(idFieldDef.getName()) : "Email";
+                    String idTypeStr = idFieldDef != null ? TypeHelper.toSimpleJavaType(idFieldDef.getType()) : "String";
+                    sb.append("    List<").append(className).append("> findBy").append(cap).append(idName)
+                            .append("(").append(idTypeStr).append(" ").append(rel.getFieldName()).append(idName).append(");\n\n");
+                }
+            }
+        }
+
+        // Custom endpoint query methods
+        for (dev.zenith.ast.CustomEndpointDef custom : model.getCustomEndpoints()) {
+            List<TypeHelper.PathVariable> vars = TypeHelper.extractPathVariables(custom.getPath(), model, idType, custom);
+            for (TypeHelper.PathVariable v : vars) {
+                if ("id".equalsIgnoreCase(v.getName())) continue;
+                FieldDef f = null;
+                if (custom.getQuery() != null && !custom.getQuery().isEmpty()) {
+                    String q = custom.getQuery().replaceAll("\\s+", "");
+                    String fn = q.contains("==") ? q.split("==")[0] : q;
+                    f = model.findField(fn);
+                }
+                if (f == null) f = model.findField(v.getName());
+                if (f != null && !f.hasAnnotation("unique") && !f.hasAnnotation("id")) {
+                    String cap = TypeHelper.capitalize(f.getName());
+                    String type = TypeHelper.toSimpleJavaType(f.getType());
+                    sb.append("    Optional<").append(className).append("> findBy").append(cap).append("(").append(type)
+                            .append(" ").append(f.getName()).append(");\n\n");
+                }
             }
         }
 

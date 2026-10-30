@@ -95,25 +95,27 @@ public class TypeScriptSdkGenerator {
             }
             sb.append("}\n\n");
 
-            // 2. Create Request
-            sb.append("export interface Create").append(mName).append("Request {\n");
-            for (FieldDef f : model.getFields()) {
-                if (f.hasAnnotation("auto") || f.hasAnnotation("autoNow") || f.hasAnnotation("autoUpdate")) continue;
-                sb.append("  ").append(f.getName());
-                if (f.isOptional() || f.getDefaultValue() != null) {
-                    sb.append("?");
+            if (model.getCrudConfig() != null) {
+                // 2. Create Request
+                sb.append("export interface Create").append(mName).append("Request {\n");
+                for (FieldDef f : model.getFields()) {
+                    if (f.hasAnnotation("auto") || f.hasAnnotation("autoNow") || f.hasAnnotation("autoUpdate")) continue;
+                    sb.append("  ").append(f.getName());
+                    if (f.isOptional() || f.getDefaultValue() != null) {
+                        sb.append("?");
+                    }
+                    sb.append(": ").append(mapTsType(f.getType())).append(";\n");
                 }
-                sb.append(": ").append(mapTsType(f.getType())).append(";\n");
-            }
-            sb.append("}\n\n");
+                sb.append("}\n\n");
 
-            // 3. Update Request
-            sb.append("export interface Update").append(mName).append("Request {\n");
-            for (FieldDef f : model.getFields()) {
-                if (f.hasAnnotation("auto") || f.hasAnnotation("autoNow") || f.hasAnnotation("autoUpdate")) continue;
-                sb.append("  ").append(f.getName()).append("?: ").append(mapTsType(f.getType())).append(";\n");
+                // 3. Update Request
+                sb.append("export interface Update").append(mName).append("Request {\n");
+                for (FieldDef f : model.getFields()) {
+                    if (f.hasAnnotation("auto") || f.hasAnnotation("autoNow") || f.hasAnnotation("autoUpdate")) continue;
+                    sb.append("  ").append(f.getName()).append("?: ").append(mapTsType(f.getType())).append(";\n");
+                }
+                sb.append("}\n\n");
             }
-            sb.append("}\n\n");
         }
 
         return new JavaSourceFile("sdk/typescript/src/types.ts", sb.toString());
@@ -135,8 +137,10 @@ public class TypeScriptSdkGenerator {
         }
         for (ModelDef model : file.getModels()) {
             sb.append("  ").append(model.getName()).append(",\n");
-            sb.append("  Create").append(model.getName()).append("Request,\n");
-            sb.append("  Update").append(model.getName()).append("Request,\n");
+            if (model.getCrudConfig() != null) {
+                sb.append("  Create").append(model.getName()).append("Request,\n");
+                sb.append("  Update").append(model.getName()).append("Request,\n");
+            }
         }
         sb.append("} from './types';\n\n");
 
@@ -205,45 +209,48 @@ public class TypeScriptSdkGenerator {
 
         // Model services
         for (ModelDef model : file.getModels()) {
+            if (!model.hasEndpoints()) continue;
             String mName = model.getName();
             String propName = Character.toLowerCase(mName.charAt(0)) + mName.substring(1) + "s";
             String basePath = file.getConfig().getBasePath() + "/" + TypeHelper.toSnakeCase(TypeHelper.pluralize(mName));
 
             sb.append("  public readonly ").append(propName).append(" = {\n");
 
-            // list
-            sb.append("    list: (params?: QueryParams): Promise<PageResponse<").append(mName).append(">> => {\n");
-            sb.append("      const query = params ? '?' + new URLSearchParams(Object.entries(params).filter(([_, v]) => v != null).map(([k, v]) => [k, String(v)])).toString() : '';\n");
-            sb.append("      return this.request<PageResponse<").append(mName).append(">>(`").append(basePath).append("${query}`);\n");
-            sb.append("    },\n\n");
+            if (model.getCrudConfig() != null) {
+                // list
+                sb.append("    list: (params?: QueryParams): Promise<PageResponse<").append(mName).append(">> => {\n");
+                sb.append("      const query = params ? '?' + new URLSearchParams(Object.entries(params).filter(([_, v]) => v != null).map(([k, v]) => [k, String(v)])).toString() : '';\n");
+                sb.append("      return this.request<PageResponse<").append(mName).append(">>(`").append(basePath).append("${query}`);\n");
+                sb.append("    },\n\n");
 
-            // getById
-            sb.append("    getById: (id: string | number): Promise<").append(mName).append("> => {\n");
-            sb.append("      return this.request<").append(mName).append(">(`").append(basePath).append("/${id}`);\n");
-            sb.append("    },\n\n");
+                // getById
+                sb.append("    getById: (id: string | number): Promise<").append(mName).append("> => {\n");
+                sb.append("      return this.request<").append(mName).append(">(`").append(basePath).append("/${id}`);\n");
+                sb.append("    },\n\n");
 
-            // create
-            sb.append("    create: (data: Create").append(mName).append("Request): Promise<").append(mName).append("> => {\n");
-            sb.append("      return this.request<").append(mName).append(">('").append(basePath).append("', {\n");
-            sb.append("        method: 'POST',\n");
-            sb.append("        body: JSON.stringify(data),\n");
-            sb.append("      });\n");
-            sb.append("    },\n\n");
+                // create
+                sb.append("    create: (data: Create").append(mName).append("Request): Promise<").append(mName).append("> => {\n");
+                sb.append("      return this.request<").append(mName).append(">('").append(basePath).append("', {\n");
+                sb.append("        method: 'POST',\n");
+                sb.append("        body: JSON.stringify(data),\n");
+                sb.append("      });\n");
+                sb.append("    },\n\n");
 
-            // update
-            sb.append("    update: (id: string | number, data: Update").append(mName).append("Request): Promise<").append(mName).append("> => {\n");
-            sb.append("      return this.request<").append(mName).append(">(`").append(basePath).append("/${id}`, {\n");
-            sb.append("        method: 'PUT',\n");
-            sb.append("        body: JSON.stringify(data),\n");
-            sb.append("      });\n");
-            sb.append("    },\n\n");
+                // update
+                sb.append("    update: (id: string | number, data: Update").append(mName).append("Request): Promise<").append(mName).append("> => {\n");
+                sb.append("      return this.request<").append(mName).append(">(`").append(basePath).append("/${id}`, {\n");
+                sb.append("        method: 'PUT',\n");
+                sb.append("        body: JSON.stringify(data),\n");
+                sb.append("      });\n");
+                sb.append("    },\n\n");
 
-            // delete
-            sb.append("    delete: (id: string | number): Promise<void> => {\n");
-            sb.append("      return this.request<void>(`").append(basePath).append("/${id}`, {\n");
-            sb.append("        method: 'DELETE',\n");
-            sb.append("      });\n");
-            sb.append("    },\n");
+                // delete
+                sb.append("    delete: (id: string | number): Promise<void> => {\n");
+                sb.append("      return this.request<void>(`").append(basePath).append("/${id}`, {\n");
+                sb.append("        method: 'DELETE',\n");
+                sb.append("      });\n");
+                sb.append("    },\n");
+            }
 
             // custom endpoints
             for (var c : model.getCustomEndpoints()) {
@@ -288,90 +295,95 @@ public class TypeScriptSdkGenerator {
         sb.append("  QueryParams,\n");
         for (ModelDef model : file.getModels()) {
             sb.append("  ").append(model.getName()).append(",\n");
-            sb.append("  Create").append(model.getName()).append("Request,\n");
-            sb.append("  Update").append(model.getName()).append("Request,\n");
+            if (model.getCrudConfig() != null) {
+                sb.append("  Create").append(model.getName()).append("Request,\n");
+                sb.append("  Update").append(model.getName()).append("Request,\n");
+            }
         }
         sb.append("} from './types';\n\n");
 
         for (ModelDef model : file.getModels()) {
+            if (!model.hasEndpoints()) continue;
             String mName = model.getName();
             String propName = Character.toLowerCase(mName.charAt(0)) + mName.substring(1) + "s";
             String queryKey = "'" + propName + "'";
 
-            // useList hook
-            sb.append("export function use").append(mName).append("List(\n");
-            sb.append("  client: ZenithClient,\n");
-            sb.append("  params?: QueryParams,\n");
-            sb.append("  options?: Omit<UseQueryOptions<PageResponse<").append(mName).append(">>, 'queryKey' | 'queryFn'>\n");
-            sb.append(") {\n");
-            sb.append("  return useQuery({\n");
-            sb.append("    queryKey: [").append(queryKey).append(", 'list', params],\n");
-            sb.append("    queryFn: () => client.").append(propName).append(".list(params),\n");
-            sb.append("    ...options,\n");
-            sb.append("  });\n");
-            sb.append("}\n\n");
+            if (model.getCrudConfig() != null) {
+                // useList hook
+                sb.append("export function use").append(mName).append("List(\n");
+                sb.append("  client: ZenithClient,\n");
+                sb.append("  params?: QueryParams,\n");
+                sb.append("  options?: Omit<UseQueryOptions<PageResponse<").append(mName).append(">>, 'queryKey' | 'queryFn'>\n");
+                sb.append(") {\n");
+                sb.append("  return useQuery({\n");
+                sb.append("    queryKey: [").append(queryKey).append(", 'list', params],\n");
+                sb.append("    queryFn: () => client.").append(propName).append(".list(params),\n");
+                sb.append("    ...options,\n");
+                sb.append("  });\n");
+                sb.append("}\n\n");
 
-            // useById hook
-            sb.append("export function use").append(mName).append("(\n");
-            sb.append("  client: ZenithClient,\n");
-            sb.append("  id: string | number,\n");
-            sb.append("  options?: Omit<UseQueryOptions<").append(mName).append(">, 'queryKey' | 'queryFn'>\n");
-            sb.append(") {\n");
-            sb.append("  return useQuery({\n");
-            sb.append("    queryKey: [").append(queryKey).append(", 'detail', id],\n");
-            sb.append("    queryFn: () => client.").append(propName).append(".getById(id),\n");
-            sb.append("    enabled: !!id,\n");
-            sb.append("    ...options,\n");
-            sb.append("  });\n");
-            sb.append("}\n\n");
+                // useById hook
+                sb.append("export function use").append(mName).append("(\n");
+                sb.append("  client: ZenithClient,\n");
+                sb.append("  id: string | number,\n");
+                sb.append("  options?: Omit<UseQueryOptions<").append(mName).append(">, 'queryKey' | 'queryFn'>\n");
+                sb.append(") {\n");
+                sb.append("  return useQuery({\n");
+                sb.append("    queryKey: [").append(queryKey).append(", 'detail', id],\n");
+                sb.append("    queryFn: () => client.").append(propName).append(".getById(id),\n");
+                sb.append("    enabled: !!id,\n");
+                sb.append("    ...options,\n");
+                sb.append("  });\n");
+                sb.append("}\n\n");
 
-            // useCreate hook
-            sb.append("export function useCreate").append(mName).append("(\n");
-            sb.append("  client: ZenithClient,\n");
-            sb.append("  options?: UseMutationOptions<").append(mName).append(", Error, Create").append(mName).append("Request>\n");
-            sb.append(") {\n");
-            sb.append("  const queryClient = useQueryClient();\n");
-            sb.append("  return useMutation({\n");
-            sb.append("    mutationFn: (data: Create").append(mName).append("Request) => client.").append(propName).append(".create(data),\n");
-            sb.append("    onSuccess: (data, variables, context) => {\n");
-            sb.append("      queryClient.invalidateQueries({ queryKey: [").append(queryKey).append("] });\n");
-            sb.append("      options?.onSuccess?.(data, variables, context);\n");
-            sb.append("    },\n");
-            sb.append("    ...options,\n");
-            sb.append("  });\n");
-            sb.append("}\n\n");
+                // useCreate hook
+                sb.append("export function useCreate").append(mName).append("(\n");
+                sb.append("  client: ZenithClient,\n");
+                sb.append("  options?: UseMutationOptions<").append(mName).append(", Error, Create").append(mName).append("Request>\n");
+                sb.append(") {\n");
+                sb.append("  const queryClient = useQueryClient();\n");
+                sb.append("  return useMutation({\n");
+                sb.append("    mutationFn: (data: Create").append(mName).append("Request) => client.").append(propName).append(".create(data),\n");
+                sb.append("    onSuccess: (data, variables, context) => {\n");
+                sb.append("      queryClient.invalidateQueries({ queryKey: [").append(queryKey).append("] });\n");
+                sb.append("      options?.onSuccess?.(data, variables, context);\n");
+                sb.append("    },\n");
+                sb.append("    ...options,\n");
+                sb.append("  });\n");
+                sb.append("}\n\n");
 
-            // useUpdate hook
-            sb.append("export function useUpdate").append(mName).append("(\n");
-            sb.append("  client: ZenithClient,\n");
-            sb.append("  options?: UseMutationOptions<").append(mName).append(", Error, { id: string | number; data: Update").append(mName).append("Request }>\n");
-            sb.append(") {\n");
-            sb.append("  const queryClient = useQueryClient();\n");
-            sb.append("  return useMutation({\n");
-            sb.append("    mutationFn: ({ id, data }) => client.").append(propName).append(".update(id, data),\n");
-            sb.append("    onSuccess: (data, variables, context) => {\n");
-            sb.append("      queryClient.invalidateQueries({ queryKey: [").append(queryKey).append("] });\n");
-            sb.append("      options?.onSuccess?.(data, variables, context);\n");
-            sb.append("    },\n");
-            sb.append("    ...options,\n");
-            sb.append("  });\n");
-            sb.append("}\n\n");
+                // useUpdate hook
+                sb.append("export function useUpdate").append(mName).append("(\n");
+                sb.append("  client: ZenithClient,\n");
+                sb.append("  options?: UseMutationOptions<").append(mName).append(", Error, { id: string | number; data: Update").append(mName).append("Request }>\n");
+                sb.append(") {\n");
+                sb.append("  const queryClient = useQueryClient();\n");
+                sb.append("  return useMutation({\n");
+                sb.append("    mutationFn: ({ id, data }) => client.").append(propName).append(".update(id, data),\n");
+                sb.append("    onSuccess: (data, variables, context) => {\n");
+                sb.append("      queryClient.invalidateQueries({ queryKey: [").append(queryKey).append("] });\n");
+                sb.append("      options?.onSuccess?.(data, variables, context);\n");
+                sb.append("    },\n");
+                sb.append("    ...options,\n");
+                sb.append("  });\n");
+                sb.append("}\n\n");
 
-            // useDelete hook
-            sb.append("export function useDelete").append(mName).append("(\n");
-            sb.append("  client: ZenithClient,\n");
-            sb.append("  options?: UseMutationOptions<void, Error, string | number>\n");
-            sb.append(") {\n");
-            sb.append("  const queryClient = useQueryClient();\n");
-            sb.append("  return useMutation({\n");
-            sb.append("    mutationFn: (id: string | number) => client.").append(propName).append(".delete(id),\n");
-            sb.append("    onSuccess: (data, variables, context) => {\n");
-            sb.append("      queryClient.invalidateQueries({ queryKey: [").append(queryKey).append("] });\n");
-            sb.append("      options?.onSuccess?.(data, variables, context);\n");
-            sb.append("    },\n");
-            sb.append("    ...options,\n");
-            sb.append("  });\n");
-            sb.append("}\n\n");
+                // useDelete hook
+                sb.append("export function useDelete").append(mName).append("(\n");
+                sb.append("  client: ZenithClient,\n");
+                sb.append("  options?: UseMutationOptions<void, Error, string | number>\n");
+                sb.append(") {\n");
+                sb.append("  const queryClient = useQueryClient();\n");
+                sb.append("  return useMutation({\n");
+                sb.append("    mutationFn: (id: string | number) => client.").append(propName).append(".delete(id),\n");
+                sb.append("    onSuccess: (data, variables, context) => {\n");
+                sb.append("      queryClient.invalidateQueries({ queryKey: [").append(queryKey).append("] });\n");
+                sb.append("      options?.onSuccess?.(data, variables, context);\n");
+                sb.append("    },\n");
+                sb.append("    ...options,\n");
+                sb.append("  });\n");
+                sb.append("}\n\n");
+            }
         }
 
         return new JavaSourceFile("sdk/typescript/src/react-query.ts", sb.toString());

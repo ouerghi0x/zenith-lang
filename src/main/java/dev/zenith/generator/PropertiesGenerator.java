@@ -23,7 +23,7 @@ public class PropertiesGenerator {
             sb.append("    password: postgres\n");
             sb.append("    driver-class-name: org.postgresql.Driver\n");
         } else {
-            sb.append("    url: jdbc:h2:mem:appdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE\n");
+            sb.append("    url: jdbc:h2:mem:appdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=KEY,VALUE\n");
             sb.append("    driver-class-name: org.h2.Driver\n");
             sb.append("    username: sa\n");
             sb.append("    password: \"\"\n");

@@ -1,8 +1,5 @@
 package dev.zenith.generator;
 
-import dev.zenith.ast.EnumDef;
-import dev.zenith.ast.FieldDef;
-import dev.zenith.ast.ModelDef;
 import dev.zenith.ast.ZenithFile;
 
 import java.util.ArrayList;
@@ -10,9 +7,9 @@ import java.util.List;
 
 /**
  * Generates ready-to-run Docker and Docker Compose environments:
- *  - Multi-stage Dockerfile (Maven 3 + Eclipse Temurin 17 JRE slim)
- *  - docker-compose.yml pairing the Spring Boot API with PostgreSQL/MySQL/H2
- *  - .dockerignore for clean builds
+ * - Multi-stage Dockerfile (Maven 3 + Eclipse Temurin 17 JRE slim)
+ * - docker-compose.yml pairing the Spring Boot API with PostgreSQL/MySQL/H2
+ * - .dockerignore for clean builds
  */
 public class DockerGenerator {
 
@@ -26,8 +23,7 @@ public class DockerGenerator {
 
     private static JavaSourceFile generateDockerfile(ZenithFile file) {
         int port = file.getConfig().getPort();
-        String content =
-                "# -----------------------------------------------------------------------------\n" +
+        String content = "# -----------------------------------------------------------------------------\n" +
                 "# Multi-Stage Dockerfile for " + file.getConfig().getApp() + "\n" +
                 "# Generated automatically by Zenith DSL v1.0.0\n" +
                 "# -----------------------------------------------------------------------------\n\n" +
@@ -93,7 +89,8 @@ public class DockerGenerator {
             sb.append("volumes:\n");
             sb.append("  pgdata:\n");
         } else if ("mysql".equals(db)) {
-            sb.append("      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/").append(appName).append("_db?useSSL=false&allowPublicKeyRetrieval=true\n");
+            sb.append("      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/").append(appName)
+                    .append("_db?useSSL=false&allowPublicKeyRetrieval=true\n");
             sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
             sb.append("      SPRING_DATASOURCE_PASSWORD: zenith_secret\n");
             sb.append("    depends_on:\n");
@@ -120,8 +117,7 @@ public class DockerGenerator {
     }
 
     private static JavaSourceFile generateDockerignore() {
-        String content =
-                "target/\n" +
+        String content = "target/\n" +
                 ".git/\n" +
                 ".gitignore\n" +
                 "*.md\n" +

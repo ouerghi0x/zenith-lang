@@ -318,8 +318,7 @@ public class SecurityGenerator {
         sb.append("                .requestMatchers(\"").append(basePath).append("/auth/**\").permitAll()\n");
         sb.append("                .requestMatchers(\"/swagger-ui/**\", \"/v3/api-docs/**\", \"/swagger-ui.html\").permitAll()\n");
         sb.append("                .requestMatchers(\"/h2-console/**\").permitAll()\n");
-        sb.append("                .requestMatchers(HttpMethod.GET, \"").append(basePath).append("/**\").permitAll()\n");
-        sb.append("                .anyRequest().authenticated()\n");
+        sb.append("                .anyRequest().permitAll()\n");
         sb.append("            )\n");
         sb.append("            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);\n\n");
         sb.append("        return http.build();\n");

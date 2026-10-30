@@ -9,7 +9,6 @@ import dev.zenith.lexer.Lexer;
 import dev.zenith.lexer.Token;
 import dev.zenith.parser.Parser;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -19,8 +18,7 @@ import java.util.List;
 
 public class ZenithCli {
 
-    private static final String BANNER =
-            "  ______            _ _   _     \n" +
+    private static final String BANNER = "  ______            _ _   _     \n" +
             " |___  /           (_) | | |    \n" +
             "    / /  ___ _ __  _| |_| |__   \n" +
             "   / /  / _ \\ '_ \\| | __| '_ \\  \n" +
@@ -107,7 +105,8 @@ public class ZenithCli {
         System.out.println("\n--- Generated Summary ---");
         System.out.println("  Models: " + file.getModels().size());
         for (ModelDef m : file.getModels()) {
-            System.out.println("   * " + m.getName() + " (" + m.getFields().size() + " fields, " + m.getRelations().size() + " relations)");
+            System.out.println("   * " + m.getName() + " (" + m.getFields().size() + " fields, "
+                    + m.getRelations().size() + " relations)");
         }
         System.out.println("  Total Files Written: " + generated.size());
         System.out.println("\nTo run the generated application:");
@@ -152,10 +151,12 @@ public class ZenithCli {
             if (!m.getRelations().isEmpty()) {
                 System.out.println("  Relations:");
                 for (var r : m.getRelations()) {
-                    System.out.printf("    - %-15s -> %s (%s)%n", r.getFieldName(), r.getTargetModel(), r.getRelationType());
+                    System.out.printf("    - %-15s -> %s (%s)%n", r.getFieldName(), r.getTargetModel(),
+                            r.getRelationType());
                 }
             }
-            String resourcePath = file.getConfig().getBasePath() + "/" + dev.zenith.generator.TypeHelper.toSnakeCase(dev.zenith.generator.TypeHelper.pluralize(m.getName()));
+            String resourcePath = file.getConfig().getBasePath() + "/" + dev.zenith.generator.TypeHelper
+                    .toSnakeCase(dev.zenith.generator.TypeHelper.pluralize(m.getName()));
             System.out.println("  CRUD Endpoints:");
             System.out.println("    - GET    " + resourcePath);
             System.out.println("    - GET    " + resourcePath + "/{id}");
@@ -179,8 +180,7 @@ public class ZenithCli {
             return;
         }
 
-        String template =
-                "config {\n" +
+        String template = "config {\n" +
                 "    app: \"StoreApp\"\n" +
                 "    package: \"com.example.store\"\n" +
                 "    basePath: \"/api/v1\"\n" +
@@ -283,7 +283,9 @@ public class ZenithCli {
                 long current = Files.getLastModifiedTime(p).toMillis();
                 if (current > lastModified) {
                     lastModified = current;
-                    System.out.println("\n>> File changed at " + java.time.LocalTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS) + ". Recompiling...");
+                    System.out.println("\n>> File changed at "
+                            + java.time.LocalTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+                            + ". Recompiling...");
                     doSilentBuild(inputFilePath, outputDir);
                 }
             } catch (Exception e) {
@@ -300,7 +302,8 @@ public class ZenithCli {
             ProjectGenerator.writeToDirectory(file, targetPath);
             List<JavaSourceFile> generated = ProjectGenerator.generateAll(file);
             long elapsed = System.currentTimeMillis() - start;
-            System.out.println("   [SUCCESS] Recompiled in " + elapsed + "ms -> " + generated.size() + " files up-to-date (" + file.getModels().size() + " models)");
+            System.out.println("   [SUCCESS] Recompiled in " + elapsed + "ms -> " + generated.size()
+                    + " files up-to-date (" + file.getModels().size() + " models)");
         } catch (Exception e) {
             System.err.println("   [BUILD FAILED] " + e.getMessage());
         }
@@ -338,7 +341,8 @@ public class ZenithCli {
         System.out.println("Usage:");
         System.out.println("  zenith studio [file.zen] [-p <port>]      Launch Zenith Studio real-time visual IDE");
         System.out.println("  zenith build <file.zen> [-o <out-dir>]    Compile schema to a full Spring Boot 3 app");
-        System.out.println("  zenith watch <file.zen> [-o <out-dir>]    Watch schema file and auto-recompile on change");
+        System.out
+                .println("  zenith watch <file.zen> [-o <out-dir>]    Watch schema file and auto-recompile on change");
         System.out.println("  zenith validate <file.zen>                Validate schema syntax and semantics");
         System.out.println("  zenith inspect <file.zen>                 Show summary of models and endpoints");
         System.out.println("  zenith init [file.zen]                    Create a starter schema file");

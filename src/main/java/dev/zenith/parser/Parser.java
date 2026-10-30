@@ -102,7 +102,9 @@ public class Parser {
                 }
             } else if (cur.getType() == TokenType.CRUD) {
                 crudConfig = parseCrudBlock();
-            } else if (cur.getType() == TokenType.IDENTIFIER) {
+            } else if (cur.getType() == TokenType.IDENTIFIER || cur.getType() == TokenType.ACTION
+                    || cur.getType() == TokenType.PUBLIC || cur.getType() == TokenType.AUTH
+                    || cur.getType() == TokenType.GUARD) {
                 // Could be a field definition or inline relation
                 FieldDef field = parseField();
                 fields.add(field);
@@ -128,15 +130,11 @@ public class Parser {
             }
         }
 
-        if (crudConfig == null) {
-            crudConfig = CrudConfig.defaults();
-        }
-
         return new ModelDef(nameToken.getValue(), fields, relations, crudConfig, customEndpoints);
     }
 
     private FieldDef parseField() {
-        Token nameTok = consume(TokenType.IDENTIFIER, "Expected field name");
+        Token nameTok = consumeFieldName();
         consume(TokenType.COLON, "Expected ':' after field name");
 
         TypeRef type = parseTypeRef();
@@ -283,10 +281,20 @@ public class Parser {
         List<String> search = new ArrayList<>();
         List<String> filter = new ArrayList<>();
         List<String> sort = new ArrayList<>();
+        Boolean requiresAuth = null;
+        List<String> defaultRoles = new ArrayList<>();
+        Map<String, List<String>> operationRoles = new LinkedHashMap<>();
 
         if (match(TokenType.LBRACE)) {
             while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
-                Token key = consume(TokenType.IDENTIFIER, "Expected crud property");
+                Token key;
+                if (peek().getType() == TokenType.IDENTIFIER || peek().getType() == TokenType.AUTH 
+                        || peek().getType() == TokenType.PUBLIC || peek().getType() == TokenType.GUARD
+                        || isHttpMethod(peek().getType())) {
+                    key = advance();
+                } else {
+                    key = consume(TokenType.IDENTIFIER, "Expected crud property");
+                }
                 consume(TokenType.COLON, "Expected ':' after crud property");
 
                 String k = key.getValue().toLowerCase();
@@ -294,12 +302,43 @@ public class Parser {
                     enabled = parseBoolean();
                 } else if ("paginate".equals(k)) {
                     paginate = parseBoolean();
+                } else if ("auth".equals(k)) {
+                    requiresAuth = parseBoolean();
+                } else if ("public".equals(k)) {
+                    requiresAuth = !parseBoolean();
                 } else if ("search".equals(k) || "searchable".equals(k)) {
                     search = parseIdentifierList();
                 } else if ("filter".equals(k) || "filterable".equals(k)) {
                     filter = parseIdentifierList();
                 } else if ("sort".equals(k) || "sortable".equals(k)) {
                     sort = parseIdentifierList();
+                } else if ("role".equals(k) || "roles".equals(k)) {
+                    defaultRoles = parseRoleListOrSingle();
+                } else if ("guard".equals(k)) {
+                    int line = key.getLine();
+                    StringBuilder expr = new StringBuilder();
+                    while (!isAtEnd() && peek().getType() != TokenType.COMMA 
+                            && peek().getType() != TokenType.RBRACE 
+                            && peek().getLine() == line) {
+                        expr.append(advance().getValue()).append(" ");
+                    }
+                    GuardDef g = new GuardDef(expr.toString().trim(), "");
+                    if (g.isRoleGuard()) {
+                        String role = g.extractRole();
+                        if (role != null && !role.isEmpty()) {
+                            defaultRoles.add(role);
+                        }
+                    }
+                } else if ("getall".equals(k) || "list".equals(k) || "findall".equals(k)) {
+                    operationRoles.put("getall", parseRoleListOrSingle());
+                } else if ("getbyid".equals(k) || "get".equals(k) || "findbyid".equals(k)) {
+                    operationRoles.put("getbyid", parseRoleListOrSingle());
+                } else if ("create".equals(k) || "post".equals(k)) {
+                    operationRoles.put("create", parseRoleListOrSingle());
+                } else if ("update".equals(k) || "put".equals(k) || "patch".equals(k)) {
+                    operationRoles.put("update", parseRoleListOrSingle());
+                } else if ("delete".equals(k)) {
+                    operationRoles.put("delete", parseRoleListOrSingle());
                 } else {
                     parseLiteralOrIdentifier(); // skip unknown
                 }
@@ -309,7 +348,37 @@ public class Parser {
             consume(TokenType.RBRACE, "Expected '}' closing crud block");
         }
 
-        return new CrudConfig(enabled, paginate, search, filter, sort);
+        return new CrudConfig(enabled, paginate, search, filter, sort, requiresAuth, defaultRoles, operationRoles);
+    }
+
+    private List<String> parseRoleListOrSingle() {
+        List<String> list = new ArrayList<>();
+        if (match(TokenType.LBRACKET)) {
+            while (!isAtEnd() && peek().getType() != TokenType.RBRACKET) {
+                String val = parseRoleToken();
+                if (val != null && !val.isEmpty()) {
+                    list.add(val);
+                }
+                match(TokenType.COMMA);
+            }
+            consume(TokenType.RBRACKET, "Expected ']'");
+        } else {
+            String val = parseRoleToken();
+            if (val != null && !val.isEmpty()) {
+                list.add(val);
+            }
+        }
+        return list;
+    }
+
+    private String parseRoleToken() {
+        Token t = advance();
+        String val = t.getValue();
+        if (match(TokenType.DOT)) {
+            Token sub = advance();
+            val = sub.getValue();
+        }
+        return val.replace("\"", "").replace("'", "").trim();
     }
 
     private CustomEndpointDef parseCustomEndpoint() {
@@ -329,10 +398,33 @@ public class Parser {
         String returnType = "Void";
         if (match(TokenType.ARROW)) {
             Token retTok = consume(TokenType.IDENTIFIER, "Expected return type after '->'");
-            returnType = retTok.getValue();
+            StringBuilder retSb = new StringBuilder(retTok.getValue());
+            if (match(TokenType.LT)) {
+                retSb.append("<");
+                int depth = 1;
+                while (!isAtEnd() && depth > 0) {
+                    Token cur = advance();
+                    if (cur.getType() == TokenType.LT) {
+                        depth++;
+                        retSb.append("<");
+                    } else if (cur.getType() == TokenType.GT) {
+                        depth--;
+                        retSb.append(">");
+                    } else {
+                        retSb.append(cur.getValue());
+                    }
+                }
+                returnType = retSb.toString();
+            } else {
+                returnType = retTok.getValue();
+            }
         }
 
         String description = "";
+        Boolean requiresAuth = null;
+        Boolean userScoped = null;
+        String query = null;
+        Map<String, String> paramTypes = new LinkedHashMap<>();
         List<GuardDef> guards = new ArrayList<>();
         List<String> actions = new ArrayList<>();
 
@@ -342,10 +434,23 @@ public class Parser {
                 if (key.getType() == TokenType.GUARD) {
                     advance(); // guard
                     consume(TokenType.COLON, "Expected ':' after 'guard'");
-                    // Read expression until comma or newline/semicolon
+                    int guardLine = key.getLine();
                     StringBuilder expr = new StringBuilder();
-                    while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE) {
-                        expr.append(advance().getValue()).append(" ");
+                    int bracketDepth = 0;
+                    int parenDepth = 0;
+                    while (!isAtEnd() && peek().getType() != TokenType.RBRACE 
+                            && peek().getType() != TokenType.GUARD 
+                            && peek().getType() != TokenType.ACTION
+                            && peek().getLine() == guardLine) {
+                        if (peek().getType() == TokenType.COMMA && bracketDepth == 0 && parenDepth == 0) {
+                            break;
+                        }
+                        Token t = advance();
+                        if (t.getType() == TokenType.LBRACKET) bracketDepth++;
+                        else if (t.getType() == TokenType.RBRACKET) bracketDepth--;
+                        else if (t.getType() == TokenType.LPAREN) parenDepth++;
+                        else if (t.getType() == TokenType.RPAREN) parenDepth--;
+                        expr.append(t.getValue()).append(" ");
                     }
                     String errMessage = "Guard condition failed";
                     if (match(TokenType.COMMA)) {
@@ -369,11 +474,47 @@ public class Parser {
                         match(TokenType.COMMA);
                     }
                     consume(TokenType.RBRACE, "Expected '}' closing action block");
-                } else if (key.getType() == TokenType.IDENTIFIER) {
+                } else if (key.getType() == TokenType.IDENTIFIER || key.getType() == TokenType.AUTH || key.getType() == TokenType.PUBLIC) {
                     Token idTok = advance();
                     consume(TokenType.COLON, "Expected ':' after '" + idTok.getValue() + "'");
-                    if ("description".equalsIgnoreCase(idTok.getValue())) {
+                    String k = idTok.getValue().toLowerCase();
+                    if ("description".equalsIgnoreCase(k)) {
                         description = consume(TokenType.STRING_LITERAL, "Expected string for description").getValue();
+                    } else if ("auth".equalsIgnoreCase(k)) {
+                        requiresAuth = parseBoolean();
+                    } else if ("public".equalsIgnoreCase(k)) {
+                        requiresAuth = !parseBoolean();
+                    } else if ("user".equalsIgnoreCase(k) || "currentuser".equalsIgnoreCase(k) || "me".equalsIgnoreCase(k)) {
+                        userScoped = parseBoolean();
+                    } else if ("params".equalsIgnoreCase(k) || "param".equalsIgnoreCase(k) || "types".equalsIgnoreCase(k)) {
+                        if (match(TokenType.LBRACE)) {
+                            while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+                                Token pName = advance();
+                                if (match(TokenType.COLON)) {
+                                    Token pType = advance();
+                                    paramTypes.put(pName.getValue(), pType.getValue());
+                                }
+                                match(TokenType.COMMA);
+                            }
+                            consume(TokenType.RBRACE, "Expected '}' closing params block");
+                        } else {
+                            Token pName = advance();
+                            if (match(TokenType.COLON)) {
+                                Token pType = advance();
+                                paramTypes.put(pName.getValue(), pType.getValue());
+                            }
+                        }
+                    } else if ("query".equalsIgnoreCase(k) || "where".equalsIgnoreCase(k) || "find".equalsIgnoreCase(k)) {
+                        int currentLine = idTok.getLine();
+                        StringBuilder qSb = new StringBuilder();
+                        while (!isAtEnd() && peek().getType() != TokenType.RBRACE 
+                                && peek().getType() != TokenType.COMMA 
+                                && peek().getType() != TokenType.GUARD 
+                                && peek().getType() != TokenType.ACTION
+                                && peek().getLine() == currentLine) {
+                            qSb.append(advance().getValue()).append(" ");
+                        }
+                        query = qSb.toString().trim();
                     } else {
                         parseLiteralOrIdentifier();
                     }
@@ -385,7 +526,7 @@ public class Parser {
             consume(TokenType.RBRACE, "Expected '}' closing custom endpoint block");
         }
 
-        return new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards, actions);
+        return new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards, actions, requiresAuth, userScoped, query, paramTypes);
     }
 
     private List<String> parseIdentifierList() {
@@ -435,6 +576,16 @@ public class Parser {
         } else {
             throw error(tok, "Expected literal value or identifier, found " + tok.getType());
         }
+    }
+
+    private Token consumeFieldName() {
+        Token t = peek();
+        if (t.getType() == TokenType.IDENTIFIER || t.getType() == TokenType.ACTION
+                || t.getType() == TokenType.AUTH || t.getType() == TokenType.PUBLIC
+                || t.getType() == TokenType.CONFIG || t.getType() == TokenType.GUARD) {
+            return advance();
+        }
+        throw error(t, "Expected field name, but got '" + t.getValue() + "' (" + t.getType() + ")");
     }
 
     private Token consumeKeyName() {

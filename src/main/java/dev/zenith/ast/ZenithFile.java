@@ -62,6 +62,6 @@ public class ZenithFile {
     }
 
     public boolean hasAuth() {
-        return config.isAuthEnabled() || getUserModel() != null;
+        return config.isAuthEnabled() && getUserModel() != null;
     }
 }
