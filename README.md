@@ -226,3 +226,9 @@ Available endpoints:
 * `Auth Register`: `POST http://localhost:8080/api/v1/auth/register`
 * `Products`: `GET/POST http://localhost:8080/api/v1/products`
 * `H2 Console`: `http://localhost:8080/h2-console`
+
+---
+
+## 🗺️ Roadmap & Missing Features
+
+For the full architectural roadmap, prioritization, implementation complexity, and planned syntax for upcoming Zenith features, see **[ROADMAP.md](ROADMAP.md)**.
