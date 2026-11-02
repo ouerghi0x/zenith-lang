@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+
 public class CustomEndpointDef {
     private final String method;
     private final String path;
@@ -15,8 +16,19 @@ public class CustomEndpointDef {
     private final Boolean userScoped; // null = auto-detect, true = filter by current user
     private final String query; // optional custom query / filter mapping like "orderNumber == trackingNumber"
     private final Map<String, String> paramTypes; // optional explicit parameter types: e.g. {"id": "UUID"}
+    private final String bodyType; // optional body
 
-    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards, List<String> actionStatements, Boolean requiresAuth, Boolean userScoped, String query, Map<String, String> paramTypes) {
+    public String getBodyType() {
+        return bodyType;
+    }
+
+    public boolean hasBody() {
+        return bodyType != null && !bodyType.trim().isEmpty();
+    }
+
+    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
+            List<String> actionStatements, Boolean requiresAuth, Boolean userScoped, String query,
+            Map<String, String> paramTypes, String bodyType) {
         this.method = method != null ? method.toUpperCase() : "GET";
         this.path = path != null ? path : "/";
         this.returnType = returnType != null ? returnType : "Void";
@@ -27,21 +39,27 @@ public class CustomEndpointDef {
         this.userScoped = userScoped;
         this.query = query;
         this.paramTypes = paramTypes != null ? paramTypes : new java.util.LinkedHashMap<>();
+        this.bodyType = bodyType != null ? bodyType : "";
     }
 
-    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards, List<String> actionStatements, Boolean requiresAuth, Boolean userScoped, String query) {
-        this(method, path, returnType, description, guards, actionStatements, requiresAuth, userScoped, query, Collections.emptyMap());
+    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
+            List<String> actionStatements, Boolean requiresAuth, Boolean userScoped, String query) {
+        this(method, path, returnType, description, guards, actionStatements, requiresAuth, userScoped, query,
+                Collections.emptyMap(), null);
     }
 
-    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards, List<String> actionStatements, Boolean requiresAuth, Boolean userScoped) {
+    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
+            List<String> actionStatements, Boolean requiresAuth, Boolean userScoped) {
         this(method, path, returnType, description, guards, actionStatements, requiresAuth, userScoped, null);
     }
 
-    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards, List<String> actionStatements, Boolean requiresAuth) {
+    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
+            List<String> actionStatements, Boolean requiresAuth) {
         this(method, path, returnType, description, guards, actionStatements, requiresAuth, null);
     }
 
-    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards, List<String> actionStatements) {
+    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
+            List<String> actionStatements) {
         this(method, path, returnType, description, guards, actionStatements, null);
     }
 
@@ -90,11 +108,14 @@ public class CustomEndpointDef {
     }
 
     public boolean isUserScoped(String methodName) {
-        if (Boolean.TRUE.equals(userScoped)) return true;
-        if (Boolean.FALSE.equals(userScoped)) return false;
+        if (Boolean.TRUE.equals(userScoped))
+            return true;
+        if (Boolean.FALSE.equals(userScoped))
+            return false;
         String p = path != null ? path.toLowerCase() : "";
         String m = methodName != null ? methodName.toLowerCase() : "";
-        return p.contains("/my") || p.contains("/me") || p.contains("mine") || m.startsWith("my") || m.contains("myorders");
+        return p.contains("/my") || p.contains("/me") || p.contains("mine") || m.startsWith("my")
+                || m.contains("myorders");
     }
 
     public boolean isPublic() {

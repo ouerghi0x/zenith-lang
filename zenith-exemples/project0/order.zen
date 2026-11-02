@@ -1,0 +1,35 @@
+// order.zen
+enum OrderStatus {
+    PENDING,
+    PAID,
+    SHIPPED,
+    DELIVERED,
+    CANCELLED
+}
+
+model Order {
+    id: UUID @id @auto
+    orderNumber: String(length = 20) @unique
+    totalAmount: Decimal(precision = 12, scale = 2) @positive
+    status: OrderStatus = PENDING
+    createdAt: DateTime @autoNow
+
+    relations {
+        customer: Customer @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [status]
+        }
+
+        post "/{id}/pay" -> OrderResponse {
+            description: "Pays for an order"
+            guard: status == OrderStatus.PENDING, "Only pending orders can be paid"
+            action: {
+                status = OrderStatus.PAID
+            }
+        }
+    }
+}

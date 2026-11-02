@@ -17,6 +17,10 @@ public class Lexer {
     static {
         KEYWORDS.put("config", TokenType.CONFIG);
         KEYWORDS.put("model", TokenType.MODEL);
+        KEYWORDS.put("dto", TokenType.DTO);
+        KEYWORDS.put("body", TokenType.BODY);
+        KEYWORDS.put("seed", TokenType.SEED);
+        KEYWORDS.put("import", TokenType.IMPORT);
         KEYWORDS.put("enum", TokenType.ENUM);
         KEYWORDS.put("relations", TokenType.RELATIONS);
         KEYWORDS.put("endpoints", TokenType.ENDPOINTS);
@@ -32,6 +36,8 @@ public class Lexer {
         KEYWORDS.put("action", TokenType.ACTION);
         KEYWORDS.put("true", TokenType.TRUE);
         KEYWORDS.put("false", TokenType.FALSE);
+        KEYWORDS.put("create", TokenType.CREATE);
+        KEYWORDS.put("update", TokenType.UPDATE);
     }
 
     public Lexer(String source) {
@@ -43,7 +49,8 @@ public class Lexer {
         List<Token> tokens = new ArrayList<>();
         while (!isAtEnd()) {
             skipWhitespaceAndComments();
-            if (isAtEnd()) break;
+            if (isAtEnd())
+                break;
 
             char ch = peek();
             int startLine = line;
@@ -53,6 +60,15 @@ public class Lexer {
                 advance(); // -
                 advance(); // >
                 tokens.add(new Token(TokenType.ARROW, "->", startLine, startCol));
+            } else if (ch == '-') {
+                advance();
+                tokens.add(new Token(TokenType.MINUS, "-", startLine, startCol));
+            } else if (ch == '+') {
+                advance();
+                tokens.add(new Token(TokenType.PLUS, "+", startLine, startCol));
+            } else if (ch == '*') {
+                advance();
+                tokens.add(new Token(TokenType.STAR, "*", startLine, startCol));
             } else if (ch == '{') {
                 advance();
                 tokens.add(new Token(TokenType.LBRACE, "{", startLine, startCol));
@@ -94,10 +110,12 @@ public class Lexer {
                     tokens.add(new Token(TokenType.BANG, "!", startLine, startCol));
                 }
             } else if (ch == '&' && peekNext() == '&') {
-                advance(); advance();
+                advance();
+                advance();
                 tokens.add(new Token(TokenType.AMP_AMP, "&&", startLine, startCol));
             } else if (ch == '|' && peekNext() == '|') {
-                advance(); advance();
+                advance();
+                advance();
                 tokens.add(new Token(TokenType.PIPE_PIPE, "||", startLine, startCol));
             } else if (ch == '@') {
                 advance();
@@ -134,7 +152,8 @@ public class Lexer {
             } else if (isAlpha(ch)) {
                 tokens.add(readIdentifierOrKeyword(startLine, startCol));
             } else {
-                throw new RuntimeException("Lexical error at " + startLine + ":" + startCol + ": Unexpected character '" + ch + "'");
+                throw new RuntimeException(
+                        "Lexical error at " + startLine + ":" + startCol + ": Unexpected character '" + ch + "'");
             }
         }
         tokens.add(new Token(TokenType.EOF, "", line, column));
@@ -149,13 +168,27 @@ public class Lexer {
             if (ch == '\\' && !isAtEnd()) {
                 char next = advance();
                 switch (next) {
-                    case 'n': sb.append('\n'); break;
-                    case 't': sb.append('\t'); break;
-                    case 'r': sb.append('\r'); break;
-                    case '\\': sb.append('\\'); break;
-                    case '"': sb.append('"'); break;
-                    case '\'': sb.append('\''); break;
-                    default: sb.append(next); break;
+                    case 'n':
+                        sb.append('\n');
+                        break;
+                    case 't':
+                        sb.append('\t');
+                        break;
+                    case 'r':
+                        sb.append('\r');
+                        break;
+                    case '\\':
+                        sb.append('\\');
+                        break;
+                    case '"':
+                        sb.append('"');
+                        break;
+                    case '\'':
+                        sb.append('\'');
+                        break;
+                    default:
+                        sb.append(next);
+                        break;
                 }
             } else {
                 sb.append(ch);
@@ -230,7 +263,8 @@ public class Lexer {
     }
 
     private char advance() {
-        if (isAtEnd()) return '\0';
+        if (isAtEnd())
+            return '\0';
         char ch = source.charAt(cursor++);
         if (ch == '\n') {
             line++;

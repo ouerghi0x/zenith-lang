@@ -9,11 +9,10 @@
 src/main/java/dev/zenith/studio/
 src/main/resources/studio/
 src/main/resources/
-
+zenith-bucket/
 # Demo build artifacts & raw frame captures
 demo/build/
 *.wav
-zenith-vscode/
 # Internal tools & temporary scratch scripts
 tools/
 sources.txt

@@ -1,0 +1,34 @@
+// product.zen
+
+model Category {
+    id: Long @id @auto
+    name: String(min = 2, max = 50) @unique
+    description: String? @text
+    createdAt: DateTime @autoNow
+
+    relations {
+        products: List<Product> @relation(oneToMany, mappedBy = "category")
+    }
+}
+
+model Product {
+    id: Long @id @auto
+    sku: String(length = 32) @unique
+    title: String(min = 3, max = 150)
+    description: String? @text
+    price: Decimal(precision = 12, scale = 2) @positive
+    stock: Int @min(0) = 0
+    createdAt: DateTime @autoNow
+    updatedAt: DateTime @autoUpdate
+
+    relations {
+        category: Category @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [title, price]
+        }
+    }
+}

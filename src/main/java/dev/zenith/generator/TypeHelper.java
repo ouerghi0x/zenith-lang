@@ -225,7 +225,8 @@ public class TypeHelper {
     }
 
     public static String mapTypeName(String rawType) {
-        if (rawType == null || rawType.trim().isEmpty()) return "String";
+        if (rawType == null || rawType.trim().isEmpty())
+            return "String";
         String t = rawType.trim();
         switch (t.toLowerCase()) {
             case "string":
@@ -258,13 +259,16 @@ public class TypeHelper {
     }
 
     public static String sanitizePath(String path) {
-        if (path == null) return "/";
+        if (path == null)
+            return "/";
         return path.replaceAll("\\{\\s*([a-zA-Z0-9_]+)\\s*:[^}]+\\}", "{$1}");
     }
 
-    public static List<PathVariable> extractPathVariables(String path, ModelDef model, String idType, dev.zenith.ast.CustomEndpointDef custom) {
+    public static List<PathVariable> extractPathVariables(String path, ModelDef model, String idType,
+            dev.zenith.ast.CustomEndpointDef custom) {
         List<PathVariable> list = new ArrayList<>();
-        if (path == null) return list;
+        if (path == null)
+            return list;
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{([^}]+)\\}").matcher(path);
         while (m.find()) {
             String raw = m.group(1).trim();
@@ -329,5 +333,10 @@ public class TypeHelper {
 
     public static List<PathVariable> extractPathVariables(String path, ModelDef model, String idType) {
         return extractPathVariables(path, model, idType, null);
+    }
+
+    public static String toVariableName(String bodyType) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'toVariableName'");
     }
 }

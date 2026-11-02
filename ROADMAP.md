@@ -6,15 +6,15 @@ This document outlines the strategic roadmap for missing features in Zenith DSL,
 
 ## 📊 Feature Prioritization Matrix
 
-| # | Feature | Priority | Implementation Difficulty | Integration Complexity | Target Milestone |
-| :- | :--- | :---: | :---: | :---: | :---: |
-| **1** | **Custom Request Bodies on Endpoints** | **P0 (Critical)** | 🟢 Low (2-3 days) | 🟢 Low | v1.1 |
-| **2** | **Database Seeding (`seed { ... }`)** | **P1 (High)** | 🟢 Low (1-2 days) | 🟢 Low | v1.1 |
-| **3** | **Multi-File Modular Schemas (`import`)** | **P1 (High)** | 🟡 Moderate (3-4 days) | 🟡 Moderate | v1.2 |
-| **4** | **Advanced Action Logic & Events** | **P1 (High)** | 🔴 High (1-2 weeks) | 🟡 Moderate | v1.2 |
-| **5** | **File Uploads & Object Storage** | **P2 (Medium)** | 🟡 Moderate (3-5 days) | 🟡 Moderate | v1.3 |
-| **6** | **Automated Integration Test Generator** | **P2 (Medium)** | 🟡 Moderate (3-5 days) | 🟢 Low | v1.3 |
-| **7** | **Background Jobs & Cron (`@cron`, `@async`)** | **P3 (Lower)** | 🔴 High (1 week) | 🔴 High | v1.4 |
+| #     | Feature                                        |     Priority      | Implementation Difficulty | Integration Complexity | Status  |
+| :---- | :--------------------------------------------- | :---------------: | :-----------------------: | :--------------------: | :-----: |
+| **1** | **Custom Request Bodies on Endpoints**         | **P0 (Critical)** |     🟢 Low (2-3 days)     |         🟢 Low         | ✅ Done |
+| **2** | **Database Seeding (`seed { ... }`)**          |   **P1 (High)**   |     🟢 Low (1-2 days)     |         🟢 Low         | ✅ Done |
+| **3** | **Multi-File Modular Schemas (`import`)**      |   **P1 (High)**   |  🟡 Moderate (3-4 days)   |      🟡 Moderate       | ✅ Done |
+| **4** | **Advanced Action Logic & Events**             |   **P1 (High)**   |    🔴 High (1-2 weeks)    |      🟡 Moderate       | Planned |
+| **5** | **File Uploads & Object Storage**              |  **P2 (Medium)**  |  🟡 Moderate (3-5 days)   |      🟡 Moderate       | Planned |
+| **6** | **Automated Integration Test Generator**       |  **P2 (Medium)**  |  🟡 Moderate (3-5 days)   |         🟢 Low         | Planned |
+| **7** | **Background Jobs & Cron (`@cron`, `@async`)** |  **P3 (Lower)**   |     🔴 High (1 week)      |        🔴 High         | Planned |
 
 ---
 
@@ -24,14 +24,18 @@ This document outlines the strategic roadmap for missing features in Zenith DSL,
 
 ### 1. Custom Request Bodies on Custom Endpoints
 
-* **Priority**: **P0 (Critical)** — Essential for real-world APIs (payments, invitations, password resets, transfers).
-* **Implementation Difficulty**: **Low** — Reuses existing AST parsing and Record generation mechanisms.
-* **Integration Complexity**: **Low** — Plugs directly into `CustomEndpointDef`, `ControllerGenerator`, and `ServiceGenerator`.
+- **Status**: ✅ **Implemented**
+
+- **Priority**: **P0 (Critical)** — Essential for real-world APIs (payments, invitations, password resets, transfers).
+- **Implementation Difficulty**: **Low** — Reuses existing AST parsing and Record generation mechanisms.
+- **Integration Complexity**: **Low** — Plugs directly into `CustomEndpointDef`, `ControllerGenerator`, and `ServiceGenerator`.
 
 #### Problem Statement
+
 Currently, custom endpoints only accept `@PathVariable` parameters (e.g. `post "/{id}/pay"`). If an endpoint needs a complex JSON payload (e.g., `cardToken`, `billingAddress`, `reason`), there is no syntax to declare a request body DTO.
 
 #### Proposed Zenith Syntax
+
 ```zenith
 dto AssignTaskRequest {
     assigneeId: UUID
@@ -54,6 +58,7 @@ model Task {
 ```
 
 #### Generated Spring Boot 3 Output
+
 ```java
 // AssignTaskRequest.java (DTO)
 public record AssignTaskRequest(
@@ -76,14 +81,18 @@ public ResponseEntity<TaskResponse> assign(
 
 ### 2. Declarative Database Seeding (`seed { ... }`)
 
-* **Priority**: **P1 (High)** — Critical for developer experience, local testing, and QA environments.
-* **Implementation Difficulty**: **Low** — Straightforward SQL generation or Spring `ApplicationRunner`.
-* **Integration Complexity**: **Low** — Generated directly into Flyway `R__seed_data.sql` (repeatable migration) or `DataInitializer.java`.
+- **Status**: ✅ **Implemented**
+
+- **Priority**: **P1 (High)** — Critical for developer experience, local testing, and QA environments.
+- **Implementation Difficulty**: **Low** — Straightforward SQL generation or Spring `ApplicationRunner`.
+- **Integration Complexity**: **Low** — Generated directly into Flyway `R__seed_data.sql` (repeatable migration) or `DataInitializer.java`.
 
 #### Problem Statement
+
 When running local development with H2 or PostgreSQL, databases start completely empty. Developers must manually write SQL or call `/register` and POST APIs to populate initial users, roles, categories, or projects.
 
 #### Proposed Zenith Syntax
+
 ```zenith
 seed UserEntity {
     [
@@ -101,7 +110,9 @@ seed Project {
 ```
 
 #### Generated Spring Boot 3 Output
+
 A Spring Boot `@Component` `DatabaseSeeder.java` with `@Profile("!prod")` using existing Repositories and `PasswordEncoder`:
+
 ```java
 @Component
 @Profile("!prod")
@@ -127,30 +138,33 @@ public class DatabaseSeeder implements ApplicationRunner {
 
 ### 3. Multi-File / Modular Schemas (`import`)
 
-* **Priority**: **P1 (High)** — Real-world microservices and backends exceed 500-1,000 lines of schema.
-* **Implementation Difficulty**: **Moderate** — Requires cyclic dependency detection and path resolution in the parser.
-* **Integration Complexity**: **Moderate** — Modifies `Lexer` & `Parser` entry points to merge AST nodes into one `ZenithFile`.
+- **Status**: ✅ **Implemented**
+- **Priority**: **P1 (High)** — Real-world microservices and backends exceed 500-1,000 lines of schema.
+- **Implementation Difficulty**: **Moderate** — Requires cyclic dependency detection and path resolution in the parser.
+- **Integration Complexity**: **Moderate** — Modifies `Lexer` & `Parser` entry points to merge AST nodes into one `ZenithFile`.
 
 #### Problem Statement
+
 All models, enums, and configs must currently live in a single `schema.zen`. As applications grow to dozens of models, the file becomes difficult to navigate and maintain in Git teams.
 
 #### Proposed Zenith Syntax
+
 ```
 api-schema/
 ├── config.zen
-├── auth.zen
 ├── project.zen
 └── task.zen
 ```
+
 ```zenith
 // main.zen
 import "./config.zen"
-import "./auth.zen"
 import "./project.zen"
 import "./task.zen"
 ```
 
 #### Architecture Changes
+
 - `Parser.java`: Resolves imported file paths recursively.
 - `SemanticAnalyzer.java`: Merges models, validates cross-file relation references (e.g. `Task` referencing `UserEntity` from `auth.zen`), and detects import cycles.
 
@@ -158,14 +172,17 @@ import "./task.zen"
 
 ### 4. Advanced Action Logic & Domain Operations
 
-* **Priority**: **P1 (High)** — Transforms Zenith from a CRUD generator into a complete business logic framework.
-* **Implementation Difficulty**: **High** — Requires expression transpiler for complex mutations, service method invocations, and entity instantiations.
-* **Integration Complexity**: **Moderate** — Updates `LogicTranspiler.java` and `ServiceGenerator.java`.
+- **Status**: ✅ **Implemented**
+- **Priority**: **P1 (High)** — Transforms Zenith from a CRUD generator into a complete business logic framework.
+- **Implementation Difficulty**: **High** — Requires expression transpiler for complex mutations, service method invocations, and entity instantiations.
+- **Integration Complexity**: **Moderate** — Updates `LogicTranspiler.java` and `ServiceGenerator.java`.
 
 #### Problem Statement
+
 Currently, `action: { ... }` only assigns simple fields on the primary entity (`status = TaskStatus.DONE`). It cannot instantiate secondary entities (like creating an `AuditLog` entry when a task is completed), invoke notifications, or call other repositories.
 
 #### Proposed Zenith Syntax
+
 ```zenith
 post "/{id}/complete" -> Void {
     auth: true
@@ -184,6 +201,7 @@ post "/{id}/complete" -> Void {
 ```
 
 #### Generated Spring Boot 3 Output
+
 ```java
 // Inside TaskServiceImpl.java
 entity.setStatus(TaskStatus.DONE);
@@ -199,11 +217,12 @@ auditLogRepository.save(auditLog);
 
 ### 5. File Uploads & Media Storage (`@file`, `@image`)
 
-* **Priority**: **P2 (Medium)** — Standard for avatars, attachments, PDFs, and invoices.
-* **Implementation Difficulty**: **Moderate** — Requires multipart handling and storage service abstractions.
-* **Integration Complexity**: **Moderate** — Generates `StorageService.java`, local disk storage provider, and Multipart form endpoints.
+- **Priority**: **P2 (Medium)** — Standard for avatars, attachments, PDFs, and invoices.
+- **Implementation Difficulty**: **Moderate** — Requires multipart handling and storage service abstractions.
+- **Integration Complexity**: **Moderate** — Generates `StorageService.java`, local disk storage provider, and Multipart form endpoints.
 
 #### Proposed Zenith Syntax
+
 ```zenith
 model UserEntity {
     // ...
@@ -221,6 +240,7 @@ model Task {
 ```
 
 #### Generated Spring Boot 3 Output
+
 - Generates a pluggable `StorageService` interface (Local disk for dev, AWS S3 / GCS for prod).
 - Auto-generates multipart upload controllers:
   ```java
@@ -235,15 +255,18 @@ model Task {
 
 ### 6. Automated Unit & Integration Tests Generation
 
-* **Priority**: **P2 (Medium)** — Eliminates the final repetitive chore for enterprise Java teams.
-* **Implementation Difficulty**: **Moderate** — Standardized template code using Spring Boot Test.
-* **Integration Complexity**: **Low** — Generates isolated files inside `src/test/java/...`.
+- **Priority**: **P2 (Medium)** — Eliminates the final repetitive chore for enterprise Java teams.
+- **Implementation Difficulty**: **Moderate** — Standardized template code using Spring Boot Test.
+- **Integration Complexity**: **Low** — Generates isolated files inside `src/test/java/...`.
 
 #### Problem Statement
+
 Developers still need to manually write MockMvc and JUnit 5 tests to verify authentication headers, 403 Forbidden checks, and CRUD contract tests.
 
 #### Proposed Zenith Capability
+
 Zenith automatically emits test classes in `src/test/java/com/app/`:
+
 - `*ControllerTest.java` with `@SpringBootTest` & `MockMvc`:
   - Asserts `POST /api/projects` without token returns `401 Unauthorized`.
   - Asserts non-admin calling `@PreAuthorize("hasRole('ADMIN')")` returns `403 Forbidden`.
@@ -254,11 +277,12 @@ Zenith automatically emits test classes in `src/test/java/com/app/`:
 
 ### 7. Background Workers & Scheduled Jobs (`@cron`, `@async`)
 
-* **Priority**: **P3 (Lower / Specialized)** — Only required for batch jobs, cleanup routines, or asynchronous queues.
-* **Implementation Difficulty**: **High** — Requires Spring scheduling / async infrastructure.
-* **Integration Complexity**: **High** — Needs thread pool configuration and lock mechanisms (ShedLock).
+- **Priority**: **P3 (Lower / Specialized)** — Only required for batch jobs, cleanup routines, or asynchronous queues.
+- **Implementation Difficulty**: **High** — Requires Spring scheduling / async infrastructure.
+- **Integration Complexity**: **High** — Needs thread pool configuration and lock mechanisms (ShedLock).
 
 #### Proposed Zenith Syntax
+
 ```zenith
 job ArchiveOldTasks {
     cron: "0 0 2 * * ?" // Every day at 2:00 AM
@@ -281,4 +305,3 @@ flowchart LR
     E --> F["6. File Uploads (P2)<br/>Multipart storage"]
     F --> G["7. Background Jobs (P3)<br/>Async & Cron"]
 ```
-

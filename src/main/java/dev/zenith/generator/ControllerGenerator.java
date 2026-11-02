@@ -53,11 +53,7 @@ public class ControllerGenerator {
         sb.append("    }\n\n");
 
         CrudConfig crud = model.getCrudConfig();
-
-        // Helper boolean values
         boolean hasAuth = file.hasAuth();
-        boolean crudRequiresAuth = crud != null && Boolean.TRUE.equals(crud.getRequiresAuth());
-        boolean crudIsPublic = crud != null && Boolean.FALSE.equals(crud.getRequiresAuth());
 
         if (crud != null) {
             // GET / (list)
@@ -119,7 +115,8 @@ public class ControllerGenerator {
             if (hasAuth) {
                 sb.append("    ").append(getCrudPreAuthorize(crud, "create", false));
             }
-            sb.append("    public ResponseEntity<").append(className).append("Response> create(@Valid @RequestBody Create")
+            sb.append("    public ResponseEntity<").append(className)
+                    .append("Response> create(@Valid @RequestBody Create")
                     .append(className).append("Request request) {\n");
             sb.append("        ").append(className).append("Response created = service.create(request);\n");
             sb.append("        return ResponseEntity.status(HttpStatus.CREATED).body(created);\n");
@@ -154,7 +151,8 @@ public class ControllerGenerator {
         for (CustomEndpointDef custom : model.getCustomEndpoints()) {
             String path = custom.getPath().startsWith("/") ? custom.getPath() : "/" + custom.getPath();
             String springPath = TypeHelper.sanitizePath(path);
-            String springMethod = "@" + TypeHelper.capitalize(custom.getMethod().toLowerCase()) + "Mapping(\"" + springPath
+            String springMethod = "@" + TypeHelper.capitalize(custom.getMethod().toLowerCase()) + "Mapping(\""
+                    + springPath
                     + "\")";
             String methodName = TypeHelper.toEndpointMethodName(custom.getMethod(), custom.getPath());
             String ret = "Void".equalsIgnoreCase(custom.getReturnType()) ? "void" : custom.getReturnType();
@@ -194,9 +192,14 @@ public class ControllerGenerator {
                 }
             }
 
-            List<TypeHelper.PathVariable> vars = TypeHelper.extractPathVariables(custom.getPath(), model, idType, custom);
+            List<TypeHelper.PathVariable> vars = TypeHelper.extractPathVariables(custom.getPath(), model, idType,
+                    custom);
             List<String> paramParts = new ArrayList<>();
             List<String> argParts = new ArrayList<>();
+            if (custom.hasBody()) {
+                paramParts.add("@Valid @RequestBody " + custom.getBodyType() + " body");
+                argParts.add("body");
+            }
             for (TypeHelper.PathVariable v : vars) {
                 paramParts.add("@PathVariable " + v.getType() + " " + v.getName());
                 argParts.add(v.getName());
@@ -234,13 +237,16 @@ public class ControllerGenerator {
             if (roles != null && !roles.isEmpty()) {
                 if (roles.size() == 1) {
                     String r = roles.get(0);
-                    if ("public".equalsIgnoreCase(r)) return "@PreAuthorize(\"permitAll()\")\n";
-                    if ("authenticated".equalsIgnoreCase(r) || "auth".equalsIgnoreCase(r)) return "@PreAuthorize(\"isAuthenticated()\")\n";
+                    if ("public".equalsIgnoreCase(r))
+                        return "@PreAuthorize(\"permitAll()\")\n";
+                    if ("authenticated".equalsIgnoreCase(r) || "auth".equalsIgnoreCase(r))
+                        return "@PreAuthorize(\"isAuthenticated()\")\n";
                     return "@PreAuthorize(\"hasRole('" + r + "')\")\n";
                 } else {
                     StringBuilder sb = new StringBuilder();
                     for (int i = 0; i < roles.size(); i++) {
-                        if (i > 0) sb.append(", ");
+                        if (i > 0)
+                            sb.append(", ");
                         sb.append("'").append(roles.get(i)).append("'");
                     }
                     return "@PreAuthorize(\"hasAnyRole(" + sb.toString() + ")\")\n";

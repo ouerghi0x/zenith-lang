@@ -8,13 +8,16 @@ import dev.zenith.generator.ProjectGenerator;
 import dev.zenith.lexer.Lexer;
 import dev.zenith.lexer.Token;
 import dev.zenith.parser.Parser;
+import dev.zenith.parser.SchemaResolver;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ZenithCli {
 
@@ -236,11 +239,8 @@ public class ZenithCli {
         if (!Files.exists(p)) {
             throw new IllegalArgumentException("File not found: " + filePath);
         }
-        String source = Files.readString(p, StandardCharsets.UTF_8);
-        Lexer lexer = new Lexer(source);
-        List<Token> tokens = lexer.tokenize();
-        Parser parser = new Parser(tokens);
-        ZenithFile ast = parser.parse();
+        SchemaResolver resolver = new SchemaResolver();
+        ZenithFile ast = resolver.resolve(p);
         SemanticAnalyzer analyzer = new SemanticAnalyzer();
         return analyzer.analyze(ast);
     }
@@ -273,20 +273,34 @@ public class ZenithCli {
         System.out.println(">> Target output: " + Paths.get(outputDir).toAbsolutePath().normalize());
         System.out.println(">> Press Ctrl+C to stop.\n");
 
+        SchemaResolver resolver = new SchemaResolver();
         // Initial build
-        doSilentBuild(inputFilePath, outputDir);
+        doSilentBuild(inputFilePath, outputDir, resolver);
 
-        long lastModified = Files.getLastModifiedTime(p).toMillis();
+        Map<Path, Long> lastModifiedMap = new HashMap<>();
+        updateWatchTimes(resolver, lastModifiedMap, p);
+
         while (true) {
             Thread.sleep(500);
             try {
-                long current = Files.getLastModifiedTime(p).toMillis();
-                if (current > lastModified) {
-                    lastModified = current;
-                    System.out.println("\n>> File changed at "
+                boolean changed = false;
+                for (Map.Entry<Path, Long> entry : lastModifiedMap.entrySet()) {
+                    Path file = entry.getKey();
+                    if (Files.exists(file)) {
+                        long current = Files.getLastModifiedTime(file).toMillis();
+                        if (current > entry.getValue()) {
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (changed) {
+                    System.out.println("\n>> Schema change detected at "
                             + java.time.LocalTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
                             + ". Recompiling...");
-                    doSilentBuild(inputFilePath, outputDir);
+                    doSilentBuild(inputFilePath, outputDir, resolver);
+                    updateWatchTimes(resolver, lastModifiedMap, p);
                 }
             } catch (Exception e) {
                 // Ignore transient write lock errors while editor is saving
@@ -294,16 +308,34 @@ public class ZenithCli {
         }
     }
 
-    private static void doSilentBuild(String inputFilePath, String outputDir) {
+    private static void updateWatchTimes(SchemaResolver resolver, Map<Path, Long> map, Path rootPath) {
+        map.clear();
+        if (Files.exists(rootPath)) {
+            try {
+                map.put(rootPath, Files.getLastModifiedTime(rootPath).toMillis());
+            } catch (IOException ignored) {}
+        }
+        for (Path f : resolver.getResolvedFiles()) {
+            if (Files.exists(f)) {
+                try {
+                    map.put(f, Files.getLastModifiedTime(f).toMillis());
+                } catch (IOException ignored) {}
+            }
+        }
+    }
+
+    private static void doSilentBuild(String inputFilePath, String outputDir, SchemaResolver resolver) {
         long start = System.currentTimeMillis();
         try {
-            ZenithFile file = parseAndAnalyze(inputFilePath);
+            Path p = Paths.get(inputFilePath);
+            ZenithFile ast = resolver.resolve(p);
+            ZenithFile file = new SemanticAnalyzer().analyze(ast);
             Path targetPath = Paths.get(outputDir);
             ProjectGenerator.writeToDirectory(file, targetPath);
             List<JavaSourceFile> generated = ProjectGenerator.generateAll(file);
             long elapsed = System.currentTimeMillis() - start;
             System.out.println("   [SUCCESS] Recompiled in " + elapsed + "ms -> " + generated.size()
-                    + " files up-to-date (" + file.getModels().size() + " models)");
+                    + " files up-to-date (" + file.getModels().size() + " models, " + resolver.getResolvedFiles().size() + " schemas)");
         } catch (Exception e) {
             System.err.println("   [BUILD FAILED] " + e.getMessage());
         }

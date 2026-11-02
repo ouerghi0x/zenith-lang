@@ -8,8 +8,10 @@ public enum TokenType {
     RELATIONS,
     ENDPOINTS,
     CRUD,
+    DTO,
     GET,
     POST,
+
     PUT,
     DELETE,
     PATCH,
@@ -17,39 +19,46 @@ public enum TokenType {
     PUBLIC,
     GUARD,
     ACTION,
+    // ACTIONS KEYWORDS
+    CREATE,
+    UPDATE,
     TRUE,
     FALSE,
-
+    SEED,
+    IMPORT,
     // Identifiers & Literals
     IDENTIFIER,
     STRING_LITERAL,
     NUMBER_LITERAL,
 
     // Punctuation & Delimiters
-    LBRACE,       // {
-    RBRACE,       // }
-    LPAREN,       // (
-    RPAREN,       // )
-    LBRACKET,     // [
-    RBRACKET,     // ]
-    COLON,        // :
-    COMMA,        // ,
-    EQUAL,        // =
-    EQUAL_EQUAL,  // ==
-    BANG,         // !
-    BANG_EQUAL,   // !=
-    AMP_AMP,      // &&
-    PIPE_PIPE,    // ||
-    AT,           // @
-    QUESTION,     // ?
-    ARROW,        // ->
-    DOT,          // .
-    SLASH,        // /
-    LT,           // <
-    GT,           // >
-    LT_EQUAL,     // <=
-    GT_EQUAL,     // >=
+    LBRACE, // {
+    RBRACE, // }
+    LPAREN, // (
+    RPAREN, // )
+    LBRACKET, // [
+    RBRACKET, // ]
+    COLON, // :
+    COMMA, // ,
+    EQUAL, // =
+    EQUAL_EQUAL, // ==
+    BANG, // !
+    BANG_EQUAL, // !=
+    AMP_AMP, // &&
+    PIPE_PIPE, // ||
+    AT, // @
+    QUESTION, // ?
+    ARROW, // ->
+    DOT, // .
+    SLASH, // /
+    LT, // <
+    GT, // >
+    LT_EQUAL, // <=
+    GT_EQUAL, // >=
+    PLUS, // +
+    MINUS, // -
+    STAR, // *
 
     // Special
-    EOF
+    EOF, BODY
 }

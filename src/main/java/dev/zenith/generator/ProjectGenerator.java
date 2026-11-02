@@ -1,5 +1,6 @@
 package dev.zenith.generator;
 
+import dev.zenith.ast.DtoDef;
 import dev.zenith.ast.EnumDef;
 import dev.zenith.ast.ModelDef;
 import dev.zenith.ast.ZenithFile;
@@ -40,6 +41,10 @@ public class ProjectGenerator {
         for (EnumDef e : file.getEnums()) {
             files.add(EnumGenerator.generate(e, file));
         }
+        // dto
+        for (DtoDef dto : file.getDtos()) {
+            files.addAll(DtoGenerator.generateJustDto(dto, file));
+        }
 
         // 6. Shared DTOs
         files.add(DtoGenerator.generatePageResponse(file));
@@ -47,7 +52,8 @@ public class ProjectGenerator {
         // 7. Exception handling
         files.addAll(ExceptionHandlerGenerator.generate(file));
 
-        // 8. Per-model components (Entity, DTOs, Repository, Mapper, Service, Controller)
+        // 8. Per-model components (Entity, DTOs, Repository, Mapper, Service,
+        // Controller)
         ModelDef userModel = file.getUserModel();
         for (ModelDef model : file.getModels()) {
             files.add(EntityGenerator.generate(model, file));
@@ -67,8 +73,12 @@ public class ProjectGenerator {
                 files.add(MapperGenerator.generate(model, file));
             }
         }
+        // 9. Seeds
+        if (!file.getSeeds().isEmpty()) {
+            files.add(SeedGenerator.generate(file));
+        }
 
-        // 9. Phase 5: Full-Stack TypeScript / React Query SDK
+        // 10. Phase 5: Full-Stack TypeScript / React Query SDK
         files.addAll(TypeScriptSdkGenerator.generate(file));
 
         // 10. Phase 5: Containerization (Dockerfile & docker-compose.yml)
@@ -101,7 +111,8 @@ public class ProjectGenerator {
                         .forEach(p -> {
                             try {
                                 Files.deleteIfExists(p);
-                            } catch (IOException ignored) {}
+                            } catch (IOException ignored) {
+                            }
                         });
             }
         }
@@ -155,7 +166,8 @@ public class ProjectGenerator {
                         .append("s (supports `?page=0&size=20&sort=id&direction=asc&search=...`) |\n");
                 sb.append("| `GET` | `").append(basePath).append("/{id}` | Fetch ").append(model.getName())
                         .append(" by ID |\n");
-                sb.append("| `POST` | `").append(basePath).append("` | Create new ").append(model.getName()).append(" |\n");
+                sb.append("| `POST` | `").append(basePath).append("` | Create new ").append(model.getName())
+                        .append(" |\n");
                 sb.append("| `PUT` | `").append(basePath).append("/{id}` | Update existing ").append(model.getName())
                         .append(" |\n");
                 sb.append("| `DELETE` | `").append(basePath).append("/{id}` | Delete ").append(model.getName())

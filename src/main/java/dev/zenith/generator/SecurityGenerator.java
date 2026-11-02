@@ -201,7 +201,7 @@ public class SecurityGenerator {
             sb.append("        List<SimpleGrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority(\"ROLE_USER\"));\n");
         }
 
-        sb.append("        return new User(\n");
+        sb.append("        return new org.springframework.security.core.userdetails.User(\n");
         sb.append("            user.get").append(idCap).append("(),\n");
         sb.append("            user.get").append(passCap).append("(),\n");
         sb.append("            authorities\n");

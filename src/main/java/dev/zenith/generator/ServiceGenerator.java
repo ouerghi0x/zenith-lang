@@ -36,7 +36,8 @@ public class ServiceGenerator {
         sb.append("import java.util.UUID;\n");
         sb.append("import java.math.BigDecimal;\n\n");
 
-        StringBuilder getAllParams = new StringBuilder("int page, int size, String sort, String direction, String search");
+        StringBuilder getAllParams = new StringBuilder(
+                "int page, int size, String sort, String direction, String search");
         CrudConfig crud = model.getCrudConfig();
         if (crud != null) {
             for (String ff : crud.getFilterFields()) {
@@ -72,9 +73,14 @@ public class ServiceGenerator {
 
         for (CustomEndpointDef custom : model.getCustomEndpoints()) {
             String methodName = TypeHelper.toEndpointMethodName(custom.getMethod(), custom.getPath());
+            String bodyType = custom.hasBody() ? custom.getBodyType() : null;
             String ret = "Void".equalsIgnoreCase(custom.getReturnType()) ? "void" : custom.getReturnType();
-            List<TypeHelper.PathVariable> vars = TypeHelper.extractPathVariables(custom.getPath(), model, idType, custom);
+            List<TypeHelper.PathVariable> vars = TypeHelper.extractPathVariables(custom.getPath(), model, idType,
+                    custom);
             List<String> paramParts = new ArrayList<>();
+            if (bodyType != null && !bodyType.isEmpty()) {
+                paramParts.add(bodyType + " body");
+            }
             for (TypeHelper.PathVariable v : vars) {
                 paramParts.add(v.getType() + " " + v.getName());
             }
@@ -120,6 +126,40 @@ public class ServiceGenerator {
             }
         }
 
+        // Extra repositories referenced in action statements (e.g. create AuditLog, update Comment)
+        java.util.Set<String> extraRepos = new java.util.LinkedHashSet<>();
+        for (CustomEndpointDef custom : model.getCustomEndpoints()) {
+            for (String stmt : custom.getActionStatements()) {
+                String t = stmt.trim();
+                if (t.startsWith("create ")) {
+                    String rest = t.substring(7).trim();
+                    int space = rest.indexOf(' ');
+                    int brace = rest.indexOf('{');
+                    int end = space > 0 ? (brace > 0 ? Math.min(space, brace) : space) : (brace > 0 ? brace : rest.length());
+                    String mName = rest.substring(0, end).trim();
+                    if (!mName.isEmpty() && !mName.equalsIgnoreCase(className)) {
+                        extraRepos.add(mName);
+                    }
+                } else if (t.startsWith("update ")) {
+                    String rest = t.substring(7).trim();
+                    int space = rest.indexOf(' ');
+                    int brace = rest.indexOf('{');
+                    int end = space > 0 ? (brace > 0 ? Math.min(space, brace) : space) : (brace > 0 ? brace : rest.length());
+                    String mName = rest.substring(0, end).trim();
+                    if (!mName.isEmpty() && !mName.equalsIgnoreCase(className)) {
+                        extraRepos.add(mName);
+                    }
+                }
+            }
+        }
+        for (RelationDef rel : model.getRelations()) {
+            extraRepos.remove(rel.getTargetModel());
+        }
+        for (String extra : extraRepos) {
+            sb.append("import ").append(basePkg).append(".repository.").append(extra).append("Repository;\n");
+            sb.append("import ").append(basePkg).append(".entity.").append(extra).append(";\n");
+        }
+
         sb.append("import org.springframework.stereotype.Service;\n");
         sb.append("import org.springframework.transaction.annotation.Transactional;\n");
         sb.append("import org.springframework.data.domain.Page;\n");
@@ -144,6 +184,10 @@ public class ServiceGenerator {
                         .append(rel.getTargetModel().toLowerCase()).append("Repository;\n");
             }
         }
+        for (String extra : extraRepos) {
+            String rVar = Character.toLowerCase(extra.charAt(0)) + extra.substring(1) + "Repository";
+            sb.append("    private final ").append(extra).append("Repository ").append(rVar).append(";\n");
+        }
         sb.append("\n");
 
         // Constructor injection
@@ -156,6 +200,10 @@ public class ServiceGenerator {
                         .append(rel.getTargetModel().toLowerCase()).append("Repository");
             }
         }
+        for (String extra : extraRepos) {
+            String rVar = Character.toLowerCase(extra.charAt(0)) + extra.substring(1) + "Repository";
+            sb.append(",\n        ").append(extra).append("Repository ").append(rVar);
+        }
         sb.append("\n    ) {\n");
         sb.append("        this.repository = repository;\n");
         sb.append("        this.mapper = mapper;\n");
@@ -165,10 +213,15 @@ public class ServiceGenerator {
                         .append(rel.getTargetModel().toLowerCase()).append("Repository;\n");
             }
         }
+        for (String extra : extraRepos) {
+            String rVar = Character.toLowerCase(extra.charAt(0)) + extra.substring(1) + "Repository";
+            sb.append("        this.").append(rVar).append(" = ").append(rVar).append(";\n");
+        }
         sb.append("    }\n\n");
 
         // getAll
-        StringBuilder implGetAllParams = new StringBuilder("int page, int size, String sort, String direction, String search");
+        StringBuilder implGetAllParams = new StringBuilder(
+                "int page, int size, String sort, String direction, String search");
         CrudConfig crud = model.getCrudConfig();
         if (crud != null) {
             for (String ff : crud.getFilterFields()) {
@@ -193,126 +246,136 @@ public class ServiceGenerator {
         if (crud != null) {
             sb.append("    @Override\n");
             sb.append("    @Transactional(readOnly = true)\n");
-        sb.append("    public PageResponse<").append(className)
-                .append("Response> getAll(").append(implGetAllParams).append(") {\n");
-        sb.append(
-                "        Sort sortObj = \"desc\".equalsIgnoreCase(direction) ? Sort.by(sort).descending() : Sort.by(sort).ascending();\n");
-        sb.append("        Pageable pageable = PageRequest.of(page, size, sortObj);\n");
-        sb.append("        Specification<").append(className).append("> spec = (root, query, cb) -> {\n");
-        sb.append("            List<Predicate> predicates = new ArrayList<>();\n");
+            sb.append("    public PageResponse<").append(className)
+                    .append("Response> getAll(").append(implGetAllParams).append(") {\n");
+            sb.append(
+                    "        Sort sortObj = \"desc\".equalsIgnoreCase(direction) ? Sort.by(sort).descending() : Sort.by(sort).ascending();\n");
+            sb.append("        Pageable pageable = PageRequest.of(page, size, sortObj);\n");
+            sb.append("        Specification<").append(className).append("> spec = (root, query, cb) -> {\n");
+            sb.append("            List<Predicate> predicates = new ArrayList<>();\n");
 
-        if (crud != null && !crud.getSearchFields().isEmpty()) {
-            sb.append("            if (search != null && !search.trim().isEmpty()) {\n");
-            sb.append("                String pattern = \"%\" + search.trim().toLowerCase() + \"%\";\n");
-            sb.append("                List<Predicate> searchPreds = new ArrayList<>();\n");
-            for (String sf : crud.getSearchFields()) {
-                sb.append("                searchPreds.add(cb.like(cb.lower(root.get(\"").append(sf).append("\")), pattern));\n");
+            if (crud != null && !crud.getSearchFields().isEmpty()) {
+                sb.append("            if (search != null && !search.trim().isEmpty()) {\n");
+                sb.append("                String pattern = \"%\" + search.trim().toLowerCase() + \"%\";\n");
+                sb.append("                List<Predicate> searchPreds = new ArrayList<>();\n");
+                for (String sf : crud.getSearchFields()) {
+                    sb.append("                searchPreds.add(cb.like(cb.lower(root.get(\"").append(sf)
+                            .append("\")), pattern));\n");
+                }
+                sb.append("                predicates.add(cb.or(searchPreds.toArray(new Predicate[0])));\n");
+                sb.append("            }\n");
             }
-            sb.append("                predicates.add(cb.or(searchPreds.toArray(new Predicate[0])));\n");
-            sb.append("            }\n");
-        }
 
-        if (crud != null && !crud.getFilterFields().isEmpty()) {
-            for (String ff : crud.getFilterFields()) {
-                RelationDef relMatch = null;
-                for (RelationDef r : model.getRelations()) {
-                    if (r.getFieldName().equalsIgnoreCase(ff) || (r.getFieldName() + "Id").equalsIgnoreCase(ff)) {
-                        relMatch = r;
-                        break;
+            if (crud != null && !crud.getFilterFields().isEmpty()) {
+                for (String ff : crud.getFilterFields()) {
+                    RelationDef relMatch = null;
+                    for (RelationDef r : model.getRelations()) {
+                        if (r.getFieldName().equalsIgnoreCase(ff) || (r.getFieldName() + "Id").equalsIgnoreCase(ff)) {
+                            relMatch = r;
+                            break;
+                        }
+                    }
+                    if (relMatch != null) {
+                        sb.append("            if (").append(ff).append(" != null) {\n");
+                        sb.append("                predicates.add(cb.equal(root.get(\"").append(relMatch.getFieldName())
+                                .append("\").get(\"id\"), ").append(ff).append("));\n");
+                        sb.append("            }\n");
+                    } else {
+                        sb.append("            if (").append(ff).append(" != null) {\n");
+                        sb.append("                predicates.add(cb.equal(root.get(\"").append(ff).append("\"), ")
+                                .append(ff).append("));\n");
+                        sb.append("            }\n");
                     }
                 }
-                if (relMatch != null) {
-                    sb.append("            if (").append(ff).append(" != null) {\n");
-                    sb.append("                predicates.add(cb.equal(root.get(\"").append(relMatch.getFieldName()).append("\").get(\"id\"), ").append(ff).append("));\n");
-                    sb.append("            }\n");
-                } else {
-                    sb.append("            if (").append(ff).append(" != null) {\n");
-                    sb.append("                predicates.add(cb.equal(root.get(\"").append(ff).append("\"), ").append(ff).append("));\n");
-                    sb.append("            }\n");
+            }
+
+            sb.append("            return cb.and(predicates.toArray(new Predicate[0]));\n");
+            sb.append("        };\n\n");
+            sb.append("        Page<").append(className).append("> entityPage = repository.findAll(spec, pageable);\n");
+            sb.append("        return PageResponse.of(entityPage.map(mapper::toResponse));\n");
+            sb.append("    }\n\n");
+
+            // getById
+            sb.append("    @Override\n");
+            sb.append("    @Transactional(readOnly = true)\n");
+            sb.append("    public ").append(className).append("Response getById(").append(idType).append(" id) {\n");
+            sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+            sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
+                    .append(" not found with id: \" + id));\n");
+            sb.append("        return mapper.toResponse(entity);\n");
+            sb.append("    }\n\n");
+
+            // create
+            sb.append("    @Override\n");
+            sb.append("    public ").append(className).append("Response create(Create").append(className)
+                    .append("Request request) {\n");
+            sb.append("        ").append(className).append(" entity = mapper.toEntity(request);\n");
+            for (RelationDef rel : model.getRelations()) {
+                if (rel.getRelationType() == RelationType.MANY_TO_ONE
+                        || rel.getRelationType() == RelationType.ONE_TO_ONE) {
+                    String target = rel.getTargetModel();
+                    String relCap = TypeHelper.capitalize(rel.getFieldName());
+                    sb.append("        if (request.").append(rel.getFieldName()).append("Id() != null) {\n");
+                    sb.append("            ").append(target).append(" relEntity = ").append(target.toLowerCase())
+                            .append("Repository.findById(request.").append(rel.getFieldName()).append("Id())\n");
+                    sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(target)
+                            .append(" not found with id: \" + request.").append(rel.getFieldName()).append("Id()));\n");
+                    sb.append("            entity.set").append(relCap).append("(relEntity);\n");
+                    sb.append("        }\n");
                 }
             }
-        }
+            sb.append("        ").append(className).append(" saved = repository.save(entity);\n");
+            sb.append("        return mapper.toResponse(saved);\n");
+            sb.append("    }\n\n");
 
-        sb.append("            return cb.and(predicates.toArray(new Predicate[0]));\n");
-        sb.append("        };\n\n");
-        sb.append("        Page<").append(className).append("> entityPage = repository.findAll(spec, pageable);\n");
-        sb.append("        return PageResponse.of(entityPage.map(mapper::toResponse));\n");
-        sb.append("    }\n\n");
-
-        // getById
-        sb.append("    @Override\n");
-        sb.append("    @Transactional(readOnly = true)\n");
-        sb.append("    public ").append(className).append("Response getById(").append(idType).append(" id) {\n");
-        sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
-        sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
-                .append(" not found with id: \" + id));\n");
-        sb.append("        return mapper.toResponse(entity);\n");
-        sb.append("    }\n\n");
-
-        // create
-        sb.append("    @Override\n");
-        sb.append("    public ").append(className).append("Response create(Create").append(className)
-                .append("Request request) {\n");
-        sb.append("        ").append(className).append(" entity = mapper.toEntity(request);\n");
-        for (RelationDef rel : model.getRelations()) {
-            if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
-                String target = rel.getTargetModel();
-                String relCap = TypeHelper.capitalize(rel.getFieldName());
-                sb.append("        if (request.").append(rel.getFieldName()).append("Id() != null) {\n");
-                sb.append("            ").append(target).append(" relEntity = ").append(target.toLowerCase())
-                        .append("Repository.findById(request.").append(rel.getFieldName()).append("Id())\n");
-                sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(target)
-                        .append(" not found with id: \" + request.").append(rel.getFieldName()).append("Id()));\n");
-                sb.append("            entity.set").append(relCap).append("(relEntity);\n");
-                sb.append("        }\n");
+            // update
+            sb.append("    @Override\n");
+            sb.append("    public ").append(className).append("Response update(").append(idType).append(" id, Update")
+                    .append(className).append("Request request) {\n");
+            sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+            sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
+                    .append(" not found with id: \" + id));\n");
+            sb.append("        mapper.updateEntity(entity, request);\n");
+            for (RelationDef rel : model.getRelations()) {
+                if (rel.getRelationType() == RelationType.MANY_TO_ONE
+                        || rel.getRelationType() == RelationType.ONE_TO_ONE) {
+                    String target = rel.getTargetModel();
+                    String relCap = TypeHelper.capitalize(rel.getFieldName());
+                    sb.append("        if (request.").append(rel.getFieldName()).append("Id() != null) {\n");
+                    sb.append("            ").append(target).append(" relEntity = ").append(target.toLowerCase())
+                            .append("Repository.findById(request.").append(rel.getFieldName()).append("Id())\n");
+                    sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(target)
+                            .append(" not found with id: \" + request.").append(rel.getFieldName()).append("Id()));\n");
+                    sb.append("            entity.set").append(relCap).append("(relEntity);\n");
+                    sb.append("        }\n");
+                }
             }
-        }
-        sb.append("        ").append(className).append(" saved = repository.save(entity);\n");
-        sb.append("        return mapper.toResponse(saved);\n");
-        sb.append("    }\n\n");
+            sb.append("        ").append(className).append(" updated = repository.save(entity);\n");
+            sb.append("        return mapper.toResponse(updated);\n");
+            sb.append("    }\n\n");
 
-        // update
-        sb.append("    @Override\n");
-        sb.append("    public ").append(className).append("Response update(").append(idType).append(" id, Update")
-                .append(className).append("Request request) {\n");
-        sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
-        sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
-                .append(" not found with id: \" + id));\n");
-        sb.append("        mapper.updateEntity(entity, request);\n");
-        for (RelationDef rel : model.getRelations()) {
-            if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
-                String target = rel.getTargetModel();
-                String relCap = TypeHelper.capitalize(rel.getFieldName());
-                sb.append("        if (request.").append(rel.getFieldName()).append("Id() != null) {\n");
-                sb.append("            ").append(target).append(" relEntity = ").append(target.toLowerCase())
-                        .append("Repository.findById(request.").append(rel.getFieldName()).append("Id())\n");
-                sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(target)
-                        .append(" not found with id: \" + request.").append(rel.getFieldName()).append("Id()));\n");
-                sb.append("            entity.set").append(relCap).append("(relEntity);\n");
-                sb.append("        }\n");
-            }
-        }
-        sb.append("        ").append(className).append(" updated = repository.save(entity);\n");
-        sb.append("        return mapper.toResponse(updated);\n");
-        sb.append("    }\n\n");
-
-        // delete
-        sb.append("    @Override\n");
-        sb.append("    public void delete(").append(idType).append(" id) {\n");
-        sb.append("        if (!repository.existsById(id)) {\n");
-        sb.append("            throw new ResourceNotFoundException(\"").append(className)
-                .append(" not found with id: \" + id);\n");
-        sb.append("        }\n");
-        sb.append("        repository.deleteById(id);\n");
-        sb.append("    }\n\n");
+            // delete
+            sb.append("    @Override\n");
+            sb.append("    public void delete(").append(idType).append(" id) {\n");
+            sb.append("        if (!repository.existsById(id)) {\n");
+            sb.append("            throw new ResourceNotFoundException(\"").append(className)
+                    .append(" not found with id: \" + id);\n");
+            sb.append("        }\n");
+            sb.append("        repository.deleteById(id);\n");
+            sb.append("    }\n\n");
         }
 
         // Custom endpoints with Phase 3 Logic Blocks
         for (CustomEndpointDef custom : model.getCustomEndpoints()) {
             String methodName = TypeHelper.toEndpointMethodName(custom.getMethod(), custom.getPath());
+            String bodyType = custom.hasBody() ? custom.getBodyType() : null;
             String ret = "Void".equalsIgnoreCase(custom.getReturnType()) ? "void" : custom.getReturnType();
-            List<TypeHelper.PathVariable> vars = TypeHelper.extractPathVariables(custom.getPath(), model, idType, custom);
+            List<TypeHelper.PathVariable> vars = TypeHelper.extractPathVariables(custom.getPath(), model, idType,
+                    custom);
             List<String> paramParts = new ArrayList<>();
+            if (bodyType != null && !bodyType.isEmpty()) {
+                paramParts.add(bodyType + " body");
+            }
             boolean hasId = false;
             for (TypeHelper.PathVariable v : vars) {
                 paramParts.add(v.getType() + " " + v.getName());
@@ -345,7 +408,8 @@ public class ServiceGenerator {
                     matchingField = model.findField(fieldName);
                     if (matchingField == null) {
                         for (RelationDef r : model.getRelations()) {
-                            if (r.getFieldName().equalsIgnoreCase(fieldName) || (r.getFieldName() + "Id").equalsIgnoreCase(fieldName)) {
+                            if (r.getFieldName().equalsIgnoreCase(fieldName)
+                                    || (r.getFieldName() + "Id").equalsIgnoreCase(fieldName)) {
                                 matchingRel = r;
                                 break;
                             }
@@ -372,11 +436,13 @@ public class ServiceGenerator {
                 }
                 String relCap = TypeHelper.capitalize(matchingRel.getFieldName());
                 if (ret.startsWith("List<")) {
-                    sb.append("        return repository.findBy").append(relCap).append("Id(").append(varName).append(").stream()\n");
+                    sb.append("        return repository.findBy").append(relCap).append("Id(").append(varName)
+                            .append(").stream()\n");
                     sb.append("                .map(mapper::toResponse)\n");
                     sb.append("                .toList();\n");
                 } else {
-                    sb.append("        return repository.findBy").append(relCap).append("Id(").append(varName).append(").stream()\n");
+                    sb.append("        return repository.findBy").append(relCap).append("Id(").append(varName)
+                            .append(").stream()\n");
                     sb.append("                .findFirst()\n");
                     sb.append("                .map(mapper::toResponse)\n");
                     sb.append("                .orElse(null);\n");
@@ -388,19 +454,23 @@ public class ServiceGenerator {
 
                 if (ret.startsWith("List<")) {
                     String fieldCap = TypeHelper.capitalize(matchingField.getName());
-                    sb.append("        return repository.findBy").append(fieldCap).append("(").append(varName).append(").stream()\n");
+                    sb.append("        return repository.findBy").append(fieldCap).append("(").append(varName)
+                            .append(").stream()\n");
                     sb.append("                .map(mapper::toResponse)\n");
                     sb.append("                .toList();\n");
                 } else {
                     boolean isId = matchingField.hasAnnotation("id") || "id".equalsIgnoreCase(matchingField.getName());
-                    String lookupMethod = isId ? "findById" : ("findBy" + TypeHelper.capitalize(matchingField.getName()));
+                    String lookupMethod = isId ? "findById"
+                            : ("findBy" + TypeHelper.capitalize(matchingField.getName()));
 
                     sb.append("        ").append(className).append(" entity = repository.").append(lookupMethod)
                             .append("(").append(varName).append(")\n");
                     sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
-                            .append(" not found with ").append(matchingField.getName()).append(": \" + ").append(varName).append("));\n\n");
+                            .append(" not found with ").append(matchingField.getName()).append(": \" + ")
+                            .append(varName).append("));\n\n");
 
-                    // 1. Guard conditions (skip role-only guards handled by @PreAuthorize at API layer)
+                    // 1. Guard conditions (skip role-only guards handled by @PreAuthorize at API
+                    // layer)
                     for (var guard : custom.getGuards()) {
                         String entityCond = guard.getEntityCondition();
                         if (entityCond.isEmpty()) {
@@ -415,15 +485,51 @@ public class ServiceGenerator {
 
                     // 2. Action statements
                     if (!custom.getActionStatements().isEmpty()) {
+                        boolean needsCurrentUser = false;
+                        List<String> primaryModifications = new ArrayList<>();
+                        List<String> secondaryOperations = new ArrayList<>();
+
                         for (String stmt : custom.getActionStatements()) {
-                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model);
-                            if (!javaStmt.isEmpty()) {
-                                sb.append("        ").append(javaStmt).append("\n");
+                            if (stmt.contains("currentUser") || stmt.contains("currentUsername")) {
+                                needsCurrentUser = true;
+                            }
+                            String t = stmt.trim();
+                            if (t.startsWith("create ") || t.startsWith("update ") || t.matches("^notify\\s*\\(.*")) {
+                                secondaryOperations.add(stmt);
+                            } else {
+                                primaryModifications.add(stmt);
                             }
                         }
-                        sb.append("        entity = repository.save(entity);\n\n");
+
+                        if (needsCurrentUser) {
+                            sb.append("        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() != null\n")
+                              .append("                ? org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()\n")
+                              .append("                : \"anonymous\";\n\n");
+                        }
+                        for (String stmt : primaryModifications) {
+                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model);
+                            if (!javaStmt.isEmpty()) {
+                                for (String line : javaStmt.split("\n")) {
+                                    sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
+                                }
+                            }
+                        }
+                        if (!primaryModifications.isEmpty()) {
+                            sb.append("        entity = repository.save(entity);\n\n");
+                        }
+
+                        for (String stmt : secondaryOperations) {
+                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model);
+                            if (!javaStmt.isEmpty()) {
+                                for (String line : javaStmt.split("\n")) {
+                                    sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
+                                }
+                                sb.append("\n");
+                            }
+                        }
                     } else if (!custom.getDescription().isEmpty()) {
-                        sb.append("        // Action: ").append(custom.getDescription().replace("\n", " ")).append("\n");
+                        sb.append("        // Action: ").append(custom.getDescription().replace("\n", " "))
+                                .append("\n");
                     }
 
                     if (!"void".equals(ret)) {
@@ -463,31 +569,41 @@ public class ServiceGenerator {
 
                     if (file.hasAuth() && isUserScoped && userRel != null) {
                         FieldDef idFieldDef = userModel.findField("email");
-                        if (idFieldDef == null) idFieldDef = userModel.findField("username");
-                        if (idFieldDef == null) idFieldDef = userModel.findField("name");
+                        if (idFieldDef == null)
+                            idFieldDef = userModel.findField("username");
+                        if (idFieldDef == null)
+                            idFieldDef = userModel.findField("name");
                         String idName = idFieldDef != null ? TypeHelper.capitalize(idFieldDef.getName()) : "Email";
                         String relCap = TypeHelper.capitalize(userRel.getFieldName());
 
-                        sb.append("        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n");
+                        sb.append(
+                                "        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n");
                         if (ret.startsWith("List<")) {
-                            sb.append("        return repository.findBy").append(relCap).append(idName).append("(currentUsername).stream()\n");
+                            sb.append("        return repository.findBy").append(relCap).append(idName)
+                                    .append("(currentUsername).stream()\n");
                             sb.append("                .map(mapper::toResponse)\n");
                             sb.append("                .toList();\n");
                         } else {
-                            sb.append("        return repository.findBy").append(relCap).append(idName).append("(currentUsername).stream()\n");
+                            sb.append("        return repository.findBy").append(relCap).append(idName)
+                                    .append("(currentUsername).stream()\n");
                             sb.append("                .findFirst()\n");
                             sb.append("                .map(mapper::toResponse)\n");
                             sb.append("                .orElse(null);\n");
                         }
-                    } else if (file.hasAuth() && isUserScoped && userModel != null && model.getName().equals(userModel.getName())) {
+                    } else if (file.hasAuth() && isUserScoped && userModel != null
+                            && model.getName().equals(userModel.getName())) {
                         FieldDef idFieldDef = userModel.findField("email");
-                        if (idFieldDef == null) idFieldDef = userModel.findField("username");
-                        if (idFieldDef == null) idFieldDef = userModel.findField("name");
+                        if (idFieldDef == null)
+                            idFieldDef = userModel.findField("username");
+                        if (idFieldDef == null)
+                            idFieldDef = userModel.findField("name");
                         String idName = idFieldDef != null ? TypeHelper.capitalize(idFieldDef.getName()) : "Email";
 
-                        sb.append("        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n");
+                        sb.append(
+                                "        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n");
                         if (ret.startsWith("List<")) {
-                            sb.append("        return repository.findBy").append(idName).append("(currentUsername).stream()\n");
+                            sb.append("        return repository.findBy").append(idName)
+                                    .append("(currentUsername).stream()\n");
                             sb.append("                .map(mapper::toResponse)\n");
                             sb.append("                .toList();\n");
                         } else {
@@ -507,23 +623,15 @@ public class ServiceGenerator {
                             sb.append("                .map(mapper::toResponse)\n");
                             sb.append("                .orElse(null);\n");
                         }
-                    }
-                }
-            }
-            sb.append("    }\n\n");
+         
+
         }
+
+    }
 
         sb.append("}\n");
 
         return new JavaSourceFile(pkgDir + "impl/" + implName + ".java", sb.toString());
     }
 
-    private static String toCamelCase(String s) {
-        String[] parts = s.split("\\s+");
-        StringBuilder sb = new StringBuilder();
-        for (String part : parts) {
-            sb.append(TypeHelper.capitalize(part));
-        }
-        return sb.toString();
-    }
 }

@@ -60,4 +60,16 @@ public class ModelDef {
         }
         return null;
     }
+
+    public RelationDef findRelation(String name) {
+        if (name == null) return null;
+        for (RelationDef rel : relations) {
+            if (rel.getFieldName().equalsIgnoreCase(name)
+                    || (rel.getFieldName() + "Id").equalsIgnoreCase(name)
+                    || ("id" + rel.getFieldName()).equalsIgnoreCase(name)) {
+                return rel;
+            }
+        }
+        return null;
+    }
 }

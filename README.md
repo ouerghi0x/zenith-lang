@@ -74,6 +74,29 @@ model Product {
 
 ---
 
+## ⚡ Build & Installation Scripts
+
+Zenith includes dedicated one-click automation scripts to quickly compile the CLI compiler and install the VS Code extension:
+
+### 1. Build & Update Zenith CLI
+Whenever you update the parser, lexer, AST, or generators (`src/main/java/`):
+```cmd
+.\build-cli.bat
+```
+* **What it does**: Scans all Java sources, compiles them to `target/classes`, and updates the standalone executable fat JAR `bin\zenith.jar`.
+* **Important**: Close any running `zenith studio` or Java processes before running to avoid Windows file locks on `bin\zenith.jar`.
+
+### 2. Package & Install VS Code Extension
+Whenever you update syntax highlighting (`syntaxes/zenith.tmLanguage.json`), icons, or extension configurations:
+```cmd
+.\update-extension.bat
+```
+*(Or from within `zenith-vscode`: `.\update.bat`)*
+* **What it does**: Packages the extension into a `.vsix` archive and immediately forces an install into your local VS Code via `code --install-extension`.
+* **Apply changes**: Press `Ctrl + Shift + P` in VS Code and choose **Developer: Reload Window**.
+
+---
+
 ## 🛠️ CLI Commands & DX (Phase 4)
 
 Zenith includes self-contained launcher scripts in the `bin/` directory:
@@ -113,13 +136,13 @@ Scaffolds a new starter schema file.
 
 ## 🎨 VS Code Extension (Phase 4)
 
-A dedicated VS Code extension is included under `editors/vscode/`:
+A dedicated VS Code extension is included under `zenith-vscode/`:
 * **Syntax Highlighting**: Keywords (`config`, `model`, `enum`, `guard`, `action`, `endpoints`, `crud`), HTTP methods, decorators (`@id`, `@password`, `@role`), and operators.
 * **Auto-closing pairs**: Braces `{}`, brackets `[]`, and quotes.
 * **Snippets**: Instant scaffolding for `config`, `model`, `enum`, and `endpoint`.
 
 **Installation**:
-The extension is pre-installed at `%USERPROFILE%\.vscode\extensions\zenith-dsl`. Simply open any `.zen` file in VS Code or Antigravity to experience syntax highlighting!
+Run `.\update-extension.bat` from the root directory to package and install the extension into VS Code automatically. Simply reload your window (`Ctrl+Shift+P` -> `Developer: Reload Window`) to enjoy instant `.zen` syntax highlighting!
 
 ---
 
