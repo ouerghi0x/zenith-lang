@@ -222,6 +222,54 @@ public class ControllerGenerator {
             }
         }
 
+        if (model.hasStorageEndpoints()) {
+            for (FieldDef field : model.getFields()) {
+                if (field.hasAnnotation("file") || field.hasAnnotation("image")) {
+                    String fieldName = field.getName();
+                    String fieldCap = TypeHelper.capitalize(fieldName);
+                    boolean isImage = field.hasAnnotation("image");
+                    String desc = isImage ? "image" : "file";
+
+                    // POST /{id}/fieldName
+                    sb.append("    @PostMapping(value = \"/{id}/").append(fieldName)
+                            .append("\", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)\n");
+                    sb.append("    @Operation(summary = \"Upload ").append(fieldName).append(" ").append(desc).append("\")\n");
+                    if (hasAuth) {
+                        sb.append("    @PreAuthorize(\"isAuthenticated()\")\n");
+                    }
+                    sb.append("    public ResponseEntity<").append(className).append("Response> upload").append(fieldCap).append("(\n");
+                    sb.append("            @PathVariable ").append(idType).append(" id,\n");
+                    sb.append("            @RequestParam(\"file\") org.springframework.web.multipart.MultipartFile file\n");
+                    sb.append("    ) {\n");
+                    sb.append("        return ResponseEntity.ok(service.upload").append(fieldCap).append("(id, file));\n");
+                    sb.append("    }\n\n");
+
+                    // GET /{id}/fieldName
+                    sb.append("    @GetMapping(\"/{id}/").append(fieldName).append("\")\n");
+                    sb.append("    @Operation(summary = \"Download ").append(fieldName).append(" ").append(desc).append("\")\n");
+                    sb.append("    public ResponseEntity<org.springframework.core.io.Resource> download").append(fieldCap).append("(@PathVariable ").append(idType).append(" id) {\n");
+                    sb.append("        ").append(basePkg).append(".storage.FileResource resource = service.download").append(fieldCap).append("(id);\n");
+                    sb.append("        return ResponseEntity.ok()\n");
+                    sb.append("                .contentType(org.springframework.http.MediaType.parseMediaType(resource.contentType()))\n");
+                    sb.append("                .contentLength(resource.contentLength())\n");
+                    sb.append("                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, \"inline; filename=\\\"\" + resource.filename() + \"\\\"\")\n");
+                    sb.append("                .body(new org.springframework.core.io.InputStreamResource(resource.inputStream()));\n");
+                    sb.append("    }\n\n");
+
+                    // DELETE /{id}/fieldName
+                    sb.append("    @DeleteMapping(\"/{id}/").append(fieldName).append("\")\n");
+                    sb.append("    @Operation(summary = \"Delete ").append(fieldName).append(" ").append(desc).append("\")\n");
+                    if (hasAuth) {
+                        sb.append("    @PreAuthorize(\"isAuthenticated()\")\n");
+                    }
+                    sb.append("    public ResponseEntity<Void> delete").append(fieldCap).append("(@PathVariable ").append(idType).append(" id) {\n");
+                    sb.append("        service.delete").append(fieldCap).append("(id);\n");
+                    sb.append("        return ResponseEntity.noContent().build();\n");
+                    sb.append("    }\n\n");
+                }
+            }
+        }
+
         sb.append("}\n");
 
         String path = "src/main/java/" + basePkg.replace('.', '/') + "/controller/" + controllerName + ".java";

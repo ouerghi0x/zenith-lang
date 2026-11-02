@@ -622,9 +622,21 @@ public class Parser {
                     if ("description".equalsIgnoreCase(k)) {
                         description = consume(TokenType.STRING_LITERAL, "Expected string for description").getValue();
                     } else if ("auth".equalsIgnoreCase(k)) {
-                        requiresAuth = parseBoolean();
+                        if (peek().getType() == TokenType.LBRACKET) {
+                            List<String> rList = parseRoleListOrSingle();
+                            String joined = String.join(", ", rList);
+                            guards.add(new GuardDef("role in [" + joined + "]", "Access denied: required role in [" + joined + "]"));
+                            requiresAuth = true;
+                        } else {
+                            requiresAuth = parseBoolean();
+                        }
                     } else if ("public".equalsIgnoreCase(k)) {
                         requiresAuth = !parseBoolean();
+                    } else if ("role".equalsIgnoreCase(k) || "roles".equalsIgnoreCase(k)) {
+                        List<String> rList = parseRoleListOrSingle();
+                        String joined = String.join(", ", rList);
+                        guards.add(new GuardDef("role in [" + joined + "]", "Access denied: required role in [" + joined + "]"));
+                        requiresAuth = true;
                     } else if ("user".equalsIgnoreCase(k) || "currentuser".equalsIgnoreCase(k)
                             || "me".equalsIgnoreCase(k)) {
                         userScoped = parseBoolean();
@@ -886,6 +898,15 @@ public class Parser {
                 || tok.getType() == TokenType.PUBLIC || tok.getType() == TokenType.CRUD) {
             advance();
             return tok.getValue();
+        } else if (tok.getType() == TokenType.LBRACKET) {
+            advance();
+            List<Object> list = new ArrayList<>();
+            while (!isAtEnd() && peek().getType() != TokenType.RBRACKET) {
+                list.add(parseLiteralOrIdentifier());
+                match(TokenType.COMMA);
+            }
+            consume(TokenType.RBRACKET, "Expected ']' closing list literal");
+            return list;
         } else {
             throw error(tok, "Expected literal value or identifier, found " + tok.getType());
         }

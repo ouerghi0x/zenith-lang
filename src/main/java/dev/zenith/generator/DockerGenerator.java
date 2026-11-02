@@ -64,6 +64,14 @@ public class DockerGenerator {
         sb.append("    environment:\n");
         sb.append("      SERVER_PORT: ").append(port).append("\n");
 
+        if (file.hasStorage()) {
+            sb.append("      STORAGE_PROVIDER: minio\n");
+            sb.append("      STORAGE_ENDPOINT: http://minio:9000\n");
+            sb.append("      STORAGE_BUCKET: ").append(file.getConfig().getStorageBucket()).append("\n");
+            sb.append("      STORAGE_ACCESS_KEY: minioadmin\n");
+            sb.append("      STORAGE_SECRET_KEY: minioadmin\n");
+        }
+
         if ("postgres".equals(db) || "postgresql".equals(db)) {
             sb.append("      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/").append(appName).append("_db\n");
             sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
@@ -86,8 +94,6 @@ public class DockerGenerator {
             sb.append("      interval: 5s\n");
             sb.append("      timeout: 5s\n");
             sb.append("      retries: 5\n\n");
-            sb.append("volumes:\n");
-            sb.append("  pgdata:\n");
         } else if ("mysql".equals(db)) {
             sb.append("      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/").append(appName)
                     .append("_db?useSSL=false&allowPublicKeyRetrieval=true\n");
@@ -106,11 +112,40 @@ public class DockerGenerator {
             sb.append("      - \"3306:3306\"\n");
             sb.append("    volumes:\n");
             sb.append("      - mysqldata:/var/lib/mysql\n\n");
-            sb.append("volumes:\n");
-            sb.append("  mysqldata:\n");
         } else {
             // H2
             sb.append("    restart: always\n");
+        }
+
+        if (file.hasStorage()) {
+            sb.append("  minio:\n");
+            sb.append("    image: minio/minio:latest\n");
+            sb.append("    command: server /data --console-address \":9001\"\n");
+            sb.append("    environment:\n");
+            sb.append("      MINIO_ROOT_USER: minioadmin\n");
+            sb.append("      MINIO_ROOT_PASSWORD: minioadmin\n");
+            sb.append("    ports:\n");
+            sb.append("      - \"9000:9000\"\n");
+            sb.append("      - \"9001:9001\"\n");
+            sb.append("    volumes:\n");
+            sb.append("      - miniodata:/data\n\n");
+        }
+
+        List<String> volumes = new ArrayList<>();
+        if ("postgres".equals(db) || "postgresql".equals(db)) {
+            volumes.add("  pgdata:");
+        } else if ("mysql".equals(db)) {
+            volumes.add("  mysqldata:");
+        }
+        if (file.hasStorage()) {
+            volumes.add("  miniodata:");
+        }
+
+        if (!volumes.isEmpty()) {
+            sb.append("volumes:\n");
+            for (String v : volumes) {
+                sb.append(v).append("\n");
+            }
         }
 
         return new JavaSourceFile("docker-compose.yml", sb.toString());

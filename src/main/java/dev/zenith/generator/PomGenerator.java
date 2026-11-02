@@ -91,6 +91,14 @@ public class PomGenerator {
             sb.append("        </dependency>\n");
         }
 
+        if (file.hasStorage()) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>software.amazon.awssdk</groupId>\n");
+            sb.append("            <artifactId>s3</artifactId>\n");
+            sb.append("            <version>2.25.27</version>\n");
+            sb.append("        </dependency>\n");
+        }
+
         sb.append("        <dependency>\n");
         sb.append("            <groupId>com.h2database</groupId>\n");
         sb.append("            <artifactId>h2</artifactId>\n");

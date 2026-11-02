@@ -109,6 +109,14 @@ public class AppConfig {
         return getLong("jwtExpiration", 86400000L); // 24 hours
     }
 
+    public String getStorageProvider() {
+        return getString("storage", "minio");
+    }
+
+    public String getStorageBucket() {
+        return getString("storageBucket", "zenith-bucket");
+    }
+
     public Map<String, Object> getProperties() {
         return properties;
     }

@@ -11,8 +11,8 @@ This document outlines the strategic roadmap for missing features in Zenith DSL,
 | **1** | **Custom Request Bodies on Endpoints**         | **P0 (Critical)** |     🟢 Low (2-3 days)     |         🟢 Low         | ✅ Done |
 | **2** | **Database Seeding (`seed { ... }`)**          |   **P1 (High)**   |     🟢 Low (1-2 days)     |         🟢 Low         | ✅ Done |
 | **3** | **Multi-File Modular Schemas (`import`)**      |   **P1 (High)**   |  🟡 Moderate (3-4 days)   |      🟡 Moderate       | ✅ Done |
-| **4** | **Advanced Action Logic & Events**             |   **P1 (High)**   |    🔴 High (1-2 weeks)    |      🟡 Moderate       | Planned |
-| **5** | **File Uploads & Object Storage**              |  **P2 (Medium)**  |  🟡 Moderate (3-5 days)   |      🟡 Moderate       | Planned |
+| **4** | **Advanced Action Logic & Events**             |   **P1 (High)**   |    🔴 High (1-2 weeks)    |      🟡 Moderate       | ✅ Done |
+| **5** | **File Uploads & Object Storage**              |  **P2 (Medium)**  |  🟡 Moderate (3-5 days)   |      🟡 Moderate       | ✅ Done |
 | **6** | **Automated Integration Test Generator**       |  **P2 (Medium)**  |  🟡 Moderate (3-5 days)   |         🟢 Low         | Planned |
 | **7** | **Background Jobs & Cron (`@cron`, `@async`)** |  **P3 (Lower)**   |     🔴 High (1 week)      |        🔴 High         | Planned |
 
@@ -217,6 +217,7 @@ auditLogRepository.save(auditLog);
 
 ### 5. File Uploads & Media Storage (`@file`, `@image`)
 
+- **Status**: ✅ **Implemented**
 - **Priority**: **P2 (Medium)** — Standard for avatars, attachments, PDFs, and invoices.
 - **Implementation Difficulty**: **Moderate** — Requires multipart handling and storage service abstractions.
 - **Integration Complexity**: **Moderate** — Generates `StorageService.java`, local disk storage provider, and Multipart form endpoints.

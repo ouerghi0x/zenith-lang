@@ -88,6 +88,19 @@ public class ServiceGenerator {
                     .append(String.join(", ", paramParts)).append(");\n");
         }
 
+        if (model.hasStorageEndpoints()) {
+            for (FieldDef field : model.getFields()) {
+                if (field.hasAnnotation("file") || field.hasAnnotation("image")) {
+                    String fieldCap = TypeHelper.capitalize(field.getName());
+                    sb.append("    ").append(className).append("Response upload").append(fieldCap)
+                            .append("(").append(idType).append(" id, org.springframework.web.multipart.MultipartFile file);\n");
+                    sb.append("    ").append(basePkg).append(".storage.FileResource download").append(fieldCap)
+                            .append("(").append(idType).append(" id);\n");
+                    sb.append("    void delete").append(fieldCap).append("(").append(idType).append(" id);\n");
+                }
+            }
+        }
+
         sb.append("}\n");
 
         return new JavaSourceFile(pkgDir + serviceName + ".java", sb.toString());
@@ -160,6 +173,15 @@ public class ServiceGenerator {
             sb.append("import ").append(basePkg).append(".entity.").append(extra).append(";\n");
         }
 
+        boolean hasStorageFields = model.hasStorageEndpoints();
+        if (hasStorageFields) {
+            sb.append("import ").append(basePkg).append(".storage.StorageService;\n");
+            sb.append("import ").append(basePkg).append(".storage.FileResource;\n");
+            sb.append("import ").append(basePkg).append(".storage.FileValidationRules;\n");
+            sb.append("import ").append(basePkg).append(".entity.FileMetadata;\n");
+            sb.append("import org.springframework.web.multipart.MultipartFile;\n");
+        }
+
         sb.append("import org.springframework.stereotype.Service;\n");
         sb.append("import org.springframework.transaction.annotation.Transactional;\n");
         sb.append("import org.springframework.data.domain.Page;\n");
@@ -188,6 +210,9 @@ public class ServiceGenerator {
             String rVar = Character.toLowerCase(extra.charAt(0)) + extra.substring(1) + "Repository";
             sb.append("    private final ").append(extra).append("Repository ").append(rVar).append(";\n");
         }
+        if (hasStorageFields) {
+            sb.append("    private final StorageService storageService;\n");
+        }
         sb.append("\n");
 
         // Constructor injection
@@ -204,6 +229,9 @@ public class ServiceGenerator {
             String rVar = Character.toLowerCase(extra.charAt(0)) + extra.substring(1) + "Repository";
             sb.append(",\n        ").append(extra).append("Repository ").append(rVar);
         }
+        if (hasStorageFields) {
+            sb.append(",\n        StorageService storageService");
+        }
         sb.append("\n    ) {\n");
         sb.append("        this.repository = repository;\n");
         sb.append("        this.mapper = mapper;\n");
@@ -216,6 +244,9 @@ public class ServiceGenerator {
         for (String extra : extraRepos) {
             String rVar = Character.toLowerCase(extra.charAt(0)) + extra.substring(1) + "Repository";
             sb.append("        this.").append(rVar).append(" = ").append(rVar).append(";\n");
+        }
+        if (hasStorageFields) {
+            sb.append("        this.storageService = storageService;\n");
         }
         sb.append("    }\n\n");
 
@@ -628,6 +659,78 @@ public class ServiceGenerator {
             }
 
             sb.append("    }\n\n");
+        }
+
+        if (model.hasStorageEndpoints()) {
+            for (FieldDef field : model.getFields()) {
+                if (field.hasAnnotation("file") || field.hasAnnotation("image")) {
+                    String fieldName = field.getName();
+                    String fieldCap = TypeHelper.capitalize(fieldName);
+                    boolean isImage = field.hasAnnotation("image");
+                    AnnotationDef ann = isImage ? field.getAnnotation("image") : field.getAnnotation("file");
+                    String maxSize = ann != null && ann.getArgument("maxSize") != null ? ann.getArgument("maxSize").toString() : null;
+                    Object typesObj = ann != null ? ann.getArgument("types") : null;
+                    String path = ann != null && ann.getArgument("path") != null ? ann.getArgument("path").toString() : (model.getName().toLowerCase() + "/" + fieldName);
+
+                    // upload
+                    sb.append("    @Override\n");
+                    sb.append("    public ").append(className).append("Response upload").append(fieldCap)
+                            .append("(").append(idType).append(" id, MultipartFile file) {\n");
+                    sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+                    sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(className).append(" not found with id: \" + id));\n");
+
+                    if (isImage) {
+                        sb.append("        FileValidationRules rules = FileValidationRules.forImage(");
+                    } else {
+                        sb.append("        FileValidationRules rules = FileValidationRules.forFile(");
+                    }
+                    sb.append(maxSize != null ? "\"" + maxSize + "\"" : "null").append(", ");
+                    if (typesObj instanceof List<?> list && !list.isEmpty()) {
+                        sb.append("java.util.List.of(");
+                        for (int i = 0; i < list.size(); i++) {
+                            if (i > 0) sb.append(", ");
+                            sb.append("\"").append(list.get(i)).append("\"");
+                        }
+                        sb.append(")");
+                    } else {
+                        sb.append("null");
+                    }
+                    sb.append(", \"").append(path).append("\");\n\n");
+
+                    sb.append("        FileMetadata stored = storageService.upload(file, rules);\n");
+                    sb.append("        if (entity.get").append(fieldCap).append("() != null) {\n");
+                    sb.append("            storageService.delete(entity.get").append(fieldCap).append("());\n");
+                    sb.append("        }\n");
+                    sb.append("        entity.set").append(fieldCap).append("(stored.getFileKey());\n");
+                    sb.append("        ").append(className).append(" saved = repository.save(entity);\n");
+                    sb.append("        return mapper.toResponse(saved);\n");
+                    sb.append("    }\n\n");
+
+                    // download
+                    sb.append("    @Override\n");
+                    sb.append("    @Transactional(readOnly = true)\n");
+                    sb.append("    public FileResource download").append(fieldCap).append("(").append(idType).append(" id) {\n");
+                    sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+                    sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(className).append(" not found with id: \" + id));\n");
+                    sb.append("        if (entity.get").append(fieldCap).append("() == null) {\n");
+                    sb.append("            throw new ResourceNotFoundException(\"No ").append(fieldName).append(" file uploaded for ").append(className).append(" with id: \" + id);\n");
+                    sb.append("        }\n");
+                    sb.append("        return storageService.download(entity.get").append(fieldCap).append("());\n");
+                    sb.append("    }\n\n");
+
+                    // delete
+                    sb.append("    @Override\n");
+                    sb.append("    public void delete").append(fieldCap).append("(").append(idType).append(" id) {\n");
+                    sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+                    sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(className).append(" not found with id: \" + id));\n");
+                    sb.append("        if (entity.get").append(fieldCap).append("() != null) {\n");
+                    sb.append("            storageService.delete(entity.get").append(fieldCap).append("());\n");
+                    sb.append("            entity.set").append(fieldCap).append("(null);\n");
+                    sb.append("            repository.save(entity);\n");
+                    sb.append("        }\n");
+                    sb.append("    }\n\n");
+                }
+            }
         }
 
         sb.append("}\n");

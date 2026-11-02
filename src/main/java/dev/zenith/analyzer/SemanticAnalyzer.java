@@ -61,6 +61,18 @@ public class SemanticAnalyzer {
                 fields.add(0, autoId);
             }
 
+            // Validate @file and @image field types
+            for (FieldDef field : fields) {
+                if (field.hasAnnotation("file") || field.hasAnnotation("image")) {
+                    String tName = field.getType().getName();
+                    if (!"String".equalsIgnoreCase(tName)) {
+                        throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
+                                + "' annotated with @" + (field.hasAnnotation("image") ? "image" : "file")
+                                + " must be of type String (to store file key/URL)");
+                    }
+                }
+            }
+
             // Validate relations
             for (RelationDef rel : model.getRelations()) {
                 if (!modelNames.contains(rel.getTargetModel())) {

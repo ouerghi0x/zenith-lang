@@ -82,6 +82,22 @@ public class FlywayGenerator {
             }
         }
 
+        // Storage metadata table
+        if (file.hasStorage()) {
+            sb.append("-- Table: file_metadata\n");
+            sb.append("CREATE TABLE IF NOT EXISTS file_metadata (\n");
+            sb.append("    id UUID PRIMARY KEY,\n");
+            sb.append("    file_key VARCHAR(255) NOT NULL UNIQUE,\n");
+            sb.append("    original_filename VARCHAR(255) NOT NULL,\n");
+            sb.append("    content_type VARCHAR(100) NOT NULL,\n");
+            sb.append("    size_bytes BIGINT NOT NULL,\n");
+            sb.append("    checksum VARCHAR(64),\n");
+            sb.append("    storage_provider VARCHAR(50) NOT NULL,\n");
+            sb.append("    uploaded_at TIMESTAMP NOT NULL\n");
+            sb.append(");\n\n");
+            indexStatements.add("CREATE INDEX IF NOT EXISTS idx_file_metadata_file_key ON file_metadata (file_key);");
+        }
+
         // 2. Many-to-Many Join Tables
         for (ModelDef model : file.getModels()) {
             String tableName = TypeHelper.toSnakeCase(TypeHelper.pluralize(model.getName()));

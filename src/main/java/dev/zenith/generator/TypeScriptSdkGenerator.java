@@ -137,6 +137,21 @@ public class TypeScriptSdkGenerator {
             }
             sb.append("}\n\n");
         }
+
+        if (file.hasStorage()) {
+            sb.append("export interface FileMetadataResponse {\n");
+            sb.append("  id: string;\n");
+            sb.append("  fileKey: string;\n");
+            sb.append("  originalFilename: string;\n");
+            sb.append("  contentType: string;\n");
+            sb.append("  sizeBytes: number;\n");
+            sb.append("  checksum?: string;\n");
+            sb.append("  storageProvider: string;\n");
+            sb.append("  uploadedAt: string;\n");
+            sb.append("  url: string;\n");
+            sb.append("}\n\n");
+        }
+
         return new JavaSourceFile("sdk/typescript/src/types.ts", sb.toString());
     }
 
@@ -153,6 +168,9 @@ public class TypeScriptSdkGenerator {
         if (file.hasAuth()) {
             sb.append("  LoginRequest,\n");
             sb.append("  AuthResponse,\n");
+        }
+        if (file.hasStorage()) {
+            sb.append("  FileMetadataResponse,\n");
         }
         for (ModelDef model : file.getModels()) {
             sb.append("  ").append(model.getName()).append(",\n");
@@ -304,6 +322,67 @@ public class TypeScriptSdkGenerator {
                 sb.append("    },\n");
             }
 
+            if (model.hasStorageEndpoints()) {
+                for (FieldDef field : model.getFields()) {
+                    if (field.hasAnnotation("file") || field.hasAnnotation("image")) {
+                        String fName = field.getName();
+                        String fCap = TypeHelper.capitalize(fName);
+                        sb.append("    upload").append(fCap).append(": async (id: string | number, file: File | Blob): Promise<").append(model.getName()).append("> => {\n");
+                        sb.append("      const formData = new FormData();\n");
+                        sb.append("      formData.append('file', file);\n");
+                        sb.append("      const headers = await this.getHeaders();\n");
+                        sb.append("      delete (headers as Record<string, string>)['Content-Type'];\n");
+                        sb.append("      const response = await fetch(`${this.baseUrl}").append(basePath).append("/${id}/").append(fName).append("`, {\n");
+                        sb.append("        method: 'POST',\n");
+                        sb.append("        headers,\n");
+                        sb.append("        body: formData,\n");
+                        sb.append("      });\n");
+                        sb.append("      return this.handleResponse<").append(model.getName()).append(">(response);\n");
+                        sb.append("    },\n");
+                        sb.append("    get").append(fCap).append("Url: (id: string | number): string => `${this.baseUrl}").append(basePath).append("/${id}/").append(fName).append("`,\n");
+                        sb.append("    delete").append(fCap).append(": async (id: string | number): Promise<void> => {\n");
+                        sb.append("      const response = await fetch(`${this.baseUrl}").append(basePath).append("/${id}/").append(fName).append("`, {\n");
+                        sb.append("        method: 'DELETE',\n");
+                        sb.append("        headers: await this.getHeaders(),\n");
+                        sb.append("      });\n");
+                        sb.append("      if (!response.ok) throw new Error(`Failed to delete ").append(fName).append(": ${response.statusText}`);\n");
+                        sb.append("    },\n");
+                    }
+                }
+            }
+
+            sb.append("  };\n\n");
+        }
+
+        if (file.hasStorage()) {
+            sb.append("  files = {\n");
+            sb.append("    upload: async (file: File | Blob, folder?: string): Promise<FileMetadataResponse> => {\n");
+            sb.append("      const formData = new FormData();\n");
+            sb.append("      formData.append('file', file);\n");
+            sb.append("      if (folder) formData.append('folder', folder);\n");
+            sb.append("      const headers = await this.getHeaders();\n");
+            sb.append("      delete (headers as Record<string, string>)['Content-Type'];\n");
+            sb.append("      const response = await fetch(`${this.baseUrl}${this.basePath}/files/upload`, {\n");
+            sb.append("        method: 'POST',\n");
+            sb.append("        headers,\n");
+            sb.append("        body: formData,\n");
+            sb.append("      });\n");
+            sb.append("      return this.handleResponse<FileMetadataResponse>(response);\n");
+            sb.append("    },\n");
+            sb.append("    getUrl: (fileKey: string): string => `${this.baseUrl}${this.basePath}/files/${fileKey}`,\n");
+            sb.append("    getMetadata: async (fileKey: string): Promise<FileMetadataResponse> => {\n");
+            sb.append("      const response = await fetch(`${this.baseUrl}${this.basePath}/files/${fileKey}/metadata`, {\n");
+            sb.append("        headers: await this.getHeaders(),\n");
+            sb.append("      });\n");
+            sb.append("      return this.handleResponse<FileMetadataResponse>(response);\n");
+            sb.append("    },\n");
+            sb.append("    delete: async (fileKey: string): Promise<void> => {\n");
+            sb.append("      const response = await fetch(`${this.baseUrl}${this.basePath}/files/${fileKey}`, {\n");
+            sb.append("        method: 'DELETE',\n");
+            sb.append("        headers: await this.getHeaders(),\n");
+            sb.append("      });\n");
+            sb.append("      if (!response.ok) throw new Error(`Failed to delete file: ${response.statusText}`);\n");
+            sb.append("    },\n");
             sb.append("  };\n\n");
         }
 

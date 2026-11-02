@@ -37,6 +37,11 @@ public class ProjectGenerator {
             files.addAll(SecurityGenerator.generate(file));
         }
 
+        // 4.5. Object Storage & Media Management (MinIO / AWS S3)
+        if (file.hasStorage()) {
+            files.addAll(StorageGenerator.generate(file));
+        }
+
         // 5. Enums
         for (EnumDef e : file.getEnums()) {
             files.add(EnumGenerator.generate(e, file));

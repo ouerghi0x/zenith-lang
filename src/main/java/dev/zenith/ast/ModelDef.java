@@ -23,6 +23,23 @@ public class ModelDef {
         return crudConfig != null || !customEndpoints.isEmpty();
     }
 
+    public boolean hasCrud() {
+        return crudConfig != null;
+    }
+
+    public boolean hasStorageFields() {
+        for (FieldDef f : fields) {
+            if (f.hasAnnotation("file") || f.hasAnnotation("image")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean hasStorageEndpoints() {
+        return crudConfig != null && hasStorageFields();
+    }
+
     public String getName() {
         return name;
     }

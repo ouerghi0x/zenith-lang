@@ -108,4 +108,20 @@ public class ZenithFile {
     public boolean hasAuth() {
         return config.isAuthEnabled() && getUserModel() != null;
     }
+
+    public boolean hasStorage() {
+        if (config.getProperties().containsKey("storage")) {
+            Object s = config.getProperties().get("storage");
+            if (s instanceof Boolean && (Boolean) s) return true;
+            if (s instanceof String && !"none".equalsIgnoreCase((String) s) && !"false".equalsIgnoreCase((String) s)) return true;
+        }
+        for (ModelDef m : models) {
+            for (FieldDef f : m.getFields()) {
+                if (f.hasAnnotation("file") || f.hasAnnotation("image")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }

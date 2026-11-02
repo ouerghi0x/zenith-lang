@@ -64,7 +64,24 @@ public class PropertiesGenerator {
         if (hasAuth) {
             sb.append("jwt:\n");
             sb.append("  secret: \"").append(file.getConfig().getJwtSecret()).append("\"\n");
-            sb.append("  expiration: ").append(file.getConfig().getJwtExpirationMs()).append("\n");
+            sb.append("  expiration: ").append(file.getConfig().getJwtExpirationMs()).append("\n\n");
+        }
+
+        if (file.hasStorage()) {
+            String defProvider = file.getConfig().getStorageProvider();
+            String defBucket = file.getConfig().getStorageBucket();
+            sb.append("zenith:\n");
+            sb.append("  storage:\n");
+            sb.append("    provider: ${STORAGE_PROVIDER:").append(defProvider).append("}\n");
+            sb.append("    bucket: ${STORAGE_BUCKET:").append(defBucket).append("}\n");
+            sb.append("    minio:\n");
+            sb.append("      endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}\n");
+            sb.append("      access-key: ${STORAGE_ACCESS_KEY:minioadmin}\n");
+            sb.append("      secret-key: ${STORAGE_SECRET_KEY:minioadmin}\n");
+            sb.append("    s3:\n");
+            sb.append("      region: ${STORAGE_REGION:us-east-1}\n");
+            sb.append("      access-key: ${STORAGE_ACCESS_KEY:}\n");
+            sb.append("      secret-key: ${STORAGE_SECRET_KEY:}\n");
         }
 
         return new JavaSourceFile("src/main/resources/application.yml", sb.toString());

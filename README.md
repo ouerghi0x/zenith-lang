@@ -171,14 +171,160 @@ Zenith generates:
 ### 3. Flyway Database Migrations
 * Generates `src/main/resources/db/migration/V1__initial_schema.sql` with exact DDL, foreign keys, and indexes.
 
-### 4. Declarative Logic & Guard Blocks (Phase 3)
-Declare conditions and mutations directly inside endpoints:
+### 4. API Security & Role-Based Access Control (RBAC)
+
+Zenith integrates with Spring Security 6 to generate method-level `@PreAuthorize` security checks across standard CRUD and custom endpoints.
+
+#### Default Security Convention
+* **Read operations** (`GET /`, `GET /{id}`): Public (`@PreAuthorize("permitAll()")`).
+* **Write operations** (`POST`, `PUT`, `DELETE`): Authenticated (`@PreAuthorize("isAuthenticated()")`).
+
+#### CRUD Security Options
 ```zen
-post "/{id}/ship" -> OrderResponse {
-    guard: status == OrderStatus.PAID, "Only paid orders can be shipped"
-    action: {
-        status = OrderStatus.SHIPPED
+model Product {
+    endpoints {
+        // Option A: Open public CRUD (no token needed)
+        crud { public: true }
+
+        // Option B: Full authenticated CRUD (Bearer JWT required for all)
+        crud { auth: true }
+
+        // Option C: Global role restriction (requires ADMIN or MANAGER)
+        crud { roles: [ADMIN, MANAGER] }
+
+        // Option D: Granular per-operation RBAC
+        crud {
+            list: public              // Anyone can browse catalog
+            get: public               // Anyone can view details
+            create: [ADMIN, EDITOR]   // Editors & Admins can create
+            update: [ADMIN, EDITOR]   // Editors & Admins can update
+            delete: [ADMIN]           // Only Admins can delete
+        }
     }
+}
+```
+
+#### Custom Endpoint Security Options
+```zen
+// 1. Explicitly Public Route
+get "/catalog/featured" -> List<ProductResponse> {
+    public: true                      // @PreAuthorize("permitAll()")
+}
+
+// 2. Authenticated-Only Route
+post "/{id}/rate" -> Void {
+    auth: true                        // @PreAuthorize("isAuthenticated()")
+}
+
+// 3. Multi-Role Restriction
+post "/{id}/archive" -> ProductResponse {
+    auth: [ADMIN, MANAGER]            // @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+}
+
+// 4. Declarative Role Guard + Domain Business Rule
+post "/{id}/publish" -> ProductResponse {
+    guard: role in [ADMIN, PUBLISHER], "Must be a publisher or admin"
+    guard: status == ProductStatus.DRAFT, "Only draft products can be published"
+    action: {
+        status = ProductStatus.PUBLISHED
+    }
+}
+
+// 5. User-Scoped Route (Filters automatically for currentUser)
+get "/my-products" -> List<ProductResponse> {
+    user: true
+}
+```
+
+### 5. Declarative Logic & Domain Actions
+Zenith supports complete domain business logic: instantiate secondary entities, record audit trails, notify owners, and resolve authenticated users:
+```zen
+post "/{id}/complete" -> Void {
+    auth: true
+    guard: status == TaskStatus.IN_PROGRESS, "Task must be in progress to complete"
+    action: {
+        status = TaskStatus.DONE
+
+        // Secondary entity instantiation
+        create AuditLog {
+            action = "TASK_COMPLETED",
+            details = "Task " + entity.title + " completed by " + currentUser.email
+        }
+
+        // Notification hook
+        notify(entity.project.owner, "Task completed: " + entity.title)
+    }
+}
+```
+
+### 6. File Uploads & Media Storage (`@file`, `@image`)
+Provider-independent object storage abstraction supporting **MinIO** for local development and **AWS S3** for production cloud deployments with zero code changes:
+```zen
+config {
+    storage: minio               // minio (local dev) | s3 (cloud)
+    storageBucket: "media-bucket"
+}
+
+model Customer {
+    id: UUID @id @auto
+    email: String @email @unique
+    // Validated image uploads with MIME constraint
+    avatar: String? @image(maxSize = "5MB", types = ["image/jpeg", "image/png"], path = "avatars/")
+    // Document upload with size constraint
+    resume: String? @file(maxSize = "20MB", types = ["application/pdf"], path = "resumes/")
+}
+```
+* **Generic REST API**: `POST /api/v1/files/upload`, `GET /api/v1/files/{fileKey}`, `DELETE /api/v1/files/{fileKey}`.
+* **Entity-Bound Endpoints**: `POST /api/v1/customers/{id}/avatar`, `GET ...`, `DELETE ...` (generated only when `endpoints` and `crud` exist on the model).
+* **Zero-code cloud migration**: Switch between local MinIO and AWS S3 via environment variables (`STORAGE_PROVIDER=s3`, `AWS_REGION`, etc.).
+
+### 7. Declarative Database Seeding
+Populate dev and staging environments with deterministic seed data and foreign key cross-referencing:
+```zen
+seed UserEntity {
+    [
+        { email: "admin@app.io", role: ADMIN, fullName: "Admin", password: "password123" }
+    ]
+}
+
+seed Task {
+    [
+        {
+            title: "Configure CI/CD",
+            status: TODO,
+            assignee: seed UserEntity[0]     // Cross-references the 1st UserEntity
+        }
+    ]
+}
+```
+
+### 8. Modular Multi-File Schemas (`import`)
+Decompose enterprise architectures into modular `.zen` domain files:
+```zen
+// schema.zen (Entry schema)
+config {
+    app: "EnterpriseCRM"
+    database: postgres
+    auth: jwt
+    storage: minio
+}
+
+import "./auth.zen"       // UserEntity & Role
+import "./customers.zen"  // Customer & Address
+import "./orders.zen"     // Order & OrderItems
+```
+
+### 9. Custom Data Transfer Objects (DTO)
+Define custom request and response payloads decoupled from JPA database models:
+```zen
+dto AssignTaskRequest {
+    assigneeId: UUID
+    comment: String?
+}
+
+dto TaskSummaryResponse {
+    totalTasks: Int
+    completedTasks: Int
 }
 ```
 
