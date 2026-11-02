@@ -623,11 +623,12 @@ public class ServiceGenerator {
                             sb.append("                .map(mapper::toResponse)\n");
                             sb.append("                .orElse(null);\n");
                         }
-         
+                    }
+                }
+            }
 
+            sb.append("    }\n\n");
         }
-
-    }
 
         sb.append("}\n");
 
