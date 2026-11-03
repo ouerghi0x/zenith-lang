@@ -10,36 +10,43 @@ public class ZenithFile {
     private final List<ModelDef> models;
     private final List<DtoDef> dtos;
     private final List<SeedDef> seeds;
+    private final List<JobDef> jobs;
     private final List<ImportDef> imports;
     private final boolean explicitConfig;
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
-            List<SeedDef> seeds, List<ImportDef> imports, boolean explicitConfig) {
+            List<SeedDef> seeds, List<JobDef> jobs, List<ImportDef> imports, boolean explicitConfig) {
         this.config = config != null ? config : AppConfig.defaults();
         this.enums = enums != null ? enums : new ArrayList<>();
         this.models = models != null ? models : new ArrayList<>();
         this.dtos = dtos != null ? dtos : new ArrayList<>();
         this.seeds = seeds != null ? seeds : new ArrayList<>();
+        this.jobs = jobs != null ? jobs : new ArrayList<>();
         this.imports = imports != null ? imports : new ArrayList<>();
         this.explicitConfig = explicitConfig;
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
+            List<SeedDef> seeds, List<ImportDef> imports, boolean explicitConfig) {
+        this(config, enums, models, dtos, seeds, Collections.emptyList(), imports, explicitConfig);
+    }
+
+    public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
             List<SeedDef> seeds, List<ImportDef> imports) {
-        this(config, enums, models, dtos, seeds, imports, config != null);
+        this(config, enums, models, dtos, seeds, Collections.emptyList(), imports, config != null);
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
             List<SeedDef> seeds) {
-        this(config, enums, models, dtos, seeds, Collections.emptyList(), config != null);
+        this(config, enums, models, dtos, seeds, Collections.emptyList(), Collections.emptyList(), config != null);
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos) {
-        this(config, enums, models, dtos, Collections.emptyList(), Collections.emptyList(), config != null);
+        this(config, enums, models, dtos, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), config != null);
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models) {
-        this(config, enums, models, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), config != null);
+        this(config, enums, models, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), config != null);
     }
 
     public boolean hasExplicitConfig() {
@@ -52,6 +59,14 @@ public class ZenithFile {
 
     public AppConfig getConfig() {
         return config;
+    }
+
+    public List<JobDef> getJobs() {
+        return Collections.unmodifiableList(jobs);
+    }
+
+    public boolean hasJobs() {
+        return jobs != null && !jobs.isEmpty();
     }
 
     public List<SeedDef> getSeeds() {
@@ -68,6 +83,16 @@ public class ZenithFile {
 
     public List<DtoDef> getDtos() {
         return Collections.unmodifiableList(dtos);
+    }
+
+    public DtoDef findDto(String name) {
+        if (name == null) return null;
+        for (DtoDef d : dtos) {
+            if (d.getName().equalsIgnoreCase(name)) {
+                return d;
+            }
+        }
+        return null;
     }
 
     public ModelDef findModel(String name) {

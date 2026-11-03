@@ -20,6 +20,7 @@ public class Lexer {
         KEYWORDS.put("dto", TokenType.DTO);
         KEYWORDS.put("body", TokenType.BODY);
         KEYWORDS.put("seed", TokenType.SEED);
+        KEYWORDS.put("job", TokenType.JOB);
         KEYWORDS.put("import", TokenType.IMPORT);
         KEYWORDS.put("enum", TokenType.ENUM);
         KEYWORDS.put("relations", TokenType.RELATIONS);
@@ -38,6 +39,7 @@ public class Lexer {
         KEYWORDS.put("false", TokenType.FALSE);
         KEYWORDS.put("create", TokenType.CREATE);
         KEYWORDS.put("update", TokenType.UPDATE);
+        KEYWORDS.put("cron", TokenType.CRON);
     }
 
     public Lexer(String source) {

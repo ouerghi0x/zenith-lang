@@ -1,0 +1,117 @@
+enum OrderStatus {
+    PENDING,
+    PAID,
+    PROCESSING,
+    SHIPPED,
+    DELIVERED,
+    CANCELLED
+}
+
+dto CheckoutItemDto {
+    productId: Long
+    quantity: Int
+    unitPrice: Decimal
+}
+
+dto CheckoutRequest {
+    customerNotes: String?
+    shippingAddress: String
+    items: List<CheckoutItemDto>
+}
+
+dto OrderSummaryResponse {
+    orderNumber: String
+    totalAmount: Decimal
+    status: OrderStatus
+    createdAt: DateTime
+}
+
+model Order {
+    id: UUID @id @auto
+    orderNumber: String(length = 32) @unique
+    totalAmount: Decimal(precision = 12, scale = 2) @positive
+    shippingAddress: String(min = 5, max = 250)
+    customerNotes: String? @text
+    status: OrderStatus = PENDING
+    createdAt: DateTime @autoNow
+    updatedAt: DateTime @autoUpdate
+
+    relations {
+        customer: UserEntity @relation(manyToOne)
+        items: List<OrderItem> @relation(oneToMany, mappedBy = "order")
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [status, orderNumber]
+            auth: true
+        }
+
+        // Action 1: Pay for an order, log audit entry, and dispatch customer notification
+        post "/{id}/pay" -> OrderSummaryResponse {
+            auth: true
+            guard: status == OrderStatus.PENDING, "Only pending orders can be marked as paid"
+            action: {
+                status = OrderStatus.PAID
+
+                create AuditLog {
+                    action = "ORDER_PAYMENT_PROCESSED",
+                    details = "Order " + entity.orderNumber + " marked PAID by " + currentUser.email
+                }
+
+                notify(entity.customer.email, "Your payment for order " + entity.orderNumber + " succeeded!")
+            }
+        }
+
+        // Action 2: Cancel order and notify customer
+        post "/{id}/cancel" -> Void {
+            auth: true
+            guard: status == OrderStatus.PENDING || status == OrderStatus.PAID, "Order cannot be cancelled in its current state"
+            action: {
+                status = OrderStatus.CANCELLED
+
+                create AuditLog {
+                    action = "ORDER_CANCELLED",
+                    details = "Order " + entity.orderNumber + " was cancelled."
+                }
+
+                notify(entity.customer.email, "Your order " + entity.orderNumber + " has been cancelled.")
+            }
+        }
+    }
+}
+
+model OrderItem {
+    id: Long @id @auto
+    quantity: Int @min(1)
+    unitPrice: Decimal(precision = 12, scale = 2) @positive
+
+    relations {
+        order: Order @relation(manyToOne)
+        product: Product @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: false
+            auth: true
+        }
+    }
+}
+
+model AuditLog {
+    id: Long @id @auto
+    action: String(max = 64)
+    details: String? @text
+    createdAt: DateTime @autoNow
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [action]
+            auth: true
+        }
+    }
+}
+

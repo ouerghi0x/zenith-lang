@@ -1,0 +1,41 @@
+enum UserRole {
+    ADMIN,
+    STAFF,
+    CUSTOMER
+}
+
+model UserEntity {
+    id: UUID @id @auto
+    email: String @email @unique
+    password: String @password
+    fullName: String(min = 2, max = 100)
+    role: UserRole = CUSTOMER @role
+    avatar: String? @image(maxSize = "3MB", types = ["image/jpeg", "image/png", "image/webp"], path = "avatars/")
+    isActive: Boolean = true
+    createdAt: DateTime @autoNow
+
+    relations {
+        orders: List<Order> @relation(oneToMany, mappedBy = "customer")
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [email, fullName, role]
+            auth: true
+        }
+
+        post "/{id}/deactivate" -> Void {
+            auth: true
+            guard: role == UserRole.ADMIN, "Only system administrators can deactivate accounts"
+            action: {
+                isActive = false
+                create AuditLog {
+                    action = "USER_DEACTIVATED",
+                    details = "User " + entity.email + " was deactivated by " + currentUser.email
+                }
+            }
+        }
+    }
+}
+

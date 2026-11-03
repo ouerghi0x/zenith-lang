@@ -9,6 +9,17 @@ import java.util.List;
 
 public class TypeHelper {
 
+    public static String getDefaultLiteral(TypeRef type) {
+        if (type == null) return "null";
+        String simple = toSimpleJavaType(type);
+        if ("Boolean".equalsIgnoreCase(simple) || "boolean".equalsIgnoreCase(simple)) return "false";
+        if ("int".equalsIgnoreCase(simple) || "Integer".equalsIgnoreCase(simple)) return "0";
+        if ("long".equalsIgnoreCase(simple) || "Long".equalsIgnoreCase(simple)) return "0L";
+        if ("double".equalsIgnoreCase(simple) || "Double".equalsIgnoreCase(simple)) return "0.0";
+        if ("BigDecimal".equalsIgnoreCase(simple) || "Decimal".equalsIgnoreCase(simple)) return "java.math.BigDecimal.ZERO";
+        return "null";
+    }
+
     public static String toJavaType(TypeRef type) {
         String name = type.getName();
         if (type.isList()) {

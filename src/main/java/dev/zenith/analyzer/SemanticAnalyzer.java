@@ -167,8 +167,18 @@ public class SemanticAnalyzer {
                 }
             }
         }
+        Set<String> jobNames = new HashSet<>();
+        for (JobDef j : file.getJobs()) {
+            if (!jobNames.add(j.getName().toLowerCase())) {
+                throw new AnalysisException("Duplicate background job defined: '" + j.getName() + "'");
+            }
+            if (j.getCronExpression() == null && j.getFixedRate() == null) {
+                throw new AnalysisException("Job '" + j.getName() + "' must specify either 'cron' or 'fixedRate'");
+            }
+        }
+
         return new ZenithFile(file.getConfig(), file.getEnums(), validatedModels, file.getDtos(), file.getSeeds(),
-                file.getImports(), file.hasExplicitConfig());
+                file.getJobs(), file.getImports(), file.hasExplicitConfig());
     }
 
     private FieldDef findFieldCaseInsensitive(List<FieldDef> fields, String name) {

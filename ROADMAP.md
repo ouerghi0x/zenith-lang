@@ -1,10 +1,10 @@
-# 🗺️ Zenith DSL — Feature Roadmap & Architecture Guide
+# Zenith DSL — Feature Roadmap & Architecture Guide
 
 This document outlines the strategic roadmap for missing features in Zenith DSL, evaluated by **Priority**, **Implementation Difficulty**, and **Integration Complexity**.
 
 ---
 
-## 📊 Feature Prioritization Matrix
+## Feature Prioritization Matrix
 
 | #     | Feature                                        |     Priority      | Implementation Difficulty | Integration Complexity | Status  |
 | :---- | :--------------------------------------------- | :---------------: | :-----------------------: | :--------------------: | :-----: |
@@ -13,8 +13,8 @@ This document outlines the strategic roadmap for missing features in Zenith DSL,
 | **3** | **Multi-File Modular Schemas (`import`)**      |   **P1 (High)**   |  🟡 Moderate (3-4 days)   |      🟡 Moderate       | ✅ Done |
 | **4** | **Advanced Action Logic & Events**             |   **P1 (High)**   |    🔴 High (1-2 weeks)    |      🟡 Moderate       | ✅ Done |
 | **5** | **File Uploads & Object Storage**              |  **P2 (Medium)**  |  🟡 Moderate (3-5 days)   |      🟡 Moderate       | ✅ Done |
-| **6** | **Automated Integration Test Generator**       |  **P2 (Medium)**  |  🟡 Moderate (3-5 days)   |         🟢 Low         | Planned |
-| **7** | **Background Jobs & Cron (`@cron`, `@async`)** |  **P3 (Lower)**   |     🔴 High (1 week)      |        🔴 High         | Planned |
+| **6** | **Automated Integration Test Generator**       |  **P2 (Medium)**  |     🟢 Low (1-2 days)     |         🟢 Low         | ✅ Done |
+| **7** | **Background Jobs & Cron (`@cron`, `@async`)** |  **P3 (Lower)**   |   🟡 Moderate (3 days)    |      🟡 Moderate       | ✅ Done |
 
 ---
 
@@ -256,6 +256,7 @@ model Task {
 
 ### 6. Automated Unit & Integration Tests Generation
 
+- **Status**: ✅ **Implemented**
 - **Priority**: **P2 (Medium)** — Eliminates the final repetitive chore for enterprise Java teams.
 - **Implementation Difficulty**: **Moderate** — Standardized template code using Spring Boot Test.
 - **Integration Complexity**: **Low** — Generates isolated files inside `src/test/java/...`.
@@ -278,6 +279,7 @@ Zenith automatically emits test classes in `src/test/java/com/app/`:
 
 ### 7. Background Workers & Scheduled Jobs (`@cron`, `@async`)
 
+- **Status**: ✅ **Implemented**
 - **Priority**: **P3 (Lower / Specialized)** — Only required for batch jobs, cleanup routines, or asynchronous queues.
 - **Implementation Difficulty**: **High** — Requires Spring scheduling / async infrastructure.
 - **Integration Complexity**: **High** — Needs thread pool configuration and lock mechanisms (ShedLock).
@@ -286,9 +288,13 @@ Zenith automatically emits test classes in `src/test/java/com/app/`:
 
 ```zenith
 job ArchiveOldTasks {
-    cron: "0 0 2 * * ?" // Every day at 2:00 AM
+    cron: "0 0 2 * * ?"
+    description : "scheduler .. "
     action: {
-        update Task set status = ARCHIVED where status == DONE and updatedAt < daysAgo(30)
+        update Task {
+            where : status == DONE and updatedAt < daysAgo(30)
+            status = ARCHIVED
+        }
     }
 }
 ```
@@ -297,12 +303,34 @@ job ArchiveOldTasks {
 
 ## 🚀 Recommended Implementation Sequence
 
-```mermaid
-flowchart LR
-    A["1. Custom Request Body (P0)<br/>DTO parsing & endpoints"] --> B["2. Database Seeding (P1)<br/>Initial mock data"]
-    B --> C["3. Multi-file Imports (P1)<br/>Clean modular schemas"]
-    C --> D["4. Advanced Actions (P1)<br/>Secondary entity creation"]
-    D --> E["5. Integration Tests (P2)<br/>MockMvc suites"]
-    E --> F["6. File Uploads (P2)<br/>Multipart storage"]
-    F --> G["7. Background Jobs (P3)<br/>Async & Cron"]
+```text
+┌───────────────────────────┐      ┌───────────────────────────┐      ┌───────────────────────────┐
+│ 1. Custom Request Bodies  │ ───> │    2. Database Seeding    │ ───> │  3. Multi-File Imports    │
+│    DTO parsing & bodies   │      │     Initial mock data     │      │   Clean modular schemas   │
+└───────────────────────────┘      └───────────────────────────┘      └─────────────┬─────────────┘
+                                                                                    │
+                                                                                    ▼
+┌───────────────────────────┐      ┌───────────────────────────┐      ┌───────────────────────────┐
+│    6. File Uploads        │ <─── │   5. Integration Tests    │ <─── │    4. Advanced Actions    │
+│   S3 & Multipart storage  │      │    MockMvc test suites    │      │  Multi-entity mutations   │
+└─────────────┬─────────────┘      └───────────────────────────┘      └───────────────────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│    7. Background Jobs     │
+│    Async & Cron workers   │
+└───────────────────────────┘
 ```
+
+**Implementation Sequence Summary:**  
+`1. Custom Bodies (P0)` ➔ `2. Database Seeding (P1)` ➔ `3. Multi-File Imports (P1)` ➔ `4. Advanced Actions (P1)` ➔ `5. Integration Tests (P2)` ➔ `6. File Uploads (P2)` ➔ `7. Background Jobs (P3)` (All Done ✅)
+
+---
+
+## 🏢 Next Horizon: Enterprise Battle-Testing Roadmap
+
+All foundational milestones (1 through 7) are now **✅ Fully Implemented**. 
+
+For the strategic technical specifications covering **Custom Code Escape Hatches**, **Event-Driven Messaging (Kafka / RabbitMQ)**, and **Automated CI/CD Workflows**, see:
+
+👉 **[ENTERPRISE_ROADMAP.md](ENTERPRISE_ROADMAP.md)**

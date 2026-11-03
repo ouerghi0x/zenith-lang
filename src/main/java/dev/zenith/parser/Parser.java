@@ -21,6 +21,7 @@ public class Parser {
         List<DtoDef> dtos = new ArrayList<>();
         List<SeedDef> seeds = new ArrayList<>();
         List<ImportDef> imports = new ArrayList<>();
+        List<JobDef> jobs = new ArrayList<>();
         while (!isAtEnd()) {
             Token tok = peek();
             if (tok.getType() == TokenType.CONFIG) {
@@ -40,9 +41,12 @@ public class Parser {
                 dtos.add(parseDto());
             } else if (tok.getType() == TokenType.SEED) {
                 seeds.add(parseSeed());
+
+            } else if (tok.getType() == TokenType.JOB) {
+                jobs.add(parseJob());
             } else {
                 throw error(tok,
-                        "Expected 'import', 'config', 'enum', 'model', 'dto', or 'seed' but found '" + tok.getValue()
+                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', or 'job' but found '" + tok.getValue()
                                 + "'");
             }
         }
@@ -52,7 +56,100 @@ public class Parser {
             config = AppConfig.defaults();
         }
 
-        return new ZenithFile(config, enums, models, dtos, seeds, imports, explicitConfig);
+        return new ZenithFile(config, enums, models, dtos, seeds, jobs, imports, explicitConfig);
+    }
+
+    private JobDef parseJob() {
+        consume(TokenType.JOB, "Expected 'job'");
+        Token nameTok = consume(TokenType.IDENTIFIER, "Expected job name after 'job'");
+        consume(TokenType.LBRACE, "Expected '{' after job name");
+
+        String cron = "";
+        String fixedRate = "";
+        String description = "";
+        boolean enabled = true;
+        List<GuardDef> guards = new ArrayList<>();
+        List<String> actions = new ArrayList<>();
+
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+            Token key = peek();
+            if (key.getType() == TokenType.CRON) {
+                advance();
+                consume(TokenType.COLON, "Expected ':' after 'cron'");
+                cron = consume(TokenType.STRING_LITERAL, "Expected cron expression string").getValue();
+            } else if (key.getType() == TokenType.ACTION) {
+                advance();
+                consume(TokenType.COLON, "Expected ':' after 'action'");
+                consume(TokenType.LBRACE, "Expected '{' to start action block");
+                while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+                    String a = parseActionStatement();
+                    if (!a.isEmpty()) {
+                        actions.add(a);
+                    }
+                    match(TokenType.COMMA);
+                }
+                consume(TokenType.RBRACE, "Expected '}' closing action block");
+            } else if (key.getType() == TokenType.CREATE) {
+                actions.add(parseCreateAction());
+            } else if (key.getType() == TokenType.UPDATE) {
+                actions.add(parseUpdateAction());
+            } else if (key.getType() == TokenType.GUARD) {
+                advance();
+                consume(TokenType.COLON, "Expected ':' after 'guard'");
+                int guardLine = key.getLine();
+                StringBuilder expr = new StringBuilder();
+                int bracketDepth = 0;
+                int parenDepth = 0;
+                while (!isAtEnd() && peek().getType() != TokenType.RBRACE
+                        && peek().getType() != TokenType.GUARD
+                        && peek().getType() != TokenType.ACTION
+                        && peek().getLine() == guardLine) {
+                    if (peek().getType() == TokenType.COMMA && bracketDepth == 0 && parenDepth == 0) {
+                        break;
+                    }
+                    Token t = advance();
+                    if (t.getType() == TokenType.LBRACKET)
+                        bracketDepth++;
+                    else if (t.getType() == TokenType.RBRACKET)
+                        bracketDepth--;
+                    else if (t.getType() == TokenType.LPAREN)
+                        parenDepth++;
+                    else if (t.getType() == TokenType.RPAREN)
+                        parenDepth--;
+                    expr.append(t.getValue()).append(" ");
+                }
+                String errMessage = "Guard condition failed";
+                if (match(TokenType.COMMA)) {
+                    if (peek().getType() == TokenType.STRING_LITERAL) {
+                        errMessage = advance().getValue();
+                    }
+                }
+                guards.add(new GuardDef(expr.toString().trim(), errMessage));
+            } else if (key.getType() == TokenType.IDENTIFIER) {
+                Token idTok = advance();
+                consume(TokenType.COLON, "Expected ':' after '" + idTok.getValue() + "'");
+                String k = idTok.getValue().toLowerCase();
+                if ("cron".equalsIgnoreCase(k)) {
+                    cron = consume(TokenType.STRING_LITERAL, "Expected cron expression string").getValue();
+                } else if ("description".equalsIgnoreCase(k)) {
+                    description = consume(TokenType.STRING_LITERAL, "Expected description string").getValue();
+                } else if ("fixedrate".equalsIgnoreCase(k) || "rate".equalsIgnoreCase(k)
+                        || "interval".equalsIgnoreCase(k)) {
+                    Object frVal = parseLiteralOrIdentifier();
+                    fixedRate = frVal != null ? String.valueOf(frVal) : null;
+                } else if ("enabled".equalsIgnoreCase(k)) {
+                    enabled = parseBoolean();
+                } else {
+                    parseLiteralOrIdentifier(); // skip unknown property
+                }
+            } else {
+                throw error(key, "Unexpected token in job definition: '" + key.getValue() + "'");
+            }
+            match(TokenType.COMMA);
+        }
+        consume(TokenType.RBRACE, "Expected '}' closing job block");
+
+        return new JobDef(nameTok.getValue(), cron, fixedRate, guards, actions, description, enabled);
     }
 
     private ImportDef parseImport() {
@@ -64,7 +161,7 @@ public class Parser {
     private SeedDef parseSeed() {
         consume(TokenType.SEED, "Expected 'seed'");
         Token nameToken = consume(TokenType.IDENTIFIER, "Expected model name after 'seed'");
-        consume(TokenType.LBRACE, "Expected '{' after seed model name");
+        boolean hasOuterBrace = match(TokenType.LBRACE);
         consume(TokenType.LBRACKET, "Expected '[' to start seed rows");
 
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -75,7 +172,9 @@ public class Parser {
         }
 
         consume(TokenType.RBRACKET, "Expected ']' closing seed rows");
-        consume(TokenType.RBRACE, "Expected '}' closing seed block");
+        if (hasOuterBrace) {
+            consume(TokenType.RBRACE, "Expected '}' closing seed block");
+        }
 
         return new SeedDef(nameToken.getValue(), rows);
     }
@@ -625,7 +724,8 @@ public class Parser {
                         if (peek().getType() == TokenType.LBRACKET) {
                             List<String> rList = parseRoleListOrSingle();
                             String joined = String.join(", ", rList);
-                            guards.add(new GuardDef("role in [" + joined + "]", "Access denied: required role in [" + joined + "]"));
+                            guards.add(new GuardDef("role in [" + joined + "]",
+                                    "Access denied: required role in [" + joined + "]"));
                             requiresAuth = true;
                         } else {
                             requiresAuth = parseBoolean();
@@ -635,7 +735,8 @@ public class Parser {
                     } else if ("role".equalsIgnoreCase(k) || "roles".equalsIgnoreCase(k)) {
                         List<String> rList = parseRoleListOrSingle();
                         String joined = String.join(", ", rList);
-                        guards.add(new GuardDef("role in [" + joined + "]", "Access denied: required role in [" + joined + "]"));
+                        guards.add(new GuardDef("role in [" + joined + "]",
+                                "Access denied: required role in [" + joined + "]"));
                         requiresAuth = true;
                     } else if ("user".equalsIgnoreCase(k) || "currentuser".equalsIgnoreCase(k)
                             || "me".equalsIgnoreCase(k)) {
@@ -664,10 +765,10 @@ public class Parser {
                         int currentLine = idTok.getLine();
                         StringBuilder qSb = new StringBuilder();
                         while (!isAtEnd() && peek().getType() != TokenType.RBRACE
-                                 && peek().getType() != TokenType.COMMA
-                                 && peek().getType() != TokenType.GUARD
-                                 && peek().getType() != TokenType.ACTION
-                                 && peek().getLine() == currentLine) {
+                                && peek().getType() != TokenType.COMMA
+                                && peek().getType() != TokenType.GUARD
+                                && peek().getType() != TokenType.ACTION
+                                && peek().getLine() == currentLine) {
                             qSb.append(advance().getValue()).append(" ");
                         }
                         query = qSb.toString().trim();
@@ -712,10 +813,14 @@ public class Parser {
                 }
                 Token t = advance();
                 lastToken = t;
-                if (t.getType() == TokenType.LPAREN) parenDepth++;
-                else if (t.getType() == TokenType.RPAREN) parenDepth--;
-                else if (t.getType() == TokenType.LBRACE) braceDepth++;
-                else if (t.getType() == TokenType.RBRACE) braceDepth--;
+                if (t.getType() == TokenType.LPAREN)
+                    parenDepth++;
+                else if (t.getType() == TokenType.RPAREN)
+                    parenDepth--;
+                else if (t.getType() == TokenType.LBRACE)
+                    braceDepth++;
+                else if (t.getType() == TokenType.RBRACE)
+                    braceDepth--;
 
                 if (t.getType() == TokenType.STRING_LITERAL) {
                     stmt.append("\"").append(t.getValue().replace("\"", "\\\"")).append("\" ");
@@ -728,7 +833,8 @@ public class Parser {
     }
 
     private boolean isContinuationToken(Token t) {
-        if (t == null) return false;
+        if (t == null)
+            return false;
         TokenType type = t.getType();
         return type == TokenType.PLUS || type == TokenType.MINUS || type == TokenType.STAR
                 || type == TokenType.EQUAL || type == TokenType.COMMA || type == TokenType.DOT
@@ -737,7 +843,8 @@ public class Parser {
     }
 
     private boolean isBinaryOperator(Token t) {
-        if (t == null) return false;
+        if (t == null)
+            return false;
         TokenType type = t.getType();
         return type == TokenType.PLUS || type == TokenType.MINUS || type == TokenType.STAR
                 || type == TokenType.DOT || type == TokenType.EQUAL;
@@ -751,7 +858,8 @@ public class Parser {
         sb.append("create ").append(modelTok.getValue()).append(" { ");
         boolean first = true;
         while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
-            if (!first) sb.append(", ");
+            if (!first)
+                sb.append(", ");
             Token fieldTok = consumeFieldName();
             if (match(TokenType.EQUAL) || match(TokenType.COLON)) {
                 StringBuilder expr = new StringBuilder();
@@ -771,10 +879,14 @@ public class Parser {
                     }
                     Token t = advance();
                     lastToken = t;
-                    if (t.getType() == TokenType.LPAREN) parenDepth++;
-                    else if (t.getType() == TokenType.RPAREN) parenDepth--;
-                    else if (t.getType() == TokenType.LBRACE) braceDepth++;
-                    else if (t.getType() == TokenType.RBRACE) braceDepth--;
+                    if (t.getType() == TokenType.LPAREN)
+                        parenDepth++;
+                    else if (t.getType() == TokenType.RPAREN)
+                        parenDepth--;
+                    else if (t.getType() == TokenType.LBRACE)
+                        braceDepth++;
+                    else if (t.getType() == TokenType.RBRACE)
+                        braceDepth--;
 
                     if (t.getType() == TokenType.STRING_LITERAL) {
                         expr.append("\"").append(t.getValue().replace("\"", "\\\"")).append("\" ");
@@ -813,7 +925,8 @@ public class Parser {
         sb.append(" { ");
         boolean first = true;
         while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
-            if (!first) sb.append(", ");
+            if (!first)
+                sb.append(", ");
             StringBuilder item = new StringBuilder();
             int braceDepth = 0;
             int parenDepth = 0;
@@ -831,10 +944,14 @@ public class Parser {
                 }
                 Token t = advance();
                 lastToken = t;
-                if (t.getType() == TokenType.LBRACE) braceDepth++;
-                else if (t.getType() == TokenType.RBRACE) braceDepth--;
-                else if (t.getType() == TokenType.LPAREN) parenDepth++;
-                else if (t.getType() == TokenType.RPAREN) parenDepth--;
+                if (t.getType() == TokenType.LBRACE)
+                    braceDepth++;
+                else if (t.getType() == TokenType.RBRACE)
+                    braceDepth--;
+                else if (t.getType() == TokenType.LPAREN)
+                    parenDepth++;
+                else if (t.getType() == TokenType.RPAREN)
+                    parenDepth--;
 
                 if (t.getType() == TokenType.STRING_LITERAL) {
                     item.append("\"").append(t.getValue().replace("\"", "\\\"")).append("\" ");
@@ -855,8 +972,11 @@ public class Parser {
         List<String> list = new ArrayList<>();
         consume(TokenType.LBRACKET, "Expected '['");
         while (!isAtEnd() && peek().getType() != TokenType.RBRACKET) {
-            Token id = consume(TokenType.IDENTIFIER, "Expected identifier in list");
-            list.add(id.getValue());
+            Token t = advance();
+            if (t.getValue() == null || t.getValue().trim().isEmpty()) {
+                throw error(t, "Expected identifier in list");
+            }
+            list.add(t.getValue());
             match(TokenType.COMMA);
         }
         consume(TokenType.RBRACKET, "Expected ']'");

@@ -114,6 +114,13 @@ public class PomGenerator {
         sb.append("            <artifactId>spring-boot-starter-test</artifactId>\n");
         sb.append("            <scope>test</scope>\n");
         sb.append("        </dependency>\n");
+        if (file.hasAuth()) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>org.springframework.security</groupId>\n");
+            sb.append("            <artifactId>spring-security-test</artifactId>\n");
+            sb.append("            <scope>test</scope>\n");
+            sb.append("        </dependency>\n");
+        }
         sb.append("    </dependencies>\n\n");
         sb.append("    <build>\n");
         sb.append("        <plugins>\n");

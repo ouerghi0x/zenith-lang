@@ -1,0 +1,62 @@
+seed UserEntity [
+    {
+        email: "admin@nexus.com",
+        password: "adminPassword123!",
+        fullName: "System Administrator",
+        role: ADMIN,
+        isActive: true
+    },
+    {
+        email: "alice.customer@example.com",
+        password: "customerSecret456!",
+        fullName: "Alice Henderson",
+        role: CUSTOMER,
+        isActive: true
+    }
+]
+
+seed Category [
+    {
+        name: "Laptops & Hardware",
+        slug: "laptops-hardware",
+        description: "High-performance developer workstations"
+    },
+    {
+        name: "Office Accessories",
+        slug: "office-accessories",
+        description: "Ergonomic peripherals and monitors"
+    }
+]
+
+seed Product [
+    {
+        sku: "NX-LAPTOP-001",
+        title: "Nexus ProBook 16 M3",
+        description: "32GB RAM, 1TB NVMe, Liquid Retina Display",
+        price: 2499.99,
+        stock: 45,
+        isPublished: true,
+        category: seed Category[0]
+    },
+    {
+        sku: "NX-MON-002",
+        title: "UltraVue 34\" Curved Monitor",
+        description: "144Hz WQHD Thunderbolt 4 display",
+        price: 799.00,
+        stock: 20,
+        isPublished: true,
+        category: seed Category[1]
+    }
+]
+
+seed Order [
+    {
+        orderNumber: "ORD-2026-0001",
+        totalAmount: 3298.99,
+        shippingAddress: "742 Evergreen Terrace, Springfield, OR",
+        customerNotes: "Please leave package by the front door",
+        status: PAID,
+        customer: seed UserEntity[1]
+    }
+]
+

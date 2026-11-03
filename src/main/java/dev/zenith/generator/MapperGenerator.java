@@ -80,9 +80,67 @@ public class MapperGenerator {
         sb.append("\n        );\n");
         sb.append("    }\n");
 
+        // Custom DTO mappings for endpoints
+        java.util.Set<String> processedCustomDtos = new java.util.HashSet<>();
+        for (CustomEndpointDef custom : model.getCustomEndpoints()) {
+            String ret = custom.getReturnType();
+            if (ret == null || ret.equalsIgnoreCase("void") || ret.equalsIgnoreCase(className + "Response")
+                    || ret.equalsIgnoreCase(className)) {
+                continue;
+            }
+            if (ret.startsWith("List<") && ret.endsWith(">")) {
+                ret = ret.substring(5, ret.length() - 1).trim();
+            }
+            if (processedCustomDtos.contains(ret)) {
+                continue;
+            }
+
+            DtoDef dto = file.findDto(ret);
+            if (dto != null) {
+                processedCustomDtos.add(ret);
+                sb.append("\n    public ").append(ret).append(" to").append(ret).append("(")
+                        .append(className).append(" entity) {\n");
+                sb.append("        if (entity == null) return null;\n");
+                sb.append("        return new ").append(ret).append("(\n");
+
+                java.util.List<String> dArgs = new java.util.ArrayList<>();
+                for (FieldDef dField : dto.getFields()) {
+                    String dName = dField.getName();
+                    FieldDef mField = model.findField(dName);
+                    if (mField != null) {
+                        String cap = TypeHelper.capitalize(mField.getName());
+                        dArgs.add("            entity.get" + cap + "()");
+                    } else {
+                        // Check if relation matches, e.g. customer -> customerId
+                        boolean matchedRel = false;
+                        for (RelationDef rel : model.getRelations()) {
+                            if ((rel.getFieldName() + "Id").equalsIgnoreCase(dName)
+                                    || rel.getFieldName().equalsIgnoreCase(dName)) {
+                                String cap = TypeHelper.capitalize(rel.getFieldName());
+                                dArgs.add("            entity.get" + cap + "() != null ? entity.get" + cap + "().getId() : null");
+                                matchedRel = true;
+                                break;
+                            }
+                        }
+                        if (!matchedRel) {
+                            String defVal = getDefaultLiteral(dField.getType());
+                            dArgs.add("            " + defVal);
+                        }
+                    }
+                }
+                sb.append(String.join(",\n", dArgs));
+                sb.append("\n        );\n");
+                sb.append("    }\n");
+            }
+        }
+
         sb.append("}\n");
 
         String path = "src/main/java/" + basePkg.replace('.', '/') + "/mapper/" + mapperName + ".java";
         return new JavaSourceFile(path, sb.toString());
+    }
+
+    private static String getDefaultLiteral(TypeRef type) {
+        return TypeHelper.getDefaultLiteral(type);
     }
 }

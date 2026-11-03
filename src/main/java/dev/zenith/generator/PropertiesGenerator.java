@@ -84,6 +84,21 @@ public class PropertiesGenerator {
             sb.append("      secret-key: ${STORAGE_SECRET_KEY:}\n");
         }
 
+        if (file.hasJobs()) {
+            sb.append("\njobs:\n");
+            for (dev.zenith.ast.JobDef j : file.getJobs()) {
+                String kebab = j.getName().replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase();
+                sb.append("  ").append(kebab).append(":\n");
+                sb.append("    enabled: ").append(j.isEnabled()).append("\n");
+                if (j.getCronExpression() != null && !j.getCronExpression().trim().isEmpty() && !j.getCronExpression().equalsIgnoreCase("null")) {
+                    sb.append("    cron: \"").append(j.getCronExpression()).append("\"\n");
+                }
+                if (j.getFixedRate() != null && !j.getFixedRate().trim().isEmpty() && !j.getFixedRate().equalsIgnoreCase("null")) {
+                    sb.append("    fixed-rate: ").append(j.getFixedRate()).append("\n");
+                }
+            }
+        }
+
         return new JavaSourceFile("src/main/resources/application.yml", sb.toString());
     }
 }

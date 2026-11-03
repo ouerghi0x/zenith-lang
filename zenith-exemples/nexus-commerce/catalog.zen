@@ -1,25 +1,36 @@
-// product.zen
-
 model Category {
     id: Long @id @auto
     name: String(min = 2, max = 50) @unique
     description: String? @text
+    slug: String @unique
     createdAt: DateTime @autoNow
 
     relations {
         products: List<Product> @relation(oneToMany, mappedBy = "category")
     }
+
+    endpoints {
+        crud {
+            paginate: true
+            search: [name, description]
+        }
+    }
 }
 
 model Product {
     id: Long @id @auto
-    sku: String(length = 32) @unique
-    title: String(min = 3, max = 150)
+    sku: String(length = 24) @unique
+    title: String(min = 3, max = 160)
     description: String? @text
     price: Decimal(precision = 12, scale = 2) @positive
     stock: Int @min(0) = 0
+    isPublished: Boolean = true
     createdAt: DateTime @autoNow
     updatedAt: DateTime @autoUpdate
+
+    // Media & Document Storage
+    coverImage: String? @image(maxSize = "5MB", types = ["image/jpeg", "image/png", "image/webp"], path = "products/covers/")
+    datasheetPdf: String? @file(maxSize = "15MB", types = ["application/pdf"], path = "products/datasheets/")
 
     relations {
         category: Category @relation(manyToOne)
@@ -28,7 +39,9 @@ model Product {
     endpoints {
         crud {
             paginate: true
-            filter: [title, price]
+            filter: [title, price, isPublished]
+            search: [title, description]
         }
     }
 }
+

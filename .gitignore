@@ -12,6 +12,8 @@ src/main/resources/
 zenith-bucket/
 # Demo build artifacts & raw frame captures
 demo/build/
+build/
+zenith.jar
 *.wav
 # Internal tools & temporary scratch scripts
 tools/

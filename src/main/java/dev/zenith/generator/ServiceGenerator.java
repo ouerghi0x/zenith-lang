@@ -515,6 +515,7 @@ public class ServiceGenerator {
                     }
 
                     // 2. Action statements
+                    String explicitReturnStmt = null;
                     if (!custom.getActionStatements().isEmpty()) {
                         boolean needsCurrentUser = false;
                         List<String> primaryModifications = new ArrayList<>();
@@ -525,7 +526,9 @@ public class ServiceGenerator {
                                 needsCurrentUser = true;
                             }
                             String t = stmt.trim();
-                            if (t.startsWith("create ") || t.startsWith("update ") || t.matches("^notify\\s*\\(.*")) {
+                            if (t.startsWith("return ") || t.equals("return")) {
+                                explicitReturnStmt = stmt;
+                            } else if (t.startsWith("create ") || t.startsWith("update ") || t.matches("^notify\\s*\\(.*")) {
                                 secondaryOperations.add(stmt);
                             } else {
                                 primaryModifications.add(stmt);
@@ -538,7 +541,7 @@ public class ServiceGenerator {
                               .append("                : \"anonymous\";\n\n");
                         }
                         for (String stmt : primaryModifications) {
-                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model);
+                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model, file);
                             if (!javaStmt.isEmpty()) {
                                 for (String line : javaStmt.split("\n")) {
                                     sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
@@ -550,7 +553,7 @@ public class ServiceGenerator {
                         }
 
                         for (String stmt : secondaryOperations) {
-                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model);
+                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model, file);
                             if (!javaStmt.isEmpty()) {
                                 for (String line : javaStmt.split("\n")) {
                                     sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
@@ -558,13 +561,27 @@ public class ServiceGenerator {
                                 sb.append("\n");
                             }
                         }
+
+                        if (explicitReturnStmt != null) {
+                            String javaStmt = LogicTranspiler.transpileStatement(explicitReturnStmt, model, file);
+                            if (!javaStmt.isEmpty()) {
+                                for (String line : javaStmt.split("\n")) {
+                                    sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
+                                }
+                            }
+                        }
                     } else if (!custom.getDescription().isEmpty()) {
                         sb.append("        // Action: ").append(custom.getDescription().replace("\n", " "))
                                 .append("\n");
                     }
 
-                    if (!"void".equals(ret)) {
-                        sb.append("        return mapper.toResponse(entity);\n");
+                    if (explicitReturnStmt == null && !"void".equals(ret)) {
+                        String mapCall = getMapperCall(ret, className, file);
+                        if (mapCall.isEmpty()) {
+                            sb.append("        return entity;\n");
+                        } else {
+                            sb.append("        return ").append(mapCall).append("(entity);\n");
+                        }
                     }
                 }
             } else if (!vars.isEmpty()) {
@@ -598,6 +615,8 @@ public class ServiceGenerator {
                         }
                     }
 
+                    String methodRef = getMapperMethodRef(ret, className, file);
+
                     if (file.hasAuth() && isUserScoped && userRel != null) {
                         FieldDef idFieldDef = userModel.findField("email");
                         if (idFieldDef == null)
@@ -612,13 +631,13 @@ public class ServiceGenerator {
                         if (ret.startsWith("List<")) {
                             sb.append("        return repository.findBy").append(relCap).append(idName)
                                     .append("(currentUsername).stream()\n");
-                            sb.append("                .map(mapper::toResponse)\n");
+                            sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .toList();\n");
                         } else {
                             sb.append("        return repository.findBy").append(relCap).append(idName)
                                     .append("(currentUsername).stream()\n");
                             sb.append("                .findFirst()\n");
-                            sb.append("                .map(mapper::toResponse)\n");
+                            sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .orElse(null);\n");
                         }
                     } else if (file.hasAuth() && isUserScoped && userModel != null
@@ -635,23 +654,23 @@ public class ServiceGenerator {
                         if (ret.startsWith("List<")) {
                             sb.append("        return repository.findBy").append(idName)
                                     .append("(currentUsername).stream()\n");
-                            sb.append("                .map(mapper::toResponse)\n");
+                            sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .toList();\n");
                         } else {
                             sb.append("        return repository.findBy").append(idName).append("(currentUsername)\n");
-                            sb.append("                .map(mapper::toResponse)\n");
+                            sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"")
                                     .append(className).append(" not found for user: \" + currentUsername));\n");
                         }
                     } else {
                         if (ret.startsWith("List<")) {
                             sb.append("        return repository.findAll().stream()\n");
-                            sb.append("                .map(mapper::toResponse)\n");
+                            sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .toList();\n");
                         } else {
                             sb.append("        return repository.findAll().stream()\n");
                             sb.append("                .findFirst()\n");
-                            sb.append("                .map(mapper::toResponse)\n");
+                            sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .orElse(null);\n");
                         }
                     }
@@ -736,6 +755,31 @@ public class ServiceGenerator {
         sb.append("}\n");
 
         return new JavaSourceFile(pkgDir + "impl/" + implName + ".java", sb.toString());
+    }
+
+    private static String getMapperCall(String ret, String className, ZenithFile file) {
+        if (ret == null || "void".equals(ret)) return "";
+        if (ret.equalsIgnoreCase(className + "Response")) {
+            return "mapper.toResponse";
+        }
+        if (file != null && file.findDto(ret) != null) {
+            return "mapper.to" + ret;
+        }
+        if (ret.equalsIgnoreCase(className)) {
+            return "";
+        }
+        return "mapper.toResponse";
+    }
+
+    private static String getMapperMethodRef(String ret, String className, ZenithFile file) {
+        String baseRet = ret;
+        if (ret != null && ret.startsWith("List<") && ret.endsWith(">")) {
+            baseRet = ret.substring(5, ret.length() - 1).trim();
+        }
+        if (file != null && file.findDto(baseRet) != null) {
+            return "mapper::to" + baseRet;
+        }
+        return "mapper::toResponse";
     }
 
 }

@@ -1,0 +1,24 @@
+// Nightly cleanup of abandoned orders
+job CancelStaleOrders {
+    cron: "0 0 2 * * ?"
+    description: "Cancels orders pending payment older than 7 days"
+    action: {
+        update Order {
+            where: status == PENDING and createdAt < daysAgo(7)
+            status = CANCELLED
+        }
+    }
+}
+
+// Hourly audit maintenance
+job ArchiveAuditLogs {
+    cron: "0 0 * * * ?"
+    description: "Cleans up transient audit records older than 90 days"
+    action: {
+        update AuditLog {
+            where: createdAt < daysAgo(90)
+            details = "[ARCHIVED]"
+        }
+    }
+}
+

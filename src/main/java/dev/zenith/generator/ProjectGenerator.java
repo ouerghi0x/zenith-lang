@@ -83,13 +83,21 @@ public class ProjectGenerator {
             files.add(SeedGenerator.generate(file));
         }
 
+        // 9.5 Background Scheduled Jobs & Workers
+        if (file.hasJobs()) {
+            files.addAll(JobGenerator.generate(file));
+        }
+
         // 10. Phase 5: Full-Stack TypeScript / React Query SDK
         files.addAll(TypeScriptSdkGenerator.generate(file));
 
         // 10. Phase 5: Containerization (Dockerfile & docker-compose.yml)
         files.addAll(DockerGenerator.generate(file));
 
-        // 11. Project README.md with generated API documentation
+        // 11. Phase 6: Automated Integration & Unit Tests Generation
+        files.addAll(TestGenerator.generate(file));
+
+        // 12. Project README.md with generated API documentation
         files.add(generateReadme(file));
 
         return files;
@@ -110,6 +118,21 @@ public class ProjectGenerator {
         Path javaSrcDir = outputDir.resolve("src/main/java/" + basePkg.replace('.', '/'));
         if (Files.exists(javaSrcDir)) {
             try (var stream = Files.walk(javaSrcDir)) {
+                stream.filter(Files::isRegularFile)
+                        .filter(p -> p.toString().endsWith(".java"))
+                        .filter(p -> !generatedPaths.contains(p.toAbsolutePath().normalize()))
+                        .forEach(p -> {
+                            try {
+                                Files.deleteIfExists(p);
+                            } catch (IOException ignored) {
+                            }
+                        });
+            }
+        }
+
+        Path javaTestDir = outputDir.resolve("src/test/java/" + basePkg.replace('.', '/'));
+        if (Files.exists(javaTestDir)) {
+            try (var stream = Files.walk(javaTestDir)) {
                 stream.filter(Files::isRegularFile)
                         .filter(p -> p.toString().endsWith(".java"))
                         .filter(p -> !generatedPaths.contains(p.toAbsolutePath().normalize()))
@@ -196,7 +219,14 @@ public class ProjectGenerator {
         sb.append("- **In-memory H2 DB Console**: `http://localhost:").append(file.getConfig().getPort())
                 .append("/h2-console`\n");
         sb.append("- **JDBC URL**: `jdbc:h2:mem:appdb`\n");
-        sb.append("- **User**: `sa` | **Password**: (empty)\n");
+        sb.append("- **User**: `sa` | **Password**: (empty)\n\n");
+
+        sb.append("### 6. Automated Unit & Integration Tests\n\n");
+        sb.append("Zenith auto-generates comprehensive JUnit 5 & MockMvc integration tests for controllers, security rules, RBAC guards, and repositories:\n\n");
+        sb.append("```bash\n");
+        sb.append("mvn test\n");
+        sb.append("```\n");
+        sb.append("Tests run completely isolated against an in-memory H2 database using `src/test/resources/application.yml` without requiring external infrastructure.\n");
 
         return new JavaSourceFile("README.md", sb.toString());
     }

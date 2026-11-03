@@ -49,6 +49,7 @@ public class SchemaResolver {
         List<ModelDef> allModels = new ArrayList<>(rootFile.getModels());
         List<DtoDef> allDtos = new ArrayList<>(rootFile.getDtos());
         List<SeedDef> allSeeds = new ArrayList<>(rootFile.getSeeds());
+        List<JobDef> allJobs = new ArrayList<>(rootFile.getJobs());
         List<ImportDef> allImports = new ArrayList<>(rootFile.getImports());
 
         for (ImportDef imp : rootFile.getImports()) {
@@ -72,6 +73,7 @@ public class SchemaResolver {
                 allModels.addAll(importedFile.getModels());
                 allDtos.addAll(importedFile.getDtos());
                 allSeeds.addAll(importedFile.getSeeds());
+                allJobs.addAll(importedFile.getJobs());
             }
         }
 
@@ -80,7 +82,7 @@ public class SchemaResolver {
             finalConfig = AppConfig.defaults();
         }
 
-        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allImports, hasConfig);
+        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allJobs, allImports, hasConfig);
     }
 
     public Set<Path> getResolvedFiles() {
@@ -125,6 +127,7 @@ public class SchemaResolver {
         List<ModelDef> allModels = new ArrayList<>(currentFile.getModels());
         List<DtoDef> allDtos = new ArrayList<>(currentFile.getDtos());
         List<SeedDef> allSeeds = new ArrayList<>(currentFile.getSeeds());
+        List<JobDef> allJobs = new ArrayList<>(currentFile.getJobs());
         List<ImportDef> allImports = new ArrayList<>(currentFile.getImports());
 
         Path currentDir = normalizedPath.getParent();
@@ -154,6 +157,7 @@ public class SchemaResolver {
                 allModels.addAll(importedFile.getModels());
                 allDtos.addAll(importedFile.getDtos());
                 allSeeds.addAll(importedFile.getSeeds());
+                allJobs.addAll(importedFile.getJobs());
             }
         }
 
@@ -165,6 +169,6 @@ public class SchemaResolver {
             finalConfig = AppConfig.defaults();
         }
 
-        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allImports, hasConfig);
+        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allJobs, allImports, hasConfig);
     }
 }
