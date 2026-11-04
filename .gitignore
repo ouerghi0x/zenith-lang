@@ -3,19 +3,16 @@
 # =====================================================================
 
 # ---------------------------------------------------------------------
-# Proprietary / Pro Features (Not for Public Distribution)
+# Desktop App & Build Outputs
 # ---------------------------------------------------------------------
-# Studio GUI backend & web assets (Zenith Studio Pro)
-src/main/java/dev/zenith/studio/
-src/main/resources/studio/
-src/main/resources/
+desktop/node_modules/
+desktop/dist/
 zenith-bucket/
 # Demo build artifacts & raw frame captures
 demo/build/
 build/
 zenith.jar
 *.wav
-desktop/
 # Internal tools & temporary scratch scripts
 tools/
 sources.txt

@@ -1,0 +1,51 @@
+name: Build & Release Zenith Studio Desktop
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Zenith CLI Jar
+        shell: cmd
+        run: .\build-cli.bat
+
+      - name: Package Windows Installer via Electron
+        shell: pwsh
+        working-directory: desktop
+        run: |
+          npm ci
+          npm run build:installer
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zenith-Studio-Setup-Windows
+          path: desktop/dist/Zenith-Studio-Setup.exe
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/dist/Zenith-Studio-Setup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -1,0 +1,50 @@
+{
+  "name": "zenith-studio-desktop",
+  "version": "1.0.0",
+  "description": "Zenith Studio PRO - Native Desktop IDE for Zenith Web DSL",
+  "main": "main.js",
+  "author": "Zenith Team",
+  "scripts": {
+    "start": "electron .",
+    "build:pake": "npx pake-cli http://localhost:3000 --name \"ZenithStudio\" --title \"Zenith Studio PRO\" --icon icon.png --width 1440 --height 900",
+    "build:installer": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "dev.zenith.studio",
+    "productName": "Zenith Studio",
+    "copyright": "Copyright © 2026 Zenith",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "../bin/zenith.jar",
+        "to": "bin/zenith.jar"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Zenith Studio PRO",
+      "artifactName": "Zenith-Studio-Setup.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}
+

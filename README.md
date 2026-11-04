@@ -148,13 +148,32 @@ Validates schema syntax, types, and foreign key references.
 
 Scaffolds a new starter schema file.
 
-### 6. `zenith studio <file.zen> [--port 3000]` ⚡ _(Zenith Studio PRO)_
+### 6. `zenith studio <file.zen> [--desktop] [--port 3000]` ⚡ _(Zenith Studio)_
 
-Launches **Zenith Studio PRO** — an in-browser visual architecture IDE featuring live entity relation diagrams (ERD), full Monaco code editor with live syntax diagnostics, clickable import navigation, instant ZIP export, and in-browser REST API testing.
+Launches **Zenith Studio** — a full-featured visual architecture IDE featuring live interactive entity relation diagrams (ERD), full Monaco code editor with real-time syntax diagnostics, clickable import navigation, instant Spring Boot ZIP export, and in-browser/in-app REST API testing.
 
+#### Web Mode (Default)
+Opens the studio inside your default web browser at `http://localhost:3000`:
 ```cmd
-.\bin\zenith.bat studio examples\ecommerce.zen
+.\bin\zenith.bat studio zenith-exemples\nexus-commerce\schema.zen
 ```
+
+#### Native Desktop Mode (`--desktop` or `-d`)
+Launches a dedicated, frameless native desktop application window:
+```cmd
+.\bin\zenith.bat studio zenith-exemples\nexus-commerce\schema.zen --desktop
+```
+
+#### 📦 Download Prebuilt Windows Desktop Installer (.exe)
+You can download the standalone desktop installer directly:
+* **[Download Zenith-Studio-Setup.exe](https://github.com/zenith-lang/zenith/releases/latest/download/Zenith-Studio-Setup.exe)** *(Self-contained NSIS installer, ~82 MB)*
+* Includes desktop shortcut, Start Menu integration, embedded offline runtime, and uninstaller.
+
+To build the installer locally from source at any time:
+```cmd
+.\desktop\build-desktop.bat
+```
+The executable is generated into `desktop\dist\Zenith-Studio-Setup.exe`.
 
 ---
 

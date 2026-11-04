@@ -166,8 +166,8 @@
             </tr>
             <tr>
               <td><code>zenith studio</code></td>
-              <td><code>&lt;file.zen&gt; [--port 3000]</code></td>
-              <td>Launches Zenith Studio PRO — the visual architecture IDE with live ERD, Monaco editor, and API tester.</td>
+              <td><code>&lt;file.zen&gt; [--desktop] [--port 3000]</code></td>
+              <td>Launches Zenith Studio — available both as a local web IDE and native standalone desktop app.</td>
             </tr>
             <tr>
               <td><code>zenith init</code></td>
@@ -179,9 +179,9 @@
       </div>
 
       <!-- Zenith Studio PRO -->
-      <h2 class="section-heading" id="zenith-studio">Zenith Studio <span class="badge-pro-pill">PRO</span> (Visual Architecture IDE)</h2>
+      <h2 class="section-heading" id="zenith-studio">Zenith Studio <span class="badge-pro-pill">PRO</span> (Web &amp; Desktop IDE)</h2>
       <p>
-        <strong>Zenith Studio PRO</strong> is the visual engineering workspace running locally at <code>http://localhost:3000</code>. Designed for developers and architects who need full-spectrum visibility into their data models, relational graphs, and runtime APIs:
+        <strong>Zenith Studio</strong> is the full visual engineering workspace running locally at <code>http://localhost:3000</code> or as a dedicated native desktop application. Designed for developers and architects who need full-spectrum visibility into their data models, relational graphs, and runtime APIs:
       </p>
       <ul>
         <li><strong>Monaco Code Editor</strong>: Full syntax highlighting, auto-completion, linting markers, and hover tooltips.</li>
@@ -192,12 +192,27 @@
         <li><strong>Repository Tree &amp; One-Click Run</strong>: Inspect emitted Java files and boot the backend with one click.</li>
       </ul>
 
+      <div style="margin: 22px 0; padding: 18px 24px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+        <div>
+          <div style="font-weight: 600; color: #fff; font-size: 15px; margin-bottom: 4px;">Download Zenith Studio Desktop (.exe)</div>
+          <div style="font-size: 13px; color: var(--text-secondary);">Standalone Windows setup with embedded offline runtime and desktop shortcuts (~82 MB).</div>
+        </div>
+        <a href="https://github.com/zenith-lang/zenith/releases/latest/download/Zenith-Studio-Setup.exe" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 9px 20px; border-radius: 6px; font-weight: 600; background: #2563eb; color: #fff; border: none; cursor: pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Download Setup (.exe)
+        </a>
+      </div>
+
       <div class="code-block-wrap">
         <div class="code-block-header">
           <span class="code-block-title">Terminal</span>
           <button class="code-copy-btn">Copy</button>
         </div>
-        <pre class="code-content"><code>zenith studio schema.zen</code></pre>
+        <pre class="code-content"><code># Launch in web browser (http://localhost:3000):
+zenith studio schema.zen
+
+# Launch in dedicated native desktop application mode:
+zenith studio schema.zen --desktop</code></pre>
       </div>
 
       <!-- 1. Config -->

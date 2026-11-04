@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zenith Studio  — Visual Architecture &amp; Full-Stack Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Monaco Editor Loader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+  <link rel="icon" type="image/png" href="logo.png" />
+  <link rel="stylesheet" href="/studio.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="studio-header">
+    <div class="brand">
+      <div class="brand-mark">
+        <img src="/logo.png" alt="Zenith" class="brand-logo" />
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">Zenith</span>
+        <span class="brand-sub">Studio</span>
+      </div>
+    </div>
+
+    <!-- Active Schema Status -->
+    <div class="schema-status" id="schemaStatus">
+      <span class="status-dot ready"></span>
+      <span id="statusText">Compiler Ready</span>
+    </div>
+
+    <!-- Action Bar -->
+    <div class="action-bar">
+      <a id="desktopDownloadBtn" href="/download/desktop" class="btn btn-desktop" title="Download Zenith Studio Desktop App (Windows .exe)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <span>Desktop App</span>
+      </a>
+
+      <button class="btn btn-ghost" onclick="toggleCheatSheet()" title="View Zenith Syntax & Types Reference">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        Reference
+      </button>
+
+      <button class="btn btn-secondary" onclick="exportZip()" title="Download generated Spring Boot project">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Export
+      </button>
+
+      <button id="runBtn" class="btn btn-primary" onclick="toggleRunApp()">
+        <svg id="runIcon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span id="runBtnText">Run</span>
+      </button>
+
+      <a id="swaggerBtn" href="http://localhost:8080/swagger-ui.html" target="_blank" class="btn btn-link" style="display: none;">
+        <span>Swagger UI</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Studio Workspace Grid -->
+  <div class="studio-workspace" id="studioWorkspace">
+    <!-- Left Pane: Code Editor + Error Inspector -->
+    <section class="pane editor-pane" id="editorPane">
+      <div class="pane-header">
+        <div class="editor-tabs-bar" id="editorTabsBar">
+          <div class="file-tab active">
+            <span class="file-tab-icon">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+            </span>
+            <span id="currentFileName">schema.zen</span>
+            <span class="tab-badge-root">ROOT</span>
+          </div>
+        </div>
+        <div class="pane-actions" style="display:flex; align-items:center; gap:8px;">
+          <span class="save-status" id="saveStatus" style="font-size: 11px; color: #a1a1aa;"><span style="color:#22c55e">✓</span> Saved</span>
+          <span class="compile-badge" id="compileTimeBadge">Compiled in 12ms</span>
+          <button class="btn btn-ghost" onclick="resetToDefaultSchema()" title="Reset to default example" style="padding: 2px 7px; font-size: 11px; border: 1px solid #27272a; border-radius: 4px; color: #a1a1aa; cursor: pointer; background: transparent;">Reset</button>
+        </div>
+      </div>
+
+      <!-- Main Editor Body with Vertical Files List + Monaco Container -->
+      <div class="editor-content-layout">
+        <!-- Vertical Files Sidebar -->
+        <aside class="editor-vertical-tabs" id="editorVerticalTabs">
+          <div class="vertical-tabs-header">
+            <span class="vertical-tabs-title">FILES</span>
+            <button class="vertical-tab-add" onclick="createNewZenFile()" title="Create new modular .zen file">+</button>
+          </div>
+          <div class="vertical-tabs-list" id="verticalTabsList">
+            <!-- Rendered vertically with all .zen files -->
+          </div>
+        </aside>
+
+        <!-- Monaco Container + Error Drawer -->
+        <div class="editor-monaco-wrap">
+          <div id="monacoEditorContainer" class="editor-container"></div>
+
+          <!-- Error / Diagnostic Drawer -->
+          <div id="errorDrawer" class="error-drawer">
+            <div class="error-drawer-header">
+              <div class="error-title-wrap">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span class="error-title">Diagnostic</span>
+              </div>
+              <button class="close-err-btn" onclick="dismissError()">×</button>
+            </div>
+            <div class="error-drawer-body" id="errorDrawerBody">
+              No errors. Schema is valid.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Draggable Resizer Bar (VS Code style) -->
+    <div class="pane-resizer" id="paneResizer" title="Drag to resize panels (Double-click to reset 50/50)"></div>
+
+    <!-- Right Pane: Output Views -->
+    <section class="pane preview-pane" id="previewPane">
+      <!-- Segmented Preview Tabs -->
+      <div class="pane-header">
+        <div class="tab-group">
+          <button class="tab-btn active" onclick="switchPreviewTab('erd')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            Schema ERD
+          </button>
+          <button class="tab-btn" onclick="switchPreviewTab('api')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            API Tester
+          </button>
+          <button class="tab-btn" onclick="switchPreviewTab('java')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+            Repository Tree
+          </button>
+          <button class="tab-btn" onclick="switchPreviewTab('console')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+            Console
+          </button>
+          <!-- Combined Dropdown Tab for SDK & Docker at the last position -->
+          <div class="tab-dropdown-wrap" id="artifactsDropdownWrap">
+            <button class="tab-btn tab-dropdown-btn" id="artifactsDropdownBtn" onclick="toggleArtifactsDropdown(event)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+              <span id="artifactsTabLabel">SDK &amp; Docker</span>
+              <svg class="dropdown-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="tab-dropdown-menu" id="artifactsDropdownMenu">
+              <div class="tab-dropdown-item" id="item-typescript" onclick="selectArtifactTab('typescript', 'TypeScript SDK')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                <span>TypeScript SDK</span>
+              </div>
+              <div class="tab-dropdown-item" id="item-docker" onclick="selectArtifactTab('docker', 'Docker')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                <span>Docker</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview Content Panels -->
+      <div class="preview-content">
+        <!-- 1. Architecture ERD -->
+        <div id="tab-erd" class="preview-panel active">
+          <div class="erd-toolbar">
+            <div class="erd-toolbar-left">
+              <div class="erd-search-wrap">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="erdFilterInput" class="erd-filter-input" placeholder="Filter models or fields..." oninput="filterErdModels(this.value)" />
+              </div>
+              <span class="erd-stats-badge" id="erdStatsBadge">6 Models • 4 Relations</span>
+            </div>
+            <div class="erd-toolbar-right">
+              <div class="erd-toggle-group">
+                <button class="erd-toggle-btn active" id="btnErdModeSmart" onclick="setErdMode('smart')" title="Smart Focus: clean view, highlight on hover">Smart Focus</button>
+                <button class="erd-toggle-btn" id="btnErdModeAll" onclick="setErdMode('all')" title="Show all relation paths">Show All</button>
+              </div>
+            </div>
+          </div>
+          <div class="erd-canvas" id="erdCanvas">
+            <!-- Dynamically populated model boxes -->
+          </div>
+        </div>
+
+        <!-- 2. Interactive API Tester -->
+        <div id="tab-api" class="preview-panel">
+          <div class="api-tester-layout">
+            <div class="endpoint-sidebar">
+              <div class="endpoint-search-box">
+                <input type="text" id="endpointSearchInput" class="endpoint-search-input" placeholder="Filter endpoints..." oninput="filterEndpoints(this.value)" />
+              </div>
+              <div id="endpointList" class="endpoint-accordion-list">
+                <!-- Dynamically populated routes grouped by Model -->
+              </div>
+            </div>
+            <div class="endpoint-runner" id="endpointRunner">
+              <div class="runner-header">
+                <span class="http-badge" id="runnerMethod">GET</span>
+                <input type="text" id="runnerUrl" class="runner-input" />
+                <button class="btn btn-primary btn-sm" onclick="sendApiRequest()">Send ⚡</button>
+              </div>
+
+              <!-- Path Variables Dynamic Bar -->
+              <div id="pathParamsContainer" class="params-bar" style="display: none;">
+                <span class="params-label">Path Params:</span>
+                <div id="pathParamsInputs" class="params-inputs"></div>
+              </div>
+
+              <!-- Auth Token Injector -->
+              <div class="auth-bar">
+                <span class="auth-label">JWT Token:</span>
+                <input type="text" id="runnerAuthToken" class="auth-input" placeholder="Bearer eyJhbGciOiJIUzI1NiIsIn..." />
+                <button class="btn btn-secondary btn-sm" onclick="quickLoginDemo()">Auto-Fill Admin JWT</button>
+              </div>
+
+              <div class="runner-body">
+                <div class="runner-section-header">
+                  <div class="runner-subheading">Request Body (JSON)</div>
+                  <button class="btn btn-link btn-xs" onclick="prettifyRequestBody()">Prettify JSON</button>
+                </div>
+                <textarea id="runnerRequestBody" class="runner-textarea" placeholder="{}"></textarea>
+
+                <div class="runner-section-header">
+                  <div class="runner-subheading">
+                    Response &middot; <span id="runnerResponseStatus" class="response-status-badge">-</span>
+                    <span id="runnerResponseTime" class="response-time-badge"></span>
+                  </div>
+                  <button class="btn btn-secondary btn-xs" onclick="copyResponseBody()">Copy Response</button>
+                </div>
+                <pre id="runnerResponseBody" class="runner-response-box">Click "Send" to test endpoint...</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Generated Java Source Browser -->
+        <div id="tab-java" class="preview-panel">
+          <div class="java-file-layout">
+            <div class="java-file-tree" id="javaTree">
+              <!-- Tree of generated files -->
+            </div>
+            <div class="java-file-viewer">
+              <div class="viewer-top-bar">
+                <span id="javaActiveFileName" class="active-file-title">Entity.java</span>
+                <button class="btn btn-secondary btn-sm" onclick="copyCurrentJavaCode()">Copy</button>
+              </div>
+              <div id="sourceViewerContainer" class="source-viewer-container"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. TypeScript Client SDK -->
+        <div id="tab-typescript" class="preview-panel">
+          <div class="ts-preview-header">
+            <div class="ts-file-tabs">
+              <button class="ts-tab active" onclick="switchTsFile('client')">client.ts</button>
+              <button class="ts-tab" onclick="switchTsFile('types')">types.ts</button>
+              <button class="ts-tab" onclick="switchTsFile('react')">react-query.ts</button>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="copyTsCode()">Copy SDK</button>
+          </div>
+          <pre id="tsCodePreview"><code class="language-typescript">// TypeScript SDK code will appear here...</code></pre>
+        </div>
+
+        <!-- 5. Docker Infrastructure -->
+        <div id="tab-docker" class="preview-panel">
+          <div class="docker-preview-grid">
+            <div class="docker-card">
+              <h4>Dockerfile</h4>
+              <pre id="dockerfilePreview"><code># Multi-stage container...</code></pre>
+            </div>
+            <div class="docker-card">
+              <h4>docker-compose.yml</h4>
+              <pre id="dockerComposePreview"><code>version: '3.8'...</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Console / Process Logs -->
+        <div id="tab-console" class="preview-panel">
+          <div class="console-box" id="consoleOutput">
+            <div class="log-line info">[Zenith Studio] Compiler ready. Monitoring editor for modifications...</div>
+          </div>
+        </div>
+
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Reference Modal (Opened via top action bar Reference button) -->
+  <div id="referenceModal" class="ref-modal-backdrop" onclick="toggleCheatSheet(false)">
+    <div class="ref-modal-dialog" onclick="event.stopPropagation()">
+      <div class="ref-modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+          <span style="font-weight: 600; font-size: 13px; color: #fff;">Zenith Language Reference</span>
+        </div>
+        <button class="ref-modal-close" onclick="toggleCheatSheet(false)" title="Close Reference (Esc)">✕</button>
+      </div>
+      <div class="ref-modal-body syntax-guide">
+        <h2 class="guide-title">Zenith Language Reference</h2>
+        <p class="guide-lead">Zenith is a domain-specific language that replaces hundreds of lines of Spring Boot 3 boilerplate with concise, type-safe, production-ready declarations.</p>
+
+        <div class="guide-pill-nav">
+          <a href="#ref-config" class="guide-pill">1. Config</a>
+          <a href="#ref-types" class="guide-pill">2. Types</a>
+          <a href="#ref-decorators" class="guide-pill">3. Decorators</a>
+          <a href="#ref-enums" class="guide-pill">4. Enums &amp; Auth</a>
+          <a href="#ref-relations" class="guide-pill">5. Relations</a>
+          <a href="#ref-endpoints" class="guide-pill">6. CRUD &amp; Endpoints</a>
+          <a href="#ref-actions" class="guide-pill">7. Domain Actions</a>
+          <a href="#ref-dto" class="guide-pill">8. DTOs</a>
+          <a href="#ref-seed" class="guide-pill">9. Seeding</a>
+          <a href="#ref-imports" class="guide-pill">10. Modular Imports</a>
+          <a href="#ref-storage" class="guide-pill">11. Storage &amp; Media</a>
+          <a href="#ref-fullstack" class="guide-pill">12. Full-Stack SDK</a>
+          <a href="#ref-jobs" class="guide-pill">13. Background Jobs</a>
+          <a href="#ref-tests" class="guide-pill">14. Automated Tests</a>
+          <a href="#ref-desktop" class="guide-pill">15. Desktop &amp; CLI</a>
+        </div>
+
+        <!-- 1. Configuration Block -->
+        <h3 class="guide-section-title" id="ref-config">1. Application Configuration <span class="guide-badge">config</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">The <code>config { ... }</code> block declares global application metadata, target SQL database dialect, authentication strategy, documentation, migration scripts, and object storage.</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Type</th>
+                <th>Default</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>app</code></td>
+                <td><code>String</code></td>
+                <td><code>"ZenithApp"</code></td>
+                <td>Application name used in Maven artifact ID, OpenAPI metadata, and Docker container naming.</td>
+              </tr>
+              <tr>
+                <td><code>package</code></td>
+                <td><code>String</code></td>
+                <td><code>"com.example.app"</code></td>
+                <td>Base Java package for generated controllers, services, repositories, and models.</td>
+              </tr>
+              <tr>
+                <td><code>basePath</code></td>
+                <td><code>String</code></td>
+                <td><code>"/api/v1"</code></td>
+                <td>Global URL prefix prefixed to all controller REST endpoints.</td>
+              </tr>
+              <tr>
+                <td><code>port</code></td>
+                <td><code>Int</code></td>
+                <td><code>8080</code></td>
+                <td>Embedded Tomcat HTTP server port (<code>server.port</code>).</td>
+              </tr>
+              <tr>
+                <td><code>database</code></td>
+                <td><code>Identifier</code></td>
+                <td><code>h2</code></td>
+                <td>Target database dialect: <code>postgres</code> / <code>postgresql</code>, <code>mysql</code>, or <code>h2</code> (embedded in-memory).</td>
+              </tr>
+              <tr>
+                <td><code>auth</code></td>
+                <td><code>Identifier</code></td>
+                <td><code>none</code></td>
+                <td>Security mode: <code>jwt</code> (Spring Security 6, JWT filter, login &amp; register endpoints, BCrypt) or <code>none</code>.</td>
+              </tr>
+              <tr>
+                <td><code>swagger</code></td>
+                <td><code>Boolean</code></td>
+                <td><code>true</code></td>
+                <td>Generates OpenAPI 3.0 configuration with interactive Swagger UI at <code>/swagger-ui.html</code>.</td>
+              </tr>
+              <tr>
+                <td><code>flyway</code></td>
+                <td><code>Boolean</code></td>
+                <td><code>false</code></td>
+                <td>Generates Flyway repeatable / versioned DDL migration scripts (<code>V1__initial_schema.sql</code>).</td>
+              </tr>
+              <tr>
+                <td><code>storage</code></td>
+                <td><code>Identifier</code></td>
+                <td><code>minio</code></td>
+                <td>Unified object storage provider: <code>minio</code> (local S3-compatible dev storage) or <code>s3</code> (AWS S3 cloud production).</td>
+              </tr>
+              <tr>
+                <td><code>storageBucket</code></td>
+                <td><code>String</code></td>
+                <td><code>"zenith-bucket"</code></td>
+                <td>Default bucket name for media, images, and file uploads.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre class="guide-code"><code>config {
+    app: "TaskPulse"
+    package: "com.taskpulse.backend"
+    basePath: "/api/v1"
+    port: 8080
+    database: postgres       // postgres | mysql | h2
+    auth: jwt                // Spring Security 6 & JWT authentication
+    swagger: true            // OpenAPI 3.0 Swagger UI at /swagger-ui.html
+    flyway: true             // Flyway database migration scripts
+    storage: minio           // minio (local dev) | s3 (AWS cloud)
+    storageBucket: "taskpulse-uploads"
+}</code></pre>
+
+        <!-- 2. Data Types -->
+        <h3 class="guide-section-title" id="ref-types">2. Data Types <span class="guide-badge">types</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Zenith types automatically compile into strongly-typed Java JPA attributes, TypeScript interfaces, and SQL DDL columns.</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Zenith Type</th>
+                <th>Java / JPA</th>
+                <th>TypeScript</th>
+                <th>SQL DDL</th>
+                <th>Notes &amp; Validation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>Long</code></td>
+                <td><code>Long</code></td>
+                <td><code>number</code></td>
+                <td><code>BIGINT</code></td>
+                <td>64-bit signed integer. Standard for numeric entity IDs and foreign keys.</td>
+              </tr>
+              <tr>
+                <td><code>Int</code></td>
+                <td><code>Integer</code></td>
+                <td><code>number</code></td>
+                <td><code>INTEGER</code></td>
+                <td>32-bit signed integer for counts, quantities, or ports.</td>
+              </tr>
+              <tr>
+                <td><code>String</code></td>
+                <td><code>String</code></td>
+                <td><code>string</code></td>
+                <td><code>VARCHAR(255)</code></td>
+                <td>Standard UTF-8 string with default max length of 255.</td>
+              </tr>
+              <tr>
+                <td><code>String(min=X, max=Y)</code></td>
+                <td><code>String</code> + <code>@Size</code></td>
+                <td><code>string</code></td>
+                <td><code>VARCHAR(Y)</code></td>
+                <td>Enforces length constraints on JPA entities and incoming DTOs.</td>
+              </tr>
+              <tr>
+                <td><code>String(length=N)</code></td>
+                <td><code>String</code> + <code>@Size</code></td>
+                <td><code>string</code></td>
+                <td><code>VARCHAR(N)</code></td>
+                <td>Fixed/exact length constraint (e.g. SKUs, codes, postal codes).</td>
+              </tr>
+              <tr>
+                <td><code>String?</code> (or <code>T?</code>)</td>
+                <td>Nullable <code>T</code></td>
+                <td><code>T | undefined</code></td>
+                <td>Column <code>NULL</code></td>
+                <td>Optional field. Allowed to be omitted or null in requests and database.</td>
+              </tr>
+              <tr>
+                <td><code>Text</code></td>
+                <td><code>String</code> (<code>@Lob</code>)</td>
+                <td><code>string</code></td>
+                <td><code>TEXT</code></td>
+                <td>Arbitrary length text for descriptions, markdowns, or blogs.</td>
+              </tr>
+              <tr>
+                <td><code>Decimal(precision, scale)</code></td>
+                <td><code>BigDecimal</code></td>
+                <td><code>number</code></td>
+                <td><code>NUMERIC(p, s)</code></td>
+                <td>High-precision currency and financial math (avoids float drift).</td>
+              </tr>
+              <tr>
+                <td><code>Double</code> / <code>Float</code></td>
+                <td><code>Double</code> / <code>Float</code></td>
+                <td><code>number</code></td>
+                <td><code>DOUBLE PRECISION</code></td>
+                <td>Floating-point numbers for scientific or metric calculations.</td>
+              </tr>
+              <tr>
+                <td><code>Boolean</code></td>
+                <td><code>Boolean</code></td>
+                <td><code>boolean</code></td>
+                <td><code>BOOLEAN</code></td>
+                <td>True or false flag (e.g. <code>active: Boolean = true</code>).</td>
+              </tr>
+              <tr>
+                <td><code>DateTime</code></td>
+                <td><code>LocalDateTime</code></td>
+                <td><code>string</code> (ISO 8601)</td>
+                <td><code>TIMESTAMP</code></td>
+                <td>Date and time with second precision (e.g. <code>2026-11-15T18:00:00</code>).</td>
+              </tr>
+              <tr>
+                <td><code>Date</code></td>
+                <td><code>LocalDate</code></td>
+                <td><code>string</code> (YYYY-MM-DD)</td>
+                <td><code>DATE</code></td>
+                <td>Calendar date without time.</td>
+              </tr>
+              <tr>
+                <td><code>UUID</code></td>
+                <td><code>java.util.UUID</code></td>
+                <td><code>string</code></td>
+                <td><code>UUID</code></td>
+                <td>128-bit Universally Unique Identifier. Standard for distributed primary keys.</td>
+              </tr>
+              <tr>
+                <td><code>List&lt;TargetModel&gt;</code></td>
+                <td><code>List&lt;TargetModel&gt;</code></td>
+                <td><code>TargetModel[]</code></td>
+                <td>Foreign Key Collection</td>
+                <td>Used inside <code>relations { ... }</code> for one-to-many associations.</td>
+              </tr>
+              <tr>
+                <td><code>enum EnumName { ... }</code></td>
+                <td>Java <code>enum</code></td>
+                <td>Union <code>'A' | 'B'</code></td>
+                <td><code>VARCHAR(50)</code></td>
+                <td>Enforces valid named constants across full stack.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 3. Decorators -->
+        <h3 class="guide-section-title" id="ref-decorators">3. Field Decorators &amp; Constraints <span class="guide-badge">decorators</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Decorators attach validation, security rules, storage bindings, indexes, and lifecycle hooks directly to model fields.</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Decorator</th>
+                <th>Applies To</th>
+                <th>Generated Spring Boot / JPA Effect</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>@id</code></td>
+                <td>Field</td>
+                <td>Marks field as Entity Primary Key (<code>@Id</code> in JPA).</td>
+              </tr>
+              <tr>
+                <td><code>@auto</code></td>
+                <td><code>Long</code>, <code>Int</code>, <code>UUID</code></td>
+                <td>Generates <code>GenerationType.IDENTITY</code> for integers or auto-generated UUIDs on persist.</td>
+              </tr>
+              <tr>
+                <td><code>@unique</code></td>
+                <td>Field</td>
+                <td>Adds unique constraint in database and generates <code>findBy&lt;Field&gt;</code> in repository.</td>
+              </tr>
+              <tr>
+                <td><code>@password</code></td>
+                <td><code>String</code></td>
+                <td>Automatically hashes with BCrypt on registration/seeding and masks from API responses (<code>@JsonIgnore</code>).</td>
+              </tr>
+              <tr>
+                <td><code>@email</code></td>
+                <td><code>String</code></td>
+                <td>Enforces valid RFC 5322 email syntax with Jakarta Bean Validation <code>@Email</code>.</td>
+              </tr>
+              <tr>
+                <td><code>@positive</code></td>
+                <td>Numeric</td>
+                <td>Enforces value &gt; 0 with Jakarta <code>@Positive</code>. Ideal for prices, amounts, and durations.</td>
+              </tr>
+              <tr>
+                <td><code>@min(n)</code> / <code>@max(n)</code></td>
+                <td>Numeric</td>
+                <td>Enforces minimum and maximum numeric thresholds with <code>@Min(n)</code> / <code>@Max(n)</code>.</td>
+              </tr>
+              <tr>
+                <td><code>@length(n)</code></td>
+                <td><code>String</code></td>
+                <td>Enforces exact string length with <code>@Size(min=n, max=n)</code>.</td>
+              </tr>
+              <tr>
+                <td><code>@autoNow</code></td>
+                <td><code>DateTime</code></td>
+                <td>Auto-populates with <code>LocalDateTime.now()</code> upon entity insertion (<code>@PrePersist</code>).</td>
+              </tr>
+              <tr>
+                <td><code>@autoUpdate</code></td>
+                <td><code>DateTime</code></td>
+                <td>Auto-updates with current timestamp whenever entity is updated (<code>@PreUpdate</code>).</td>
+              </tr>
+              <tr>
+                <td><code>@text</code></td>
+                <td><code>String</code></td>
+                <td>Maps to SQL <code>TEXT</code> / large object column.</td>
+              </tr>
+              <tr>
+                <td><code>@role</code></td>
+                <td><code>Enum</code></td>
+                <td>Designates the user role attribute for Spring Security role-based access control (RBAC).</td>
+              </tr>
+              <tr>
+                <td><code>@relation(...)</code></td>
+                <td>Relation field</td>
+                <td>Declares JPA relationship mappings (<code>oneToMany</code>, <code>manyToOne</code>, <code>oneToOne</code>).</td>
+              </tr>
+              <tr>
+                <td><code>@file(maxSize, types, path)</code></td>
+                <td><code>String</code></td>
+                <td>Configures general file upload attribute: max file size (e.g. <code>"10MB"</code>), allowed MIME types (e.g. <code>["application/pdf"]</code>), and folder path. Generates entity upload/download/delete endpoints only when <code>endpoints</code> and <code>crud</code> exist on the model.</td>
+              </tr>
+              <tr>
+                <td><code>@image(maxSize, types, path)</code></td>
+                <td><code>String</code></td>
+                <td>Configures image upload attribute with image-specific validation (defaults to JPEG, PNG, WebP) and thumbnail streaming. Generates media endpoints only when <code>endpoints</code> and <code>crud</code> exist on the model.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 4. Enums & Security -->
+        <h3 class="guide-section-title" id="ref-enums">4. Enums &amp; Role-Based Security <span class="guide-badge">security</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Enums define discrete states or security roles. An enum with <code>@role</code> integrates seamlessly with Spring Security 6.</p>
+        <pre class="guide-code"><code>enum Role {
+    ADMIN,
+    MANAGER,
+    DEVELOPER
+}
+
+enum TaskStatus {
+    TODO,
+    IN_PROGRESS,
+    IN_REVIEW,
+    DONE,
+    CANCELLED
+}
+
+model UserEntity {
+    id: UUID @id @auto
+    email: String @email @unique
+    password: String @password
+    role: Role = DEVELOPER @role
+    fullName: String(min = 2, max = 100)
+    avatar: String? @image(maxSize = "5MB", types = ["image/jpeg", "image/png"])
+    createdAt: DateTime @autoNow
+}</code></pre>
+
+        <!-- 5. Relations -->
+        <h3 class="guide-section-title" id="ref-relations">5. Entity Relationships <span class="guide-badge">relations</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Declare associations cleanly inside the <code>relations { ... }</code> block using <code>@relation</code>.</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Syntax</th>
+                <th>Generated JPA Mapping</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>One-to-Many</td>
+                <td><code>tasks: List&lt;Task&gt; @relation(oneToMany, mappedBy = "project")</code></td>
+                <td><code>@OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)</code></td>
+              </tr>
+              <tr>
+                <td>Many-to-One</td>
+                <td><code>project: Project @relation(manyToOne)</code></td>
+                <td><code>@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "project_id")</code></td>
+              </tr>
+              <tr>
+                <td>One-to-One</td>
+                <td><code>profile: Profile? @relation(oneToOne)</code></td>
+                <td><code>@OneToOne(cascade = CascadeType.ALL) @JoinColumn(name = "profile_id")</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre class="guide-code"><code>model Project {
+    id: UUID @id @auto
+    name: String(min = 2, max = 100)
+    key: String(length = 10) @unique
+    description: String? @text
+
+    relations {
+        tasks: List&lt;Task&gt; @relation(oneToMany, mappedBy = "project")
+    }
+}
+
+model Task {
+    id: UUID @id @auto
+    title: String(min = 3, max = 200)
+    status: TaskStatus = TODO
+
+    relations {
+        project: Project @relation(manyToOne)
+        assignee: UserEntity? @relation(manyToOne)
+    }
+}</code></pre>
+
+        <!-- 6. CRUD & Custom Endpoints -->
+        <h3 class="guide-section-title" id="ref-endpoints">6. CRUD &amp; Custom Endpoints (API Security &amp; RBAC) <span class="guide-badge">endpoints</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">The <code>endpoints { ... }</code> block declares standard REST controllers and custom domain routes. When <code>auth: jwt</code> is enabled, Zenith integrates seamlessly with <strong>Spring Security 6</strong> and emits <code>@PreAuthorize(...)</code> annotations to strictly control public vs authenticated access and Role-Based Access Control (RBAC).</p>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Zero-Config Security Defaults</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">If no explicit security flags are declared, Zenith follows standard enterprise conventions: <strong>read operations are public</strong> (<code>@PreAuthorize("permitAll()")</code>), while <strong>write operations require authentication</strong> (<code>@PreAuthorize("isAuthenticated()")</code>).</p>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Security Control Options Matrix</h4>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Scope</th>
+                <th>Zenith Syntax</th>
+                <th>Generated Spring Security 6</th>
+                <th>Who Can Access?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Default Convention</td>
+                <td><em>(Omitted)</em></td>
+                <td><code>GET: permitAll()</code><br/><code>POST/PUT/DELETE: isAuthenticated()</code></td>
+                <td>Public reads; valid Bearer JWT required for mutations.</td>
+              </tr>
+              <tr>
+                <td>Public CRUD</td>
+                <td><code>crud { public: true }</code> or <code>auth: false</code></td>
+                <td><code>@PreAuthorize("permitAll()")</code> on all 5 routes</td>
+                <td>Open to everyone without token.</td>
+              </tr>
+              <tr>
+                <td>Authenticated CRUD</td>
+                <td><code>crud { auth: true }</code></td>
+                <td><code>@PreAuthorize("isAuthenticated()")</code> on all 5 routes</td>
+                <td>Any user with a valid Bearer JWT token.</td>
+              </tr>
+              <tr>
+                <td>Role-Based CRUD</td>
+                <td><code>crud { roles: [ADMIN, MANAGER] }</code></td>
+                <td><code>@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")</code></td>
+                <td>Users holding either the ADMIN or MANAGER role.</td>
+              </tr>
+              <tr>
+                <td>Granular Per-Operation CRUD</td>
+                <td><code>crud { list: public, create: [ADMIN], delete: [ADMIN] }</code></td>
+                <td>Independent <code>@PreAuthorize(...)</code> for each HTTP method</td>
+                <td>Fine-tuned control: e.g. public browsing, admin-only publishing.</td>
+              </tr>
+              <tr>
+                <td>Public Custom Endpoint</td>
+                <td><code>public: true</code> or <code>auth: false</code></td>
+                <td><code>@PreAuthorize("permitAll()")</code></td>
+                <td>Open to everyone without token (e.g. public catalog, webhooks).</td>
+              </tr>
+              <tr>
+                <td>Authenticated Custom Route</td>
+                <td><code>auth: true</code></td>
+                <td><code>@PreAuthorize("isAuthenticated()")</code></td>
+                <td>Any authenticated user.</td>
+              </tr>
+              <tr>
+                <td>Role-Based Custom Route</td>
+                <td><code>auth: [ADMIN, MANAGER]</code> or <code>roles: [ADMIN]</code></td>
+                <td><code>@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")</code></td>
+                <td>Restricted to specified roles.</td>
+              </tr>
+              <tr>
+                <td>Role Guard Condition</td>
+                <td><code>guard: role in [ADMIN, LOGISTICS], "Unauthorized"</code></td>
+                <td><code>@PreAuthorize("hasAnyRole('ADMIN', 'LOGISTICS')")</code></td>
+                <td>Role enforcement evaluated with custom 403 error message.</td>
+              </tr>
+              <tr>
+                <td>Domain + Role Guards</td>
+                <td><code>guard: role == ADMIN, "Admin only"</code><br/><code>guard: status == PAID, "Must be paid"</code></td>
+                <td>Combines <code>@PreAuthorize("hasRole('ADMIN')")</code> with 400 Bad Request validation</td>
+                <td>Enforces user role first, then verifies domain business conditions.</td>
+              </tr>
+              <tr>
+                <td>User-Scoped Endpoint</td>
+                <td><code>user: true</code> (or path <code>"/me"</code>)</td>
+                <td><code>@PreAuthorize("isAuthenticated()")</code> + user filter</td>
+                <td>Automatically filters entities belonging to <code>currentUser</code>.</td>
+              </tr>
+              <tr>
+                <td>Custom DTO Return Endpoint</td>
+                <td><code>post "/{id}/pay" -> OrderSummaryResponse</code></td>
+                <td>Generates <code>toOrderSummaryResponse(entity)</code> mapper with coincident field & foreign key matching</td>
+                <td>Returns specialized DTO payload mapped automatically from entity.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Comprehensive Example: Granular CRUD &amp; Custom Endpoint Security</h4>
+        <pre class="guide-code"><code>model Order {
+    id: UUID @id @auto
+    orderNumber: String(length = 20) @unique
+    totalAmount: Decimal(precision = 12, scale = 2) @positive
+    status: OrderStatus = PENDING
+    createdAt: DateTime @autoNow
+
+    relations {
+        customer: Customer @relation(manyToOne)
+    }
+
+    endpoints {
+        // Granular CRUD RBAC:
+        // - Public can view and list orders
+        // - Authenticated customers can place orders (POST)
+        // - Staff (MANAGER/ADMIN) can update status (PUT)
+        // - Only ADMIN can delete orders (DELETE)
+        crud {
+            paginate: true
+            search: [orderNumber]
+            filter: [status]
+            sort: [createdAt, totalAmount]
+            list: public
+            get: public
+            create: auth                      // Any authenticated user
+            update: [MANAGER, ADMIN]          // Managers and Admins
+            delete: [ADMIN]                   // Admins only
+        }
+
+        // 1. Public Custom Endpoint: Tracking without logging in
+        get "/track/{orderNumber}" -> OrderResponse {
+            public: true                      // @PreAuthorize("permitAll()")
+            description: "Allows public package tracking by order number"
+            query: orderNumber == orderNumber
+        }
+
+        // 2. User-Scoped Endpoint: My personal orders
+        get "/my-orders" -> List&lt;OrderResponse&gt; {
+            user: true                        // Automatically filters customer == currentUser
+            description: "Returns orders placed by the authenticated user"
+        }
+
+        // 3. Custom DTO Return with Auto-Mapping & Domain Action
+        post "/{id}/pay" -> OrderSummaryResponse {
+            auth: true
+            guard: status == OrderStatus.PENDING, "Only pending orders can be marked as paid"
+            action: {
+                status = OrderStatus.PAID
+                create AuditLog {
+                    action = "ORDER_PAYMENT_PROCESSED",
+                    details = "Order " + entity.orderNumber + " marked PAID by " + currentUser.email
+                }
+                notify(entity.customer.email, "Your payment for order " + entity.orderNumber + " succeeded!")
+            }
+        }
+
+        // 4. Role-Restricted State Transition with Domain Guard
+        post "/{id}/ship" -> OrderResponse {
+            auth: [LOGISTICS, ADMIN]          // @PreAuthorize("hasAnyRole('LOGISTICS', 'ADMIN')")
+            description: "Dispatches the shipment"
+            guard: status == OrderStatus.PAID, "Only paid orders can be shipped"
+            action: {
+                status = OrderStatus.SHIPPED
+                notify(entity.customer, "Your order #" + entity.orderNumber + " has been shipped!")
+            }
+        }
+
+        // 5. Combined Declarative Role & Domain Guard
+        post "/{id}/cancel" -> Void {
+            auth: true
+            guard: role in [ADMIN, SUPPORT], "Only Support or Admin can cancel orders"
+            guard: status != OrderStatus.DELIVERED, "Delivered orders cannot be cancelled"
+            action: {
+                status = OrderStatus.CANCELLED
+                create AuditLog {
+                    action = "ORDER_CANCELLED",
+                    details = "Order " + entity.orderNumber + " cancelled by " + currentUser.email
+                }
+            }
+        }
+    }
+}</code></pre>
+
+        <!-- 7. Advanced Action Logic & Domain Operations -->
+        <h3 class="guide-section-title" id="ref-actions">7. Advanced Action Logic &amp; Domain Operations <span class="guide-badge">actions</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Transform Zenith into a full business logic framework. The <code>action: { ... }</code> block executes multi-entity domain mutations, updates related secondary models, instantiates secondary entities, logs audit trails, and triggers notifications with authenticated user context.</p>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Supported Domain Operations</h4>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Operation</th>
+                <th>Zenith Syntax</th>
+                <th>Generated Spring Boot 3 Logic</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Primary Entity Mutation</td>
+                <td><code>status = TaskStatus.DONE</code></td>
+                <td><code>entity.setStatus(TaskStatus.DONE);</code> followed by <code>repository.save(entity);</code></td>
+              </tr>
+              <tr>
+                <td>Secondary Entity Update</td>
+                <td><code>update Project { where: id == entity.project.id, completedTasks = entity.project.completedTasks + 1 }</code></td>
+                <td>Injects <code>ProjectRepository</code>, fetches target entity by ID via <code>findById(...)</code>, executes setters, and calls <code>save()</code>.</td>
+              </tr>
+              <tr>
+                <td>Secondary Entity Creation</td>
+                <td><code>create AuditLog { action = "TASK_DONE", details = "..." }</code></td>
+                <td>Injects <code>AuditLogRepository</code>, instantiates new entity, populates fields, and calls <code>save()</code>.</td>
+              </tr>
+              <tr>
+                <td>Current User Context</td>
+                <td><code>currentUser.email</code> / <code>currentUser.username</code></td>
+                <td>Resolves authenticated user from Spring Security <code>SecurityContextHolder</code>.</td>
+              </tr>
+              <tr>
+                <td>Event &amp; Notification Hook</td>
+                <td><code>notify(entity.project.owner, "Message")</code></td>
+                <td>Dispatches asynchronous domain notification to the target recipient.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">How to Use <code>update</code> for Secondary Entities</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">When executing an action on a primary model (e.g. completing a <code>Task</code> or fulfilling an <code>Order</code>), you frequently need to mutate a secondary model (e.g. updating parent <code>Project</code> counters, decrementing <code>Product</code> inventory, or adjusting account balances). The <code>update Model { ... }</code> block handles this declaratively with automatic repository injection and null-safe persistence:</p>
+
+        <pre class="guide-code"><code>// Example 1: Updating parent Project stats when a Task is finished
+update Project {
+    where: id == entity.project.id
+    completedTasks = entity.project.completedTasks + 1
+    lastActivityAt = DateTime.now
+}
+
+// Example 2: Updating inventory stock when an Order is fulfilled
+update Product {
+    where: id == entity.product.id
+    stock = entity.product.stock - entity.quantity
+}</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Complete Example: Mutations, Updates, Secondary Creation &amp; Notifications</h4>
+        <pre class="guide-code"><code>post "/{id}/complete" -> Void {
+    auth: true
+    guard: status == TaskStatus.IN_PROGRESS, "Task must be in progress to complete"
+    action: {
+        // 1. Mutate primary entity
+        status = TaskStatus.DONE
+        completedAt = DateTime.now
+
+        // 2. Update secondary related model (Parent Project)
+        update Project {
+            where: id == entity.project.id
+            completedTasks = entity.project.completedTasks + 1
+            status = ProjectStatus.ACTIVE
+        }
+
+        // 3. Instantiate secondary audit trail entity
+        create AuditLog {
+            action = "TASK_COMPLETED",
+            details = "Task " + entity.title + " completed by " + currentUser.email
+        }
+
+        // 4. Event / Notification hook
+        notify(entity.project.owner, "Task completed: " + entity.title)
+    }
+}</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Generated Spring Boot 3 Output</h4>
+        <pre class="guide-code"><code>// Inside TaskServiceImpl.java:
+entity.setStatus(TaskStatus.DONE);
+entity.setCompletedAt(LocalDateTime.now());
+entity = repository.save(entity);
+
+// 2. Secondary Entity Update:
+projectRepository.findById(entity.getProject().getId()).ifPresent(target -> {
+    target.setCompletedTasks(entity.getProject().getCompletedTasks() + 1);
+    target.setStatus(ProjectStatus.ACTIVE);
+    projectRepository.save(target);
+});
+
+// 3. Secondary Entity Creation:
+AuditLog auditLog = new AuditLog();
+auditLog.setAction("TASK_COMPLETED");
+auditLog.setDetails("Task " + entity.getTitle() + " completed by " + currentUsername);
+auditLogRepository.save(auditLog);
+
+// 4. Notification Dispatch:
+org.slf4j.LoggerFactory.getLogger(getClass()).info("Notification to {}: {}", entity.getProject().getOwner(), "Task completed: " + entity.getTitle());</code></pre>
+
+        <!-- 8. Data Transfer Objects -->
+        <h3 class="guide-section-title" id="ref-dto">8. Data Transfer Objects &amp; Endpoint Auto-Mapping <span class="guide-badge">dto</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Define custom request and response payloads decoupled from JPA database models with strict typing and optionality. DTOs compile directly to Java 17 records and TypeScript client interfaces.</p>
+        <pre class="guide-code"><code>dto AssignTaskRequest {
+    assigneeId: UUID
+    comment: String?
+    priority: Priority?
+}
+
+dto OrderSummaryResponse {
+    id: UUID
+    orderNumber: String
+    totalAmount: Decimal
+    status: OrderStatus
+    customerId: UUID?                 // Automatically mapped from entity.customer.id
+}</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Custom DTO Return Types on Endpoints &amp; Automatic Field Mapping</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">When an endpoint declares a custom DTO return type (e.g. <code>post "/{id}/pay" -> OrderSummaryResponse</code> or <code>get "/summaries" -> List&lt;OrderSummaryResponse&gt;</code>), Zenith automatically synthesizes a specialized conversion method in <code>{Model}Mapper.java</code> without requiring boilerplate mapping code:</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Mapping Rule</th>
+                <th>Behavior</th>
+                <th>Transpiled Java Output</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Coincident Field Matching</strong></td>
+                <td>Directly copies attributes present in both the model and the DTO with compatible types.</td>
+                <td><code>entity.getOrderNumber()</code> &rarr; <code>orderNumber</code></td>
+              </tr>
+              <tr>
+                <td><strong>Relational Foreign Key Resolution</strong></td>
+                <td>If a DTO field is named <code>{relation}Id</code> (e.g. <code>customerId: UUID</code>) and the model has a relation <code>customer: Customer</code>, Zenith automatically extracts the relation ID with null-safety.</td>
+                <td><code>entity.getCustomer() != null ? entity.getCustomer().getId() : null</code></td>
+              </tr>
+              <tr>
+                <td><strong>Unmatched / Computed Fields</strong></td>
+                <td>DTO fields not present on the model receive safe typed defaults (<code>0</code>, <code>""</code>, <code>null</code>) or can be populated via custom query logic.</td>
+                <td><code>totalItems: 0</code> / <code>summary: null</code></td>
+              </tr>
+              <tr>
+                <td><strong>Service &amp; Controller Wiring</strong></td>
+                <td>Service interface and implementation return the custom DTO via <code>mapper.to{DtoName}(entity)</code>, and Spring REST controllers emit <code>ResponseEntity&lt;{DtoName}&gt;</code>.</td>
+                <td><code>return orderMapper.toOrderSummaryResponse(entity);</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Option A: Explicit return DTO { ... } in the Action Block</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">Allow explicit DTO return construction inside the <code>action: { ... }</code> block for customized computed fields, aggregations, and authenticated user context:</p>
+        <pre class="guide-code"><code>post "/{id}/pay" -> OrderSummaryResponse {
+    auth: true
+    guard: status == OrderStatus.PENDING, "Only pending orders can be marked as paid"
+    action: {
+        status = OrderStatus.PAID
+        return OrderSummaryResponse {
+            orderNumber = entity.orderNumber,
+            totalAmount = entity.totalAmount,
+            itemCount = entity.items.size(),
+            processedBy = currentUser.email
+        }
+    }
+}</code></pre>
+        <p style="font-size: 12px; margin-bottom: 8px;">Transpiles directly to explicit record instantiation in the service layer:</p>
+        <pre class="guide-code"><code>// In OrderServiceImpl.java:
+entity.setStatus(OrderStatus.PAID);
+entity = repository.save(entity);
+
+return new OrderSummaryResponse(
+    entity.getOrderNumber(),
+    entity.getTotalAmount(),
+    entity.getItems().size(),
+    currentUsername
+);</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Option B: Automatic Coincident Field &amp; Relation Mapping (Zero-Boilerplate)</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">When no explicit return statement is written in the action block, Zenith automatically compares the target DTO with the model and synthesizes a dedicated mapper method:</p>
+        <pre class="guide-code"><code>// 1. Declare the specialized response DTO
+dto OrderSummaryResponse {
+    id: UUID
+    orderNumber: String
+    totalAmount: Decimal
+    status: OrderStatus
+    customerId: UUID?       // Automatically mapped from entity.customer.id
+    receiptUrl: String?     // Unmatched field: receives default (null) or explicit query mapping
+}
+
+// 2. Reference the DTO directly as the endpoint return type
+model Order {
+    id: UUID @id @auto
+    orderNumber: String(length = 20) @unique
+    totalAmount: Decimal(precision = 12, scale = 2)
+    status: OrderStatus = PENDING
+
+    relations {
+        customer: Customer @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            list: public
+            create: auth
+        }
+
+        // Returns OrderSummaryResponse instead of default OrderResponse
+        post "/{id}/pay" -> OrderSummaryResponse {
+            auth: true
+            guard: status == OrderStatus.PENDING, "Only pending orders can be marked as paid"
+            action: {
+                status = OrderStatus.PAID
+                create AuditLog {
+                    action = "ORDER_PAYMENT_PROCESSED",
+                    details = "Order " + entity.orderNumber + " marked PAID by " + currentUser.email
+                }
+                notify(entity.customer.email, "Your payment for order " + entity.orderNumber + " succeeded!")
+            }
+        }
+
+        // Returns a collection of custom DTOs
+        get "/pending-summaries" -> List&lt;OrderSummaryResponse&gt; {
+            auth: [ADMIN, MANAGER]
+            query: status == OrderStatus.PENDING
+        }
+    }
+}</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Generated Java 17 Record, Mapper &amp; Service Output (Option B)</h4>
+        <pre class="guide-code"><code>// 1. Generated Record (dto/OrderSummaryResponse.java):
+package com.nexus.commerce.dto;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+import com.nexus.commerce.enums.OrderStatus;
+
+public record OrderSummaryResponse(
+    UUID id,
+    String orderNumber,
+    BigDecimal totalAmount,
+    OrderStatus status,
+    UUID customerId,
+    String receiptUrl
+) {}
+
+// 2. Generated Mapper Method (mapper/OrderMapper.java):
+public OrderSummaryResponse toOrderSummaryResponse(Order entity) {
+    if (entity == null) {
+        return null;
+    }
+    return new OrderSummaryResponse(
+        entity.getId(),                                                       // Exact field match
+        entity.getOrderNumber(),                                              // Exact field match
+        entity.getTotalAmount(),                                              // Exact field match
+        entity.getStatus(),                                                   // Exact field match
+        entity.getCustomer() != null ? entity.getCustomer().getId() : null,  // Relational FK extracted
+        null                                                                  // Safe default for unmatched field
+    );
+}
+
+// 3. Generated Service Implementation (service/impl/OrderServiceImpl.java):
+@Override
+@Transactional
+public OrderSummaryResponse pay(UUID id) {
+    Order entity = orderRepository.findById(id)
+        .orElseThrow(() -> new ResourceNotFoundException("Order", id));
+
+    if (entity.getStatus() != OrderStatus.PENDING) {
+        throw new BadRequestException("Only pending orders can be marked as paid");
+    }
+
+    entity.setStatus(OrderStatus.PAID);
+    entity = orderRepository.save(entity);
+
+    // Audit logs & domain notifications dispatched here...
+
+    return orderMapper.toOrderSummaryResponse(entity);
+}</code></pre>
+
+        <!-- 9. Database Seeding -->
+        <h3 class="guide-section-title" id="ref-seed">9. Declarative Database Seeding <span class="guide-badge">seed</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Populate initial development and QA databases automatically. Zenith generates a Spring <code>ApplicationRunner</code> (<code>@Profile("!prod")</code>) with password hashing and foreign key cross-referencing using <code>seed Model[index]</code>.</p>
+        <pre class="guide-code"><code>seed UserEntity {
+    [
+        { email: "admin@taskpulse.io", role: ADMIN, fullName: "System Admin", password: "password123" },
+        { email: "dev@taskpulse.io", role: DEVELOPER, fullName: "Core Developer", password: "password123" }
+    ]
+}
+
+seed Project {
+    [
+        { name: "Website Redesign", key: "WEB", description: "Main landing page" }
+    ]
+}
+
+seed Task {
+    [
+        {
+            title: "Setup CI/CD Pipeline",
+            description: "Configure GitHub Actions workflows",
+            status: TODO,
+            priority: HIGH,
+            project: seed Project[0],        // References the 1st Project seed record
+            assignee: seed UserEntity[1]     // References the 2nd UserEntity seed record
+        }
+    ]
+}</code></pre>
+
+        <!-- 10. Modular Schemas & File Imports -->
+        <h3 class="guide-section-title" id="ref-imports">10. Modular Schemas &amp; File Imports <span class="guide-badge">import</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Decompose enterprise schemas into modular <code>.zen</code> files. The compiler unifies models, relations, DTOs, and seeds in memory with circular dependency detection and diamond import deduplication.</p>
+        <pre class="guide-code"><code>// schema.zen (Root Entry Schema)
+config {
+    app: "TaskPulse"
+    database: postgres
+    auth: jwt
+    storage: minio
+}
+
+import "./auth.zen"       // Imports UserEntity, Role enum, and User seeds
+import "./projects.zen"   // Imports Project model and Project seeds
+import "./tasks.zen"      // Imports Task model, TaskStatus enum, and assign endpoint</code></pre>
+
+        <!-- 11. File Uploads & Object Storage -->
+        <h3 class="guide-section-title" id="ref-storage">11. File Uploads &amp; Object Storage <span class="guide-badge">storage</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Zenith features a unified storage abstraction supporting MinIO (local dev) and AWS S3 (production cloud). Developers switch providers without changing a single line of business logic.</p>
+        <p style="font-size: 12px; margin-bottom: 8px; color: #93c5fd;"><strong>Note on Generation:</strong> The entity-bound media endpoints (<code>POST/GET/DELETE /{id}/field</code>) are <em>only generated when <code>endpoints</code> and <code>crud</code> exist in the model</em>. If a model defines <code>@file</code> or <code>@image</code> without <code>crud</code>, the field persists as a database string column without exposing upload routes.</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th>Endpoint / Route</th>
+                <th>Description &amp; Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Global Upload API</td>
+                <td><code>POST /api/v1/files/upload</code></td>
+                <td>Multipart upload with size &amp; MIME validation. Returns <code>FileMetadataResponse</code>.</td>
+              </tr>
+              <tr>
+                <td>Global Download API</td>
+                <td><code>GET /api/v1/files/{fileKey}</code></td>
+                <td>Streams file content with range headers and correct Content-Type.</td>
+              </tr>
+              <tr>
+                <td>Global Delete API</td>
+                <td><code>DELETE /api/v1/files/{fileKey}</code></td>
+                <td>Deletes binary asset from bucket and removes metadata record.</td>
+              </tr>
+              <tr>
+                <td>Entity Upload <em>(requires endpoints &amp; crud)</em></td>
+                <td><code>POST /api/v1/customers/{id}/avatar</code></td>
+                <td>Uploads multipart file, stores in bucket, and binds key to <code>customer.avatar</code>.</td>
+              </tr>
+              <tr>
+                <td>Entity Download <em>(requires endpoints &amp; crud)</em></td>
+                <td><code>GET /api/v1/customers/{id}/avatar</code></td>
+                <td>Downloads or streams the entity's avatar/file directly.</td>
+              </tr>
+              <tr>
+                <td>Entity Delete <em>(requires endpoints &amp; crud)</em></td>
+                <td><code>DELETE /api/v1/customers/{id}/avatar</code></td>
+                <td>Deletes storage object and clears entity's file attribute to null.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre class="guide-code"><code>// Zero-code migration between MinIO (local) and AWS S3 (production cloud)
+config {
+    app: "ShopSphere"
+    database: postgres
+    storage: minio            // minio | s3
+    storageBucket: "shopsphere-media"
+}
+
+model Customer {
+    id: UUID @id @auto
+    email: String @email @unique
+    // Image attribute with validation constraints
+    avatar: String? @image(maxSize = "5MB", types = ["image/jpeg", "image/png"], path = "avatars/")
+    // Document attribute with size and PDF validation
+    resume: String? @file(maxSize = "15MB", types = ["application/pdf"], path = "resumes/")
+}</code></pre>
+
+        <!-- 12. Full-Stack Tooling & Deployment -->
+        <h3 class="guide-section-title" id="ref-fullstack">12. Full-Stack Tooling &amp; Deployment <span class="guide-badge">fullstack</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Zenith automatically generates production container definitions, TypeScript client SDKs, and React Query hooks directly from your schema.</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Artifact</th>
+                <th>File Location</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>TypeScript Client</td>
+                <td><code>sdk/typescript/src/client.ts</code></td>
+                <td>Pure-fetch HTTP client with full autocompletion and JWT token management.</td>
+              </tr>
+              <tr>
+                <td>React Query Hooks</td>
+                <td><code>sdk/typescript/src/react-query.ts</code></td>
+                <td>Ready-to-use <code>useQuery</code> and <code>useMutation</code> hooks for TanStack Query.</td>
+              </tr>
+              <tr>
+                <td>Multi-Stage Dockerfile</td>
+                <td><code>Dockerfile</code></td>
+                <td>Builds Java JAR in Maven builder container and runs on Eclipse Temurin 17 JRE Alpine.</td>
+              </tr>
+              <tr>
+                <td>Docker Compose</td>
+                <td><code>docker-compose.yml</code></td>
+                <td>Zero-config multi-container stack with Spring Boot, PostgreSQL/MySQL, and MinIO storage.</td>
+              </tr>
+              <tr>
+                <td>Hot Reload Watcher</td>
+                <td><code>zenith watch &lt;file.zen&gt;</code></td>
+                <td>Monitors schema files and regenerates complete backend in sub-150ms cycles.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre class="guide-code"><code>// Frontend usage with generated TypeScript SDK &amp; React Query:
+import { createClient } from './sdk/typescript/src/client';
+import { useCustomerList, useCreateCustomer } from './sdk/typescript/src/react-query';
+
+const api = createClient({
+    baseUrl: 'http://localhost:8080',
+    getToken: () => localStorage.getItem('token')
+});
+
+// Autocompleted, type-safe query
+const { data, isLoading } = useCustomerList(api, { page: 0, size: 20 });</code></pre>
+
+        <!-- 13. Background Workers & Scheduled Jobs -->
+        <h3 class="guide-section-title" id="ref-jobs">13. Background Workers &amp; Scheduled Jobs <span class="guide-badge">jobs</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Zenith generates production-grade Spring scheduling components with <code>@EnableScheduling</code>, <code>ThreadPoolTaskScheduler</code>, and declarative <code>job</code> blocks supporting cron schedules, fixed rate intervals, guards, bulk mutations, and time functions.</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>cron</code></td>
+                <td>String</td>
+                <td>Standard 6-field Spring cron expression (e.g., <code>"0 0 2 * * ?"</code> for 2 AM daily).</td>
+              </tr>
+              <tr>
+                <td><code>fixedRate</code></td>
+                <td>Duration / Number</td>
+                <td>Fixed interval in milliseconds or human duration (e.g., <code>60000</code> or <code>"5m"</code>).</td>
+              </tr>
+              <tr>
+                <td><code>description</code></td>
+                <td>String</td>
+                <td>Documentation string emitted in JavaDoc and logs.</td>
+              </tr>
+              <tr>
+                <td><code>enabled</code></td>
+                <td>Boolean</td>
+                <td>Default enablement status; toggled via <code>application.yml</code> or environment variable.</td>
+              </tr>
+              <tr>
+                <td><code>action: { ... }</code></td>
+                <td>Block</td>
+                <td>Bulk queries, entity mutations, audit logs, or notifications executed within a transaction.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre class="guide-code"><code>// Declarative scheduled batch routine:
+job ArchiveOldTasks {
+    cron: "0 0 2 * * ?"
+    description: "Nightly maintenance job archiving tasks completed over 30 days ago"
+    action: {
+        update Task {
+            where: status == DONE and updatedAt &lt; daysAgo(30)
+            status = ARCHIVED
+        }
+    }
+}
+
+// Emits Spring @Component with @Scheduled and @Transactional:
+@Component
+@ConditionalOnProperty(name = "jobs.archive-old-tasks.enabled", havingValue = "true", matchIfMissing = true)
+public class ArchiveOldTasksJob {
+    private final TaskRepository taskRepository;
+
+    @Scheduled(cron = "${jobs.archive-old-tasks.cron:0 0 2 * * ?}")
+    @Transactional
+    public void execute() {
+        taskRepository.findAll().stream()
+            .filter(target -> (target.getStatus() != null &amp;&amp; "DONE".equalsIgnoreCase(target.getStatus().name()))
+                           &amp;&amp; (target.getUpdatedAt() != null &amp;&amp; target.getUpdatedAt().isBefore(LocalDateTime.now().minusDays(30))))
+            .forEach(target -> {
+                target.setStatus(TaskStatus.ARCHIVED);
+                taskRepository.save(target);
+            });
+    }
+}</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Logic Transpiler: Time Expressions &amp; Bulk Stream Filters</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">The Zenith transpiler automatically converts high-level temporal functions and bulk criteria into type-safe, null-safe Spring Boot 3 stream filters and repository batch updates:</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Time Expression</th>
+                <th>Transpiled Java Output</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>now()</code></td>
+                <td><code>java.time.LocalDateTime.now()</code></td>
+                <td>Current system timestamp.</td>
+              </tr>
+              <tr>
+                <td><code>daysAgo(n)</code></td>
+                <td><code>java.time.LocalDateTime.now().minusDays(n)</code></td>
+                <td>Computes relative date <em>n</em> days before current timestamp.</td>
+              </tr>
+              <tr>
+                <td><code>hoursAgo(n)</code></td>
+                <td><code>java.time.LocalDateTime.now().minusHours(n)</code></td>
+                <td>Computes relative time <em>n</em> hours before current timestamp.</td>
+              </tr>
+              <tr>
+                <td><code>minutesAgo(n)</code></td>
+                <td><code>java.time.LocalDateTime.now().minusMinutes(n)</code></td>
+                <td>Computes relative time <em>n</em> minutes before current timestamp.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Bulk Stream Filter Transpilation Rules</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">When an <code>update Model { ... }</code> statement inside a job action contains non-ID or multi-attribute criteria (e.g., <code>where: status == DONE and updatedAt &lt; daysAgo(30)</code>), the transpiler applies intelligent pipeline transformations:</p>
+        <ul style="font-size: 12px; color: #cbd5e1; margin-left: 20px; margin-bottom: 12px; line-height: 1.6;">
+          <li><strong>Repository Stream Pipeline</strong>: Compiles to <code>repository.findAll().stream().filter(...).forEach(...)</code>.</li>
+          <li><strong>Temporal Operator Mapping</strong>: Converts <code>&lt;</code> and <code>&gt;</code> on <code>DateTime</code> properties to null-safe <code>.isBefore(...)</code> and <code>.isAfter(...)</code> methods.</li>
+          <li><strong>Enum Name &amp; Value Matching</strong>: Normalizes enum literals into type-safe comparisons (e.g. <code>target.getStatus() != null &amp;&amp; "DONE".equalsIgnoreCase(target.getStatus().name())</code>).</li>
+          <li><strong>Transactional Batch Persistence</strong>: Executes all field mutations on matched entities and saves each back to the database within a transactional boundary (<code>@Transactional</code>).</li>
+        </ul>
+
+        <!-- 14. Automated Unit & Integration Tests Generation -->
+        <h3 class="guide-section-title" id="ref-tests">14. Automated Unit &amp; Integration Tests Generation <span class="guide-badge">tests</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Zenith synthesizes complete <strong>JUnit 5</strong>, <strong>Spring Boot Test</strong>, and <strong>MockMvc</strong> test suites directly from your schema AST, providing 80%+ test coverage from day one without writing manual boilerplate.</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Generated Component</th>
+                <th>Target File Path</th>
+                <th>Technology</th>
+                <th>Verification Scope</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>application.yml</code></td>
+                <td><code>src/test/resources/application.yml</code></td>
+                <td>Spring Boot Test Profile</td>
+                <td>Isolated in-memory H2 database (<code>create-drop</code>), disabled Flyway, dummy secrets. Tests run anywhere without external infrastructure.</td>
+              </tr>
+              <tr>
+                <td><code>ApplicationTests</code></td>
+                <td><code>src/test/java/.../*ApplicationTests.java</code></td>
+                <td><code>@SpringBootTest</code></td>
+                <td>Verifies full Spring application context startup, bean injection, and wiring.</td>
+              </tr>
+              <tr>
+                <td><code>AuthControllerTest</code></td>
+                <td><code>src/test/java/.../controller/AuthControllerTest.java</code></td>
+                <td><code>MockMvc</code></td>
+                <td>Asserts <code>/api/auth/login</code> and <code>/api/auth/register</code> payload validation and unauthorized handling.</td>
+              </tr>
+              <tr>
+                <td><code>*ControllerTest</code></td>
+                <td><code>src/test/java/.../controller/*ControllerTest.java</code></td>
+                <td><code>MockMvc</code> + <code>@WithMockUser</code></td>
+                <td>Asserts unauthenticated access (<code>401</code>), role permission guards (<code>403</code>), bad payload validation (<code>400</code>), non-existent entities (<code>404</code>), and happy path operations (<code>200</code> / <code>201</code>).</td>
+              </tr>
+              <tr>
+                <td><code>*RepositoryTest</code></td>
+                <td><code>src/test/java/.../repository/*RepositoryTest.java</code></td>
+                <td><code>@DataJpaTest</code></td>
+                <td>Verifies JPA entity mappings, database dialect compatibility, foreign key cascading, and repository proxy beans under H2.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Generated MockMvc Test Suite Example</h4>
+        <pre class="guide-code"><code>// Auto-generated Spring Boot 3 & MockMvc Test Suite:
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class OrderControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    @DisplayName("GET /api/v1/orders without token returns 401 Unauthorized")
+    void testGetAll_Unauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/orders"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser
+    @DisplayName("GET /api/v1/orders returns 200 OK with PageResponse")
+    void testGetAll_Success() throws Exception {
+        mockMvc.perform(get("/api/v1/orders")
+                .param("page", "0").param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/orders/{id}/pay without token returns 401 Unauthorized")
+    void testPay_Unauthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/orders/00000000-0000-0000-0000-000000000000/pay")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("POST /api/v1/orders/{id}/pay on non-existent entity returns 404 Not Found")
+    void testPay_NotFound() throws Exception {
+        mockMvc.perform(post("/api/v1/orders/00000000-0000-0000-0000-000000000000/pay")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+    }
+}</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Executing Automated Tests</h4>
+        <pre class="guide-code"><code># Run the entire test suite against the in-memory test profile:
+mvn test</code></pre>
+
+        <!-- 15. Zenith Studio Desktop & CLI -->
+        <h3 class="guide-section-title" id="ref-desktop">15. Zenith Studio Desktop &amp; CLI Options <span class="guide-badge">studio</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Zenith Studio can be used both as an in-browser engineering workspace and as a dedicated, frameless native desktop application.</p>
+        
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th style="width: 32%;">Command / Mode</th>
+                <th style="width: 25%;">Arguments</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>zenith studio</code></td>
+                <td><code>[file.zen] [-p 3000]</code></td>
+                <td>Starts the embedded HTTP IDE server and opens in your default web browser (<code>http://localhost:3000</code>).</td>
+              </tr>
+              <tr>
+                <td><code>zenith studio --desktop</code></td>
+                <td><code>[file.zen] [-d]</code></td>
+                <td>Launches Zenith Studio in pure standalone frameless application mode (dedicated OS taskbar icon, borderless window).</td>
+              </tr>
+              <tr>
+                <td><code>Desktop Installer (.exe)</code></td>
+                <td><code>Zenith-Studio-Setup.exe</code></td>
+                <td>Official offline installer with desktop shortcut, Start Menu integration, and standalone runtime.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin: 14px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <a href="/download/desktop" class="btn btn-desktop" style="padding: 6px 14px; font-size: 12px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            Download Windows Installer (.exe)
+          </a>
+          <span style="font-size: 11px; color: var(--text-muted);">Self-contained NSIS setup (~82 MB)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/studio.js"></script>
+</body>
+</html>
