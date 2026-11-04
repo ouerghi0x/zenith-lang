@@ -15,7 +15,7 @@ demo/build/
 build/
 zenith.jar
 *.wav
-docs/
+desktop/
 # Internal tools & temporary scratch scripts
 tools/
 sources.txt
