@@ -1891,3 +1891,9 @@ body.resizing-panels * {
   overflow-y: auto;
   flex: 1;
 }
+
+/* Hide Desktop Download CTA inside Desktop App */
+body.is-desktop-app #desktopDownloadBtn {
+  display: none !important;
+}
+

@@ -21,6 +21,25 @@ function redrawErdIfActive() {
 }
 window.redrawErdIfActive = redrawErdIfActive;
 
+// Hide Desktop App download button when already running inside the native Desktop application
+function checkDesktopEnvironment() {
+  const isDesktop = window.location.search.includes('mode=desktop') ||
+                    navigator.userAgent.includes('ZenithStudioDesktop') ||
+                    navigator.userAgent.includes('Electron') ||
+                    (window.process && window.process.versions && window.process.versions.electron);
+  if (isDesktop) {
+    document.body.classList.add('is-desktop-app');
+    const btn = document.getElementById('desktopDownloadBtn');
+    if (btn) btn.style.display = 'none';
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', checkDesktopEnvironment);
+} else {
+  checkDesktopEnvironment();
+}
+
 // Default initial schema
 const defaultSchema = `config {
     app: "ShopSphere"
