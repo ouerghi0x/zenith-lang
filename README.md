@@ -82,7 +82,9 @@ Zenith was built to address a fundamental tension in backend engineering: **Java
 If your daily workflow touches any of the following scenarios, Zenith was built for you:
 
 ### 1. Spring Boot Developers & Backend Teams Facing Boilerplate Fatigue
+
 You work with Java and Spring Boot every day. You appreciate strong typing, JPA, and Spring Security, but you dread adding new domain entities because each one requires manually creating and wiring:
+
 - The JPA `@Entity` with column definitions, table mappings, and validation constraints
 - 3 to 4 Java `record` DTOs (`CreateRequest`, `UpdateRequest`, `Response`)
 - A mapper class or MapStruct interface to synchronize DTOs and entities
@@ -94,20 +96,25 @@ You work with Java and Spring Boot every day. You appreciate strong typing, JPA,
 Zenith consolidates all of that into a single `.zen` domain definition. You define the schema, validation rules, relationships, and endpoint behavior once; Zenith transpiles it into standard, clean, idiomatic Spring Boot 3 code in milliseconds.
 
 ### 2. Full-Stack Engineers & Solo Builders
+
 You want to deliver production-ready applications end-to-end without spending days configuring infrastructure plumbing before writing your first business feature:
+
 - **Instant Backend**: Get JWT authentication, role-based access control, OpenAPI documentation, S3/MinIO file uploads, and background cron jobs out of the box.
 - **Typed Frontend Integration**: Zenith generates a matching TypeScript SDK with strict interface definitions, a zero-dependency Fetch client, and pre-wired React Query hooks (`@tanstack/react-query`) synchronized with your backend models.
 - **Container Infrastructure**: A multi-stage `Dockerfile` and `docker-compose.yml` are generated automatically for local testing and cloud deployment.
 
 ### 3. Startups, Agencies, and Fast-Moving Product Teams
+
 Startups often choose dynamic stacks (Rails, Django, Node.js) for initial prototyping speed, only to face performance and refactoring hurdles as the codebase matures. Conversely, starting directly with raw Java can slow down early product discovery.
 
 Zenith provides the prototyping velocity of Rails or Prisma with the enterprise reliability and type safety of Spring Boot 3 + Java 17. You can prototype schemas visually in **Zenith Studio**, test live endpoints in the browser, export the production codebase, and deploy immediately.
 
 ### 4. Tech Leads & Architects Standardizing Microservices
+
 When multiple engineers or squads build microservices independently, subtle architectural drift is inevitable: inconsistent pagination contracts, varied DTO naming patterns, different Spring Security configurations, and fragmented error formats.
 
 With Zenith:
+
 - Architecture standards are codified directly into the compiler.
 - Every generated microservice shares identical architectural layering, uniform error handling, consistent Swagger documentation, and standard DTO patterns.
 - **Zero Vendor Lock-In**: The output Zenith produces is standard Java 17, Spring Boot 3, and Maven. There is no custom runtime dependency or proprietary library required in production. If your team ever decides to stop using Zenith, you simply keep the generated Java source code and maintain it with IntelliJ, Eclipse, or VS Code as a standard Spring Boot repository.
@@ -117,6 +124,7 @@ With Zenith:
 ### When Should You Not Use Zenith?
 
 To be transparent about its scope, Zenith is intentionally optimized for REST APIs and relational domain architectures. It may not be the right choice if:
+
 - **Your application relies heavily on legacy database stored procedures** or non-relational document/graph databases (MongoDB, Neo4j).
 - **Your architecture is non-REST by design** (e.g., pure gRPC streaming, low-level binary socket protocols, or complex CQRS event-sourcing pipelines).
 - **You prefer handwriting and tweaking every individual line of boilerplate manually** rather than using declarative domain modeling.
@@ -201,26 +209,34 @@ Scaffolds a new starter schema file.
 Launches **Zenith Studio** — a full-featured visual architecture IDE featuring live interactive entity relation diagrams (ERD), full Monaco code editor with real-time syntax diagnostics, clickable import navigation, instant Spring Boot ZIP export, and in-browser/in-app REST API testing.
 
 #### Web Mode (Default)
+
 Opens the studio inside your default web browser at `http://localhost:3000`:
+
 ```cmd
 .\bin\zenith.bat studio zenith-exemples\nexus-commerce\schema.zen
 ```
 
 #### Native Desktop Mode (`--desktop` or `-d`)
+
 Launches a dedicated, frameless native desktop application window:
+
 ```cmd
 .\bin\zenith.bat studio zenith-exemples\nexus-commerce\schema.zen --desktop
 ```
 
 #### Download Prebuilt Windows Desktop Installer (.exe)
+
 You can download the standalone desktop installer directly:
-* **[Download Zenith-Studio-Setup.exe](https://github.com/zenith-lang/zenith/releases/latest/download/Zenith-Studio-Setup.exe)** *(Self-contained NSIS installer, ~82 MB)*
-* Includes desktop shortcut, Start Menu integration, embedded offline runtime, and uninstaller.
+
+- **[Download Zenith-Studio-Setup.exe](https://github.com/zenith-lang/zenith/releases/latest/download/Zenith-Studio-Setup.exe)** _(Self-contained NSIS installer, ~82 MB)_
+- Includes desktop shortcut, Start Menu integration, embedded offline runtime, and uninstaller.
 
 To build the installer locally from source at any time:
+
 ```cmd
 .\desktop\build-desktop.bat
 ```
+
 The executable is generated into `desktop\dist\Zenith-Studio-Setup.exe`.
 
 ---
@@ -779,26 +795,6 @@ All 7 foundational milestones (**Custom Request Bodies**, **Database Seeding**, 
 
 ---
 
-## Enterprise Battle-Testing & Next-Gen Roadmap (The Final 5–10%)
-
-To bridge the final 5–10% gap for mission-critical microservices, distributed event streaming, and custom enterprise integration logic, consult the dedicated **[ENTERPRISE_ROADMAP.md](ENTERPRISE_ROADMAP.md)**:
-
-1. **Extension Points & Custom Code Preservation ("Escape Hatches")**:
-   - **Generation Gap Pattern**: Base abstract services (`AbstractOrderService`) regenerated on every schema update, paired with safe subclass extension services (`OrderService`) generated only once.
-   - **`@custom` Endpoint Annotation**: Delegate specific complex endpoints directly to custom handwritten Spring Beans.
-   - **Protected Directory Guarantees**: Any code in `src/main/java/.../custom/` or matching `*Custom*.java` is strictly preserved.
-2. **Event-Driven Messaging (Kafka & RabbitMQ)**:
-   - Declarative domain event contracts: `event OrderPaidEvent { ... }`
-   - Native event dispatch in endpoint actions: `publish OrderPaidEvent { ... }`
-   - Auto-configured `spring-kafka` / RabbitMQ templates and JSON topic serializers.
-3. **Automated CI/CD Workflow Generation**:
-   - Turnkey `.github/workflows/ci.yml` and `.gitlab-ci.yml` definitions generated alongside the project.
-   - Automatically runs `mvn test` and builds cached multi-stage Docker images on every commit.
-
-**Full Architectural Specification**: **[ENTERPRISE_ROADMAP.md](ENTERPRISE_ROADMAP.md)**
-
----
-
 ## Contributing
 
 Contributions are warmly welcomed! Please read our **[CONTRIBUTING.md](CONTRIBUTING.md)** for details on the development environment setup, codebase architecture, pull request workflow, and contributor agreement.
@@ -810,5 +806,5 @@ Contributions are warmly welcomed! Please read our **[CONTRIBUTING.md](CONTRIBUT
 Zenith is open-source software licensed under the **[Apache License 2.0](LICENSE)**.
 
 ### Clarification on Generated Code
-The Apache 2.0 license applies to the Zenith compiler, CLI, and Zenith Studio tools. **All source code, configuration files, and client SDKs generated by Zenith belong 100% to you (the author of the `.zen` specification).** Zenith claims no ownership, licensing restrictions, or royalties over applications generated with its tools.
 
+The Apache 2.0 license applies to the Zenith compiler, CLI, and Zenith Studio tools. **All source code, configuration files, and client SDKs generated by Zenith belong 100% to you (the author of the `.zen` specification).** Zenith claims no ownership, licensing restrictions, or royalties over applications generated with its tools.

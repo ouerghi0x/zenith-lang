@@ -5,7 +5,7 @@
 
 ---
 
-## 🧭 Executive Summary
+## Executive Summary
 
 Zenith DSL currently generates **90–95% of a full-scale enterprise application**:
 - Data modeling, JPA relationships, and Flyway migrations
@@ -39,10 +39,10 @@ To bridge the final **5–10% gap** for large-scale enterprise adoption and miss
 
 ## 1. Extension Points & Custom Code Preservation ("Escape Hatches")
 
-### 🎯 Objective
+### Objective
 Allow developers to integrate legacy SOAP endpoints, custom cryptographic hardware (HSM), third-party partner SDKs, or bespoke business logic without having their handwritten code overwritten during `zenith build` or `zenith watch` re-compilations.
 
-### 📐 Technical Architecture & Patterns
+### Technical Architecture & Patterns
 
 #### Pattern A: Base + Implementation Service Generation (Generation Gap Pattern)
 Instead of generating a monolithic `OrderService.java` that gets overwritten on every schema change, Zenith splits the service layer:
@@ -119,10 +119,10 @@ public ResponseEntity<PaymentResponse> process3ds(@PathVariable UUID id, Princip
 
 ## 2. Event-Driven Messaging (Kafka & RabbitMQ)
 
-### 🎯 Objective
+### Objective
 Enable asynchronous, decoupled microservice architectures by allowing Zenith action blocks to publish domain events to message brokers like Apache Kafka, RabbitMQ, or AWS SNS/SQS.
 
-### 📐 Proposed Zenith Syntax
+### Proposed Zenith Syntax
 
 ```zenith
 config {
@@ -181,7 +181,7 @@ model Order {
 }
 ```
 
-### 🛠️ Generated Spring Boot 3 Output
+### Generated Spring Boot 3 Output
 
 1. **`pom.xml` Dependency**:
    ```xml
@@ -239,10 +239,10 @@ model Order {
 
 ## 3. Automated CI/CD Workflow Generation
 
-### 🎯 Objective
+### Objective
 Provide instant, turnkey DevOps pipelines for GitHub Actions and GitLab CI, ensuring that every commit runs tests, validates schemas, builds containers, and prepares production artifacts without manual pipeline setup.
 
-### 📐 Configuration in `config { ... }`
+### Configuration in `config { ... }`
 
 ```zenith
 config {
@@ -253,7 +253,7 @@ config {
 }
 ```
 
-### 🛠️ Generated Pipeline Definitions
+### Generated Pipeline Definitions
 
 #### A. GitHub Actions (`.github/workflows/ci.yml`)
 ```yaml
@@ -346,7 +346,90 @@ docker-build:
 
 ---
 
-## 📊 Summary Comparison: Evolution to Version 2.0
+## 4. Future Architectural Explorations & Backlog
+
+<details>
+<summary><b>Click to expand: Under-Consideration Features (Performance, Security, Real-Time & Infra)</b></summary>
+<br>
+
+A streamlined scratchpad of candidate features under consideration for future enterprise iterations:
+
+### 1. Database Indexes (`@index`)
+- **Need**: Optimize query performance on frequently searched or filtered columns.
+- **Concept**: Single or composite indexes declared on fields:
+  ```zenith
+  model Order {
+      orderNumber: String @unique @index
+      status: OrderStatus @index
+      createdAt: DateTime
+      // Composite index for common dashboard queries:
+      @index([status, createdAt])
+  }
+  ```
+- **Target**: Emits `CREATE INDEX idx_orders_status_created ...` in Flyway migrations and `@Index` in JPA.
+
+### 2. Caching Layer (Redis / Spring Cache)
+- **Need**: Sub-millisecond reads for high-frequency catalog and reference data.
+- **Concept**: Declarative cache eviction on writes and caching on reads:
+  ```zenith
+  model Product {
+      endpoints {
+          crud {
+              cache: "15m" // Emits @Cacheable on list/get, @CacheEvict on create/update/delete
+          }
+      }
+  }
+  ```
+- **Target**: Auto-configured Spring Cache with Redis (`spring-boot-starter-data-redis`) or in-memory Caffeine.
+
+### 3. API Rate Limiting (`@rateLimit`)
+- **Need**: Protect sensitive endpoints (login, registration, payment checkout) from brute force or DDoS.
+- **Concept**: Declarative token-bucket rules:
+  ```zenith
+  post "/auth/login" {
+      rateLimit: "10/minute" // 10 requests per minute per IP
+  }
+  ```
+- **Target**: Bucket4j filter or Redis-backed distributed rate limiter.
+
+### 4. Real-Time Communication & WebSockets (`socket`)
+- **Need**: Instant live push notifications to frontend dashboards without polling.
+- **Concept**: Broadcast domain events directly to connected clients:
+  ```zenith
+  post "/{id}/pay" {
+      action: {
+          broadcast "/topic/orders" { orderId = entity.id, status = "PAID" }
+      }
+  }
+  ```
+- **Target**: Spring WebSocket with STOMP, paired with auto-generated TypeScript WebSocket hooks.
+
+### 5. Nginx Reverse Proxy & Load Balancer
+- **Need**: Production-ready edge routing, SSL termination, and horizontal container scaling.
+- **Concept**: Auto-generated `nginx/nginx.conf` included in `docker-compose.yml`:
+  - Upstream round-robin load balancing across multiple Spring Boot container replicas
+  - Gzip compression, request buffering, and custom security headers (HSTS, CSP)
+
+### 6. Observability, Health & Telemetry
+- **Need**: Out-of-the-box production monitoring for DevOps teams.
+- **Concept**: `config { metrics: prometheus }`
+- **Target**: Pre-configured Spring Boot Actuator (`/actuator/health`, `/actuator/prometheus`) and a turnkey Grafana dashboard JSON file.
+
+### 7. Soft Deletes & Entity Auditing (`@softDelete`, `@audited`)
+- **Need**: Compliance and accidental data loss prevention.
+- **Concept**:
+  - `@softDelete`: Injects `deletedAt: DateTime?`, overrides DELETE to mark `deletedAt = now()`, and filters out deleted rows automatically via `@Where(clause = "deleted_at IS NULL")`.
+  - `@audited`: Automatically tracks `createdBy` and `lastModifiedBy` from the current JWT principal.
+
+### 8. API Versioning
+- **Need**: Support backward-compatible mobile and third-party integrations across schema changes.
+- **Concept**: Header-based (`X-API-Version: 2`) or URI-based (`/api/v2`) routing configurations.
+
+</details>
+
+---
+
+## Summary Comparison: Evolution to Version 2.0
 
 | Domain | Zenith Today (v1.0) | Enterprise Battle-Tested (v2.0) |
 | :--- | :--- | :--- |
