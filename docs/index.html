@@ -3,364 +3,936 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zenith DSL — Next-Gen Web DSL for Java & Spring Boot</title>
-  <meta name="description" content="Eliminate 350+ lines of Spring Boot ceremony. Declare backend models, relationships, security, and endpoints in a single .zen file." />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Zenith DSL Documentation — Language Guide & Reference</title>
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <meta name="description" content="Official documentation and complete language reference for Zenith DSL: eliminating Spring Boot ceremony with concise declarative schemas." />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Ambient background glow -->
-  <div class="glow-sphere glow-top"></div>
-  <div class="glow-sphere glow-bottom"></div>
 
-  <!-- Navigation -->
-  <header class="navbar">
-    <div class="container nav-container">
-      <a href="#" class="nav-brand">
-        <img src="assets/logo.png" alt="Zenith Logo" class="brand-logo" />
-        <span class="brand-text">Zenith<span class="brand-accent">.</span></span>
+  <!-- Top Navigation Bar -->
+  <header class="top-nav">
+    <a href="#" class="brand-wrap">
+      <img src="assets/logo.png" alt="Zenith" class="brand-logo" />
+      <span class="brand-title">Zenith DSL <span class="version-badge">v1.0.0</span></span>
+    </a>
+
+    <div class="nav-actions">
+      <div class="search-input-wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="docsSearch" class="search-input" placeholder="Search documentation..." autocomplete="off" />
+      </div>
+
+      <a href="https://github.com/ouerghi0x/zenith-lang" target="_blank" class="btn-github">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        GitHub
       </a>
-      <nav class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#comparison">Compare</a>
-        <a href="#code">Syntax</a>
-        <a href="#fullstack">Full-Stack</a>
-        <a href="#install">Install</a>
-        <a href="https://github.com/ouerghi0x/zenith-lang" target="_blank" class="github-btn">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-          GitHub
-        </a>
-      </nav>
     </div>
   </header>
 
-  <!-- Hero Section -->
-  <section class="hero-section">
-    <div class="container hero-container">
-      <div class="badge-pill">
-        <span class="pulse-dot"></span>
-        <span>Zenith DSL v1.0.0 is Live &bull; Java 17 + Spring Boot 3</span>
+  <!-- Docs Layout: Sidebar + Main Content -->
+  <div class="docs-layout">
+    
+    <!-- Left Sticky Sidebar -->
+    <aside class="docs-sidebar">
+      <div class="sidebar-category">
+        <div class="category-title">Getting Started</div>
+        <ul class="sidebar-nav">
+          <li><a href="#overview" class="sidebar-link">Overview & Philosophy</a></li>
+          <li><a href="#cli-tools" class="sidebar-link">Installation & CLI Commands</a></li>
+          <li><a href="#zenith-studio" class="sidebar-link">Zenith Studio <span class="badge-pro-pill">PRO</span></a></li>
+        </ul>
       </div>
-      <h1 class="hero-title">
-        The Web DSL That Kills <br />
-        <span class="gradient-text">Spring Boot Ceremony</span>
-      </h1>
-      <p class="hero-subtitle">
-        Declare database models, validation, relations, JWT security, and RESTful endpoints in a clean <code>.zen</code> file. Zenith transpiles directly into production-grade Java and full-stack TypeScript client SDKs in milliseconds.
+
+      <div class="sidebar-category">
+        <div class="category-title">Core Syntax</div>
+        <ul class="sidebar-nav">
+          <li><a href="#config" class="sidebar-link">1. Configuration (config)</a></li>
+          <li><a href="#types" class="sidebar-link">2. Data Types & Nullability</a></li>
+          <li><a href="#decorators" class="sidebar-link">3. Field Decorators & Rules</a></li>
+          <li><a href="#enums" class="sidebar-link">4. Enums & Security Roles</a></li>
+          <li><a href="#relations" class="sidebar-link">5. Entity Relationships</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-category">
+        <div class="category-title">Endpoints & Domain Logic</div>
+        <ul class="sidebar-nav">
+          <li><a href="#crud" class="sidebar-link">6. Standard CRUD Endpoints</a></li>
+          <li><a href="#custom-endpoints" class="sidebar-link">7. Custom Routes & Bodies</a></li>
+          <li><a href="#actions" class="sidebar-link">8. Domain Actions & Guards</a></li>
+          <li><a href="#dto" class="sidebar-link">9. DTOs & Custom Return Types</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-category">
+        <div class="category-title">Enterprise Architecture</div>
+        <ul class="sidebar-nav">
+          <li><a href="#seed" class="sidebar-link">10. Declarative Seeding</a></li>
+          <li><a href="#imports" class="sidebar-link">11. Modular File Imports</a></li>
+          <li><a href="#storage" class="sidebar-link">12. Object Storage (S3/MinIO)</a></li>
+          <li><a href="#jobs" class="sidebar-link">13. Scheduled Workers (Cron)</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-category">
+        <div class="category-title">Testing & Delivery</div>
+        <ul class="sidebar-nav">
+          <li><a href="#sdk" class="sidebar-link">14. Full-Stack TypeScript SDK</a></li>
+          <li><a href="#testing" class="sidebar-link">15. Automated Test Generation</a></li>
+          <li><a href="#docker" class="sidebar-link">16. Docker Containerization</a></li>
+          <li><a href="#showcase" class="sidebar-link">17. Complete Reference Project</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="docs-main">
+
+      <h1 class="docs-page-title">Zenith DSL Documentation</h1>
+      <p class="docs-lead">
+        Zenith is a domain-specific language designed to eliminate the 9-file boilerplate ceremony of Java and Spring Boot. Declare your models, validation constraints, relations, security policies, background workers, and REST endpoints in clean <code>.zen</code> files and compile directly into production-ready Spring Boot 3 applications in milliseconds.
       </p>
 
-      <div class="hero-cta-group">
-        <a href="#install" class="btn btn-primary">Get Started in 60s</a>
-        <a href="#code" class="btn btn-secondary">Explore Schema Syntax</a>
+      <!-- Quick Index Cards -->
+      <div class="cards-grid">
+        <a href="#config" class="feature-pill-card">
+          <div class="pill-card-title">1. Configuration</div>
+          <div class="pill-card-desc">Declare app package, port, PostgreSQL/H2, JWT auth, and Flyway.</div>
+        </a>
+        <a href="#crud" class="feature-pill-card">
+          <div class="pill-card-title">6. CRUD & Security</div>
+          <div class="pill-card-desc">Pagination, sorting, search, and method-level @PreAuthorize RBAC.</div>
+        </a>
+        <a href="#actions" class="feature-pill-card">
+          <div class="pill-card-title">8. Domain Actions</div>
+          <div class="pill-card-desc">Guards, entity state mutations, audit logs, and customer notifications.</div>
+        </a>
+        <a href="#testing" class="feature-pill-card">
+          <div class="pill-card-title">15. Automated Tests</div>
+          <div class="pill-card-desc">MockMvc controller suites, isolated H2 profile, and DataJpa slices.</div>
+        </a>
       </div>
 
-      <!-- Quick Command Copy -->
-      <div class="cli-pill" onclick="copyCliCommand(this)">
-        <span class="terminal-prompt">$</span>
-        <code id="cli-cmd">scoop bucket add zenith https://github.com/ouerghi0x/zenith-bucket &amp;&amp; scoop install zenith</code>
-        <button class="copy-btn" title="Copy to clipboard">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-        </button>
-      </div>
-    </div>
-  </section>
+      <!-- Overview -->
+      <h2 class="section-heading" id="overview">Overview &amp; Philosophy</h2>
+      <p>
+        In traditional Spring Boot development, exposing a single validated, secured CRUD resource requires creating 7 to 9 separate files: <code>Entity.java</code>, <code>CreateRequest.java</code>, <code>UpdateRequest.java</code>, <code>Response.java</code>, <code>Repository.java</code>, <code>Mapper.java</code>, <code>Service.java</code>, <code>ServiceImpl.java</code>, and <code>Controller.java</code> (~350 lines of repetitive ceremony).
+      </p>
+      <p>
+        Zenith unifies this into a single strongly-typed AST. When you modify your schema, all downstream artifacts—JPA entities, Flyway migrations, Spring Security filters, MockMvc test suites, and frontend TypeScript clients—update in complete lockstep.
+      </p>
 
-  <!-- Interactive Code / Feature Showcase -->
-  <section id="code" class="code-section">
-    <div class="container">
-      <div class="section-header text-center">
-        <h2 class="section-title">One File. Infinite Power.</h2>
-        <p class="section-desc">Look at how clean your backend definitions become. No boilerplate, no tedious annotations.</p>
+      <!-- CLI Tools -->
+      <h2 class="section-heading" id="cli-tools">Installation &amp; CLI Commands</h2>
+      <p>
+        The Zenith compiler is distributed as a single standalone executable JAR requiring Java 17+. Install via Scoop on Windows, download the standalone binary, or install the VS Code language extension.
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Arguments</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>zenith build</code></td>
+              <td><code>&lt;file.zen&gt; [-o &lt;output-dir&gt;]</code></td>
+              <td>Transpiles the schema into a complete Spring Boot 3 Maven project.</td>
+            </tr>
+            <tr>
+              <td><code>zenith watch</code></td>
+              <td><code>&lt;file.zen&gt; [-o &lt;output-dir&gt;]</code></td>
+              <td>Starts hot-reload daemon; regenerates application code on file save (&lt; 150ms).</td>
+            </tr>
+            <tr>
+              <td><code>zenith validate</code></td>
+              <td><code>&lt;file.zen&gt;</code></td>
+              <td>Performs lexing, AST parsing, and semantic analysis; reports exact errors.</td>
+            </tr>
+            <tr>
+              <td><code>zenith inspect</code></td>
+              <td><code>&lt;file.zen&gt;</code></td>
+              <td>Prints an architectural summary of detected models, relations, DTOs, and endpoints.</td>
+            </tr>
+            <tr>
+              <td><code>zenith studio</code></td>
+              <td><code>&lt;file.zen&gt; [--port 3000]</code></td>
+              <td>Launches Zenith Studio PRO — the visual architecture IDE with live ERD, Monaco editor, and API tester.</td>
+            </tr>
+            <tr>
+              <td><code>zenith init</code></td>
+              <td><code>[name]</code></td>
+              <td>Scaffolds a clean starter <code>schema.zen</code> file in the current directory.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div class="code-showcase-box">
-        <div class="showcase-tabs">
-          <button class="tab-btn active" onclick="switchTab('zenith')">
-            <span class="tab-icon">⚡</span> schema.zen
-          </button>
-          <button class="tab-btn" onclick="switchTab('typescript')">
-            <span class="tab-icon">📘</span> sdk/client.ts
-          </button>
-          <button class="tab-btn" onclick="switchTab('react')">
-            <span class="tab-icon">⚛️</span> sdk/react-query.ts
-          </button>
-          <button class="tab-btn" onclick="switchTab('docker')">
-            <span class="tab-icon">🐳</span> docker-compose.yml
-          </button>
+      <!-- Zenith Studio PRO -->
+      <h2 class="section-heading" id="zenith-studio">Zenith Studio <span class="badge-pro-pill">PRO</span> (Visual Architecture IDE)</h2>
+      <p>
+        <strong>Zenith Studio PRO</strong> is the visual engineering workspace running locally at <code>http://localhost:3000</code>. Designed for developers and architects who need full-spectrum visibility into their data models, relational graphs, and runtime APIs:
+      </p>
+      <ul>
+        <li><strong>Monaco Code Editor</strong>: Full syntax highlighting, auto-completion, linting markers, and hover tooltips.</li>
+        <li><strong>Vertical Modular File Explorer</strong>: Displays all workspace <code>.zen</code> files stacked vertically with quick tab switching.</li>
+        <li><strong>Clickable Import Navigation</strong>: Double-click any <code>import "./config.zen"</code> line to instantly switch to that module.</li>
+        <li><strong>Interactive Architecture ERD</strong>: Live SVG diagrams displaying models, columns, primary keys, and foreign key connectors.</li>
+        <li><strong>API Tester &amp; Swagger</strong>: Test generated REST endpoints directly from the interface.</li>
+        <li><strong>Repository Tree &amp; One-Click Run</strong>: Inspect emitted Java files and boot the backend with one click.</li>
+      </ul>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">Terminal</span>
+          <button class="code-copy-btn">Copy</button>
         </div>
+        <pre class="code-content"><code>zenith studio schema.zen</code></pre>
+      </div>
 
-        <div class="showcase-content">
-          <!-- Zenith Tab -->
-          <pre id="tab-zenith" class="code-panel active"><code><span class="kw">config</span> {
-    <span class="prop">app</span>: <span class="str">"ShopSphere"</span>
-    <span class="prop">package</span>: <span class="str">"com.shopsphere.backend"</span>
-    <span class="prop">basePath</span>: <span class="str">"/api/v1"</span>
-    <span class="prop">port</span>: <span class="num">8080</span>
-    <span class="prop">database</span>: <span class="str">postgres</span>
-    <span class="prop">auth</span>: <span class="str">jwt</span>
+      <!-- 1. Config -->
+      <h2 class="section-heading" id="config">1. Application Configuration (config)</h2>
+      <p>
+        The <code>config { ... }</code> block declares global application properties, database engines, security configurations, and infrastructure integrations.
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Property</th>
+              <th>Type</th>
+              <th>Default</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>app</code></td>
+              <td>String</td>
+              <td><code>"ZenithApplication"</code></td>
+              <td>Spring Boot application name and main class prefix.</td>
+            </tr>
+            <tr>
+              <td><code>package</code></td>
+              <td>String</td>
+              <td><code>"com.example.app"</code></td>
+              <td>Root Java package directory for all generated classes.</td>
+            </tr>
+            <tr>
+              <td><code>basePath</code></td>
+              <td>String</td>
+              <td><code>"/api"</code></td>
+              <td>Common root path prefix prepended to all REST endpoints.</td>
+            </tr>
+            <tr>
+              <td><code>port</code></td>
+              <td>Integer</td>
+              <td><code>8080</code></td>
+              <td>HTTP server port (<code>server.port</code>).</td>
+            </tr>
+            <tr>
+              <td><code>database</code></td>
+              <td><code>postgres</code> | <code>h2</code></td>
+              <td><code>postgres</code></td>
+              <td>Target SQL dialect and driver configuration.</td>
+            </tr>
+            <tr>
+              <td><code>auth</code></td>
+              <td><code>jwt</code> | <code>none</code></td>
+              <td><code>none</code></td>
+              <td>Activates Spring Security 6, JJWT token filter, and auth endpoints.</td>
+            </tr>
+            <tr>
+              <td><code>storage</code></td>
+              <td><code>minio</code> | <code>s3</code></td>
+              <td><code>minio</code></td>
+              <td>Object storage provider for <code>@file</code> and <code>@image</code> uploads.</td>
+            </tr>
+            <tr>
+              <td><code>flyway</code></td>
+              <td>Boolean</td>
+              <td><code>true</code></td>
+              <td>Generates idempotent <code>V1__initial_schema.sql</code> migration scripts.</td>
+            </tr>
+            <tr>
+              <td><code>swagger</code></td>
+              <td>Boolean</td>
+              <td><code>true</code></td>
+              <td>Enables SpringDoc OpenAPI 3 UI on <code>/swagger-ui.html</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">config.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">config</span> {
+    <span class="syn-prop">app</span>: <span class="syn-str">"NexusCommerce"</span>
+    <span class="syn-prop">package</span>: <span class="syn-str">"com.nexus.commerce"</span>
+    <span class="syn-prop">basePath</span>: <span class="syn-str">"/api/v1"</span>
+    <span class="syn-prop">port</span>: <span class="syn-num">8080</span>
+    <span class="syn-prop">database</span>: <span class="syn-str">postgres</span>
+    <span class="syn-prop">auth</span>: <span class="syn-str">jwt</span>
+    <span class="syn-prop">storage</span>: <span class="syn-str">minio</span>
+    <span class="syn-prop">flyway</span>: <span class="syn-kw">true</span>
+    <span class="syn-prop">swagger</span>: <span class="syn-kw">true</span>
+}</code></pre>
+      </div>
+
+      <!-- 2. Types -->
+      <h2 class="section-heading" id="types">2. Data Types &amp; Nullability</h2>
+      <p>
+        Zenith primitives map automatically to SQL database columns, Java JPA field types, and TypeScript client interfaces. Fields are non-null by default; append <code>?</code> to mark a field as optional. Assign default values using <code>= value</code>.
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Zenith Type</th>
+              <th>Java 17 Type</th>
+              <th>PostgreSQL SQL Type</th>
+              <th>TypeScript Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>String</code></td>
+              <td><code>java.lang.String</code></td>
+              <td><code>VARCHAR(255)</code></td>
+              <td><code>string</code></td>
+            </tr>
+            <tr>
+              <td><code>Text</code> / <code>@text</code></td>
+              <td><code>java.lang.String</code></td>
+              <td><code>TEXT</code></td>
+              <td><code>string</code></td>
+            </tr>
+            <tr>
+              <td><code>Int</code> / <code>Integer</code></td>
+              <td><code>java.lang.Integer</code></td>
+              <td><code>INTEGER</code></td>
+              <td><code>number</code></td>
+            </tr>
+            <tr>
+              <td><code>Long</code></td>
+              <td><code>java.lang.Long</code></td>
+              <td><code>BIGINT</code></td>
+              <td><code>number</code></td>
+            </tr>
+            <tr>
+              <td><code>Decimal</code></td>
+              <td><code>java.math.BigDecimal</code></td>
+              <td><code>NUMERIC(p,s)</code></td>
+              <td><code>number</code></td>
+            </tr>
+            <tr>
+              <td><code>Boolean</code></td>
+              <td><code>java.lang.Boolean</code></td>
+              <td><code>BOOLEAN</code></td>
+              <td><code>boolean</code></td>
+            </tr>
+            <tr>
+              <td><code>UUID</code></td>
+              <td><code>java.util.UUID</code></td>
+              <td><code>UUID</code></td>
+              <td><code>string</code></td>
+            </tr>
+            <tr>
+              <td><code>Date</code></td>
+              <td><code>java.time.LocalDate</code></td>
+              <td><code>DATE</code></td>
+              <td><code>string</code></td>
+            </tr>
+            <tr>
+              <td><code>DateTime</code></td>
+              <td><code>java.time.LocalDateTime</code></td>
+              <td><code>TIMESTAMP</code></td>
+              <td><code>string</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">types_example.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">model</span> <span class="syn-type">CustomerProfile</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">fullName</span>: <span class="syn-type">String</span>(<span class="syn-prop">min</span> = <span class="syn-num">2</span>, <span class="syn-prop">max</span> = <span class="syn-num">100</span>)
+    <span class="syn-prop">bio</span>: <span class="syn-type">String</span>? <span class="syn-ann">@text</span>                    <span class="syn-com">// Optional unbounded text</span>
+    <span class="syn-prop">rewardPoints</span>: <span class="syn-type">Int</span> = <span class="syn-num">0</span>                  <span class="syn-com">// Defaults to 0</span>
+    <span class="syn-prop">balance</span>: <span class="syn-type">Decimal</span>(<span class="syn-prop">precision</span> = <span class="syn-num">10</span>, <span class="syn-prop">scale</span> = <span class="syn-num">2</span>) <span class="syn-ann">@positive</span>
+    <span class="syn-prop">isVerified</span>: <span class="syn-type">Boolean</span> = <span class="syn-kw">false</span>
+    <span class="syn-prop">birthDate</span>: <span class="syn-type">Date</span>?
+    <span class="syn-prop">lastLogin</span>: <span class="syn-type">DateTime</span>?
+}</code></pre>
+      </div>
+
+      <!-- 3. Decorators -->
+      <h2 class="section-heading" id="decorators">3. Field Decorators &amp; Validation Rules</h2>
+      <p>
+        Decorators attach database primary keys, validation rules, security behaviors, and media handlers directly to attributes.
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Decorator</th>
+              <th>Arguments</th>
+              <th>Behavior &amp; Emitted Code</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>@id</code></td>
+              <td>—</td>
+              <td>Marks field as table Primary Key (<code>@Id</code> in JPA).</td>
+            </tr>
+            <tr>
+              <td><code>@auto</code></td>
+              <td>—</td>
+              <td>Automated identity generation (<code>GenerationType.IDENTITY</code> or UUID random).</td>
+            </tr>
+            <tr>
+              <td><code>@unique</code></td>
+              <td>—</td>
+              <td>Adds unique database constraint and derived query <code>findBy[Field]</code>.</td>
+            </tr>
+            <tr>
+              <td><code>@email</code></td>
+              <td>—</td>
+              <td>Enforces valid email format with Jakarta <code>@Email</code>.</td>
+            </tr>
+            <tr>
+              <td><code>@password</code></td>
+              <td>—</td>
+              <td>Hashes value with BCrypt; strips field from response DTO records.</td>
+            </tr>
+            <tr>
+              <td><code>@min(n)</code></td>
+              <td>Number</td>
+              <td>Validates minimum integer or string length constraint.</td>
+            </tr>
+            <tr>
+              <td><code>@max(n)</code></td>
+              <td>Number</td>
+              <td>Validates maximum integer or string length constraint.</td>
+            </tr>
+            <tr>
+              <td><code>@positive</code></td>
+              <td>—</td>
+              <td>Ensures numeric attribute is strictly greater than zero (<code>@Positive</code>).</td>
+            </tr>
+            <tr>
+              <td><code>@autoNow</code></td>
+              <td>—</td>
+              <td>Sets creation timestamp on <code>@PrePersist</code>.</td>
+            </tr>
+            <tr>
+              <td><code>@autoUpdate</code></td>
+              <td>—</td>
+              <td>Updates modification timestamp on <code>@PreUpdate</code>.</td>
+            </tr>
+            <tr>
+              <td><code>@role</code></td>
+              <td>—</td>
+              <td>Designates enum as user role authority for Spring Security.</td>
+            </tr>
+            <tr>
+              <td><code>@file</code></td>
+              <td><code>path, maxSize</code></td>
+              <td>Attaches cloud document upload endpoint (MinIO / S3).</td>
+            </tr>
+            <tr>
+              <td><code>@image</code></td>
+              <td><code>path, types, maxSize</code></td>
+              <td>Validates image MIME type and attaches cloud media upload endpoint.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 4. Enums -->
+      <h2 class="section-heading" id="enums">4. Enums &amp; Security Roles</h2>
+      <p>
+        Enums define finite states or access control roles. Decorating an enum with <code>@role</code> integrates it with Spring Security's <code>GrantedAuthority</code> hierarchy.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">auth_enums.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">enum</span> <span class="syn-type">UserRole</span> {
+    <span class="syn-prop">ADMIN</span>,
+    <span class="syn-prop">STAFF</span>,
+    <span class="syn-prop">CUSTOMER</span>
 }
 
-<span class="kw">model</span> <span class="type">Product</span> {
-    <span class="prop">id</span>: <span class="type">Long</span> <span class="ann">@id</span> <span class="ann">@auto</span>
-    <span class="prop">sku</span>: <span class="type">String</span>(length = <span class="num">32</span>) <span class="ann">@unique</span>
-    <span class="prop">title</span>: <span class="type">String</span>(min = <span class="num">3</span>, max = <span class="num">150</span>)
-    <span class="prop">price</span>: <span class="type">Decimal</span>(precision = <span class="num">12</span>, scale = <span class="num">2</span>) <span class="ann">@positive</span>
-    <span class="prop">stock</span>: <span class="type">Int</span> <span class="ann">@min</span>(<span class="num">0</span>) = <span class="num">0</span>
-    <span class="prop">status</span>: <span class="type">ProductStatus</span> = ACTIVE
-    <span class="prop">createdAt</span>: <span class="type">DateTime</span> <span class="ann">@autoNow</span>
+<span class="syn-kw">enum</span> <span class="syn-type">OrderStatus</span> {
+    <span class="syn-prop">PENDING</span>,
+    <span class="syn-prop">PAID</span>,
+    <span class="syn-prop">PROCESSING</span>,
+    <span class="syn-prop">SHIPPED</span>,
+    <span class="syn-prop">DELIVERED</span>,
+    <span class="syn-prop">CANCELLED</span>
+}
 
-    <span class="kw">relations</span> {
-        <span class="prop">category</span>: <span class="type">Category</span> <span class="ann">@relation</span>(manyToOne)
+<span class="syn-kw">model</span> <span class="syn-type">UserEntity</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">email</span>: <span class="syn-type">String</span> <span class="syn-ann">@email</span> <span class="syn-ann">@unique</span>
+    <span class="syn-prop">password</span>: <span class="syn-type">String</span> <span class="syn-ann">@password</span>
+    <span class="syn-prop">role</span>: <span class="syn-type">UserRole</span> = <span class="syn-prop">CUSTOMER</span> <span class="syn-ann">@role</span>
+    <span class="syn-prop">isActive</span>: <span class="syn-type">Boolean</span> = <span class="syn-kw">true</span>
+}</code></pre>
+      </div>
+
+      <!-- 5. Relations -->
+      <h2 class="section-heading" id="relations">5. Entity Relationships</h2>
+      <p>
+        Relationships are declared cleanly inside the <code>relations { ... }</code> block using <code>@relation</code>. Zenith generates foreign key columns, join tables, bidirectional links, and Jackson JSON serialization shields to prevent infinite recursion.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">relations_example.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">model</span> <span class="syn-type">Category</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">Long</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">name</span>: <span class="syn-type">String</span> <span class="syn-ann">@unique</span>
+
+    <span class="syn-kw">relations</span> {
+        <span class="syn-prop">products</span>: <span class="syn-type">List</span>&lt;<span class="syn-type">Product</span>&gt; <span class="syn-ann">@relation</span>(oneToMany, <span class="syn-prop">mappedBy</span> = <span class="syn-str">"category"</span>)
     }
+}
 
-    <span class="kw">endpoints</span> {
-        <span class="kw">crud</span> {
-            <span class="prop">paginate</span>: <span class="bool">true</span>
-            <span class="prop">search</span>: [title, sku]
-            <span class="prop">filter</span>: [status]
-        }
+<span class="syn-kw">model</span> <span class="syn-type">Product</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">Long</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">title</span>: <span class="syn-type">String</span>
+    <span class="syn-prop">price</span>: <span class="syn-type">Decimal</span>
 
-        <span class="kw">post</span> <span class="str">"/{id}/archive"</span> -> <span class="type">ProductResponse</span> {
-            <span class="prop">guard</span>: status != ProductStatus.ARCHIVED, <span class="str">"Already archived"</span>
-            <span class="prop">action</span>: {
-                status = ProductStatus.ARCHIVED,
-                stock = <span class="num">0</span>
+    <span class="syn-kw">relations</span> {
+        <span class="syn-prop">category</span>: <span class="syn-type">Category</span> <span class="syn-ann">@relation</span>(manyToOne)
+        <span class="syn-prop">orderItems</span>: <span class="syn-type">List</span>&lt;<span class="syn-type">OrderItem</span>&gt; <span class="syn-ann">@relation</span>(oneToMany, <span class="syn-prop">mappedBy</span> = <span class="syn-str">"product"</span>)
+    }
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">Order</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">orderNumber</span>: <span class="syn-type">String</span> <span class="syn-ann">@unique</span>
+
+    <span class="syn-kw">relations</span> {
+        <span class="syn-prop">customer</span>: <span class="syn-type">UserEntity</span> <span class="syn-ann">@relation</span>(manyToOne)
+        <span class="syn-prop">items</span>: <span class="syn-type">List</span>&lt;<span class="syn-type">OrderItem</span>&gt; <span class="syn-ann">@relation</span>(oneToMany, <span class="syn-prop">mappedBy</span> = <span class="syn-str">"order"</span>)
+    }
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">OrderItem</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">Long</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">quantity</span>: <span class="syn-type">Int</span> <span class="syn-ann">@min</span>(<span class="syn-num">1</span>)
+    <span class="syn-prop">unitPrice</span>: <span class="syn-type">Decimal</span>
+
+    <span class="syn-kw">relations</span> {
+        <span class="syn-prop">order</span>: <span class="syn-type">Order</span> <span class="syn-ann">@relation</span>(manyToOne)
+        <span class="syn-prop">product</span>: <span class="syn-type">Product</span> <span class="syn-ann">@relation</span>(manyToOne)
+    }
+}</code></pre>
+      </div>
+
+      <!-- 6. CRUD -->
+      <h2 class="section-heading" id="crud">6. Standard CRUD Endpoints</h2>
+      <p>
+        The <code>crud { ... }</code> block declares standard REST endpoints: <code>GET /</code> (list with pagination/filter/search), <code>GET /{id}</code>, <code>POST /</code> (create), <code>PUT /{id}</code> (update), and <code>DELETE /{id}</code>.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">crud_endpoints.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">model</span> <span class="syn-type">Product</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">Long</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">title</span>: <span class="syn-type">String</span>
+    <span class="syn-prop">sku</span>: <span class="syn-type">String</span> <span class="syn-ann">@unique</span>
+    <span class="syn-prop">status</span>: <span class="syn-type">ProductStatus</span>
+    <span class="syn-prop">price</span>: <span class="syn-type">Decimal</span>
+
+    <span class="syn-kw">endpoints</span> {
+        <span class="syn-kw">crud</span> {
+            <span class="syn-prop">paginate</span>: <span class="syn-kw">true</span>                      <span class="syn-com">// PageResponse&lt;T&gt; with ?page=0&amp;size=20</span>
+            <span class="syn-prop">search</span>: [title, sku]               <span class="syn-com">// Case-insensitive ?search= query</span>
+            <span class="syn-prop">filter</span>: [status]                   <span class="syn-com">// Exact match query ?status=ACTIVE</span>
+            <span class="syn-prop">sort</span>: [price, createdAt]           <span class="syn-com">// Sorting ?sort=price,desc</span>
+            <span class="syn-prop">auth</span>: <span class="syn-kw">true</span>                         <span class="syn-com">// Requires valid JWT token</span>
+            <span class="syn-prop">roles</span>: {
+                <span class="syn-prop">create</span>: [<span class="syn-prop">ADMIN</span>, <span class="syn-prop">STAFF</span>],       <span class="syn-com">// Emits @PreAuthorize("hasAnyRole('ADMIN','STAFF')")</span>
+                <span class="syn-prop">delete</span>: [<span class="syn-prop">ADMIN</span>],              <span class="syn-com">// Emits @PreAuthorize("hasRole('ADMIN')")</span>
+                <span class="syn-prop">list</span>: [<span class="syn-str">"public"</span>]              <span class="syn-com">// Anonymous public access allowed</span>
             }
         }
     }
 }</code></pre>
+      </div>
 
-          <!-- TypeScript Tab -->
-          <pre id="tab-typescript" class="code-panel"><code><span class="kw">import</span> { createClient } <span class="kw">from</span> <span class="str">'@shopsphere/sdk'</span>;
+      <!-- 7. Custom Endpoints -->
+      <h2 class="section-heading" id="custom-endpoints">7. Custom Routes &amp; Request Bodies</h2>
+      <p>
+        Declare custom domain routes (<code>get</code>, <code>post</code>, <code>put</code>, <code>delete</code>) with path variables and decoupled DTO request bodies.
+      </p>
 
-<span class="comment">// Fully typed client with zero external dependencies</span>
-<span class="kw">const</span> api = createClient({
-  baseUrl: <span class="str">'http://localhost:8080'</span>,
-  getToken: () => localStorage.getItem(<span class="str">'jwt_token'</span>)
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">custom_routes.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">dto</span> <span class="syn-type">CheckoutItemRequest</span> {
+    <span class="syn-prop">productId</span>: <span class="syn-type">Long</span>
+    <span class="syn-prop">quantity</span>: <span class="syn-type">Int</span>
+}
+
+<span class="syn-kw">dto</span> <span class="syn-type">CheckoutRequest</span> {
+    <span class="syn-prop">shippingAddress</span>: <span class="syn-type">String</span>
+    <span class="syn-prop">notes</span>: <span class="syn-type">String</span>?
+    <span class="syn-prop">items</span>: <span class="syn-type">List</span>&lt;<span class="syn-type">CheckoutItemRequest</span>&gt;
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">Order</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">status</span>: <span class="syn-type">OrderStatus</span> = <span class="syn-prop">PENDING</span>
+
+    <span class="syn-kw">endpoints</span> {
+        <span class="syn-com">// Custom POST endpoint accepting typed body and returning summary DTO</span>
+        <span class="syn-kw">post</span> <span class="syn-str">"/checkout"</span> (<span class="syn-prop">body</span>: <span class="syn-type">CheckoutRequest</span>) -&gt; <span class="syn-type">OrderSummaryResponse</span> {
+            <span class="syn-prop">auth</span>: <span class="syn-kw">true</span>
+            <span class="syn-prop">action</span>: {
+                <span class="syn-com">// Execute domain mutation logic</span>
+            }
+        }
+
+        <span class="syn-com">// Route with path variable</span>
+        <span class="syn-kw">post</span> <span class="syn-str">"/{id}/cancel"</span> -&gt; <span class="syn-type">Void</span> {
+            <span class="syn-prop">auth</span>: <span class="syn-kw">true</span>
+            <span class="syn-prop">guard</span>: status == OrderStatus.PENDING, <span class="syn-str">"Only pending orders can be cancelled"</span>
+            <span class="syn-prop">action</span>: {
+                status = OrderStatus.CANCELLED
+            }
+        }
+    }
+}</code></pre>
+      </div>
+
+      <!-- 8. Actions -->
+      <h2 class="section-heading" id="actions">8. Domain Actions &amp; Guards</h2>
+      <p>
+        The <code>action: { ... }</code> block handles multi-entity mutations, automated audit logging, customer notifications, and conditional guards directly in your schema.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">actions_example.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">post</span> <span class="syn-str">"/{id}/pay"</span> -&gt; <span class="syn-type">OrderSummaryResponse</span> {
+    <span class="syn-prop">auth</span>: <span class="syn-kw">true</span>
+
+    <span class="syn-com">// 1. Guard check: fails with 400 Bad Request if false</span>
+    <span class="syn-prop">guard</span>: status == OrderStatus.PENDING, <span class="syn-str">"Only pending orders can be marked as paid"</span>
+
+    <span class="syn-prop">action</span>: {
+        <span class="syn-com">// 2. State mutation on primary entity</span>
+        status = OrderStatus.PAID
+
+        <span class="syn-com">// 3. Instantiate secondary audit log entity</span>
+        <span class="syn-syn-fn">create</span> <span class="syn-type">AuditLog</span> {
+            <span class="syn-prop">action</span> = <span class="syn-str">"ORDER_PAYMENT_PROCESSED"</span>,
+            <span class="syn-prop">details</span> = <span class="syn-str">"Order "</span> + entity.orderNumber + <span class="syn-str">" marked PAID by "</span> + currentUser.email
+        }
+
+        <span class="syn-com">// 4. Dispatch notification to customer</span>
+        <span class="syn-syn-fn">notify</span>(entity.customer.email, <span class="syn-str">"Your payment for order "</span> + entity.orderNumber + <span class="syn-str">" succeeded!"</span>)
+
+        <span class="syn-com">// 5. Return explicit DTO</span>
+        <span class="syn-kw">return</span> <span class="syn-type">OrderSummaryResponse</span> {
+            <span class="syn-prop">orderNumber</span> = entity.orderNumber,
+            <span class="syn-prop">totalAmount</span> = entity.totalAmount,
+            <span class="syn-prop">status</span> = entity.status,
+            <span class="syn-prop">paidAt</span> = <span class="syn-syn-fn">now</span>()
+        }
+    }
+}</code></pre>
+      </div>
+
+      <!-- 9. DTO -->
+      <h2 class="section-heading" id="dto">9. DTOs &amp; Custom Return Types</h2>
+      <p>
+        Define decoupled Java 17 records and TypeScript interfaces using <code>dto Name { ... }</code>. When an endpoint returns a custom DTO, Zenith supports two approaches:
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">dto_returns.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">dto</span> <span class="syn-type">OrderSummaryResponse</span> {
+    <span class="syn-prop">orderNumber</span>: <span class="syn-type">String</span>
+    <span class="syn-prop">totalAmount</span>: <span class="syn-type">Decimal</span>
+    <span class="syn-prop">status</span>: <span class="syn-type">OrderStatus</span>
+    <span class="syn-prop">processedBy</span>: <span class="syn-type">String</span>?
+}
+
+<span class="syn-com">// Approach A: Explicit return construction inside action</span>
+<span class="syn-kw">post</span> <span class="syn-str">"/{id}/pay"</span> -&gt; <span class="syn-type">OrderSummaryResponse</span> {
+    <span class="syn-prop">action</span>: {
+        status = OrderStatus.PAID
+        <span class="syn-kw">return</span> <span class="syn-type">OrderSummaryResponse</span> {
+            <span class="syn-prop">orderNumber</span> = entity.orderNumber,
+            <span class="syn-prop">totalAmount</span> = entity.totalAmount,
+            <span class="syn-prop">status</span> = entity.status,
+            <span class="syn-prop">processedBy</span> = currentUser.email
+        }
+    }
+}
+
+<span class="syn-com">// Approach B: Automatic field mapping (zero boilerplate)</span>
+<span class="syn-kw">get</span> <span class="syn-str">"/{id}/summary"</span> -&gt; <span class="syn-type">OrderSummaryResponse</span> {
+    <span class="syn-com">// Coincident fields (orderNumber, totalAmount, status) map automatically</span>
+}</code></pre>
+      </div>
+
+      <!-- 10. Seeding -->
+      <h2 class="section-heading" id="seed">10. Declarative Database Seeding</h2>
+      <p>
+        Populate development and staging environments instantly using <code>seed Model { ... }</code>. Zenith generates a Spring Boot <code>ApplicationRunner</code> (active in non-prod profiles) with password hashing and relational cross-referencing via <code>seed Model[index]</code>.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">seeds.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">seed</span> <span class="syn-type">UserEntity</span> [
+    {
+        <span class="syn-prop">email</span>: <span class="syn-str">"admin@nexus.dev"</span>,
+        <span class="syn-prop">password</span>: <span class="syn-str">"AdminSecret2026!"</span>,       <span class="syn-com">// Automatically BCrypt hashed</span>
+        <span class="syn-prop">fullName</span>: <span class="syn-str">"Platform Admin"</span>,
+        <span class="syn-prop">role</span>: <span class="syn-prop">ADMIN</span>
+    },
+    {
+        <span class="syn-prop">email</span>: <span class="syn-str">"customer@example.com"</span>,
+        <span class="syn-prop">password</span>: <span class="syn-str">"Pass1234!"</span>,
+        <span class="syn-prop">fullName</span>: <span class="syn-str">"John Doe"</span>,
+        <span class="syn-prop">role</span>: <span class="syn-prop">CUSTOMER</span>
+    }
+]
+
+<span class="syn-kw">seed</span> <span class="syn-type">Order</span> [
+    {
+        <span class="syn-prop">orderNumber</span>: <span class="syn-str">"ORD-2026-001"</span>,
+        <span class="syn-prop">totalAmount</span>: <span class="syn-num">149.99</span>,
+        <span class="syn-prop">status</span>: <span class="syn-prop">PENDING</span>,
+        <span class="syn-prop">customer</span>: <span class="syn-kw">seed</span> <span class="syn-type">UserEntity</span>[<span class="syn-num">1</span>]          <span class="syn-com">// Cross-references 2nd UserEntity record</span>
+    }
+]</code></pre>
+      </div>
+
+      <!-- 11. Imports -->
+      <h2 class="section-heading" id="imports">11. Modular File Imports</h2>
+      <p>
+        Decompose large schemas into clean, focused <code>.zen</code> modules using <code>import "./filename.zen"</code>. Zenith resolves diamond imports, prevents circular dependencies, and compiles the entire workspace into a single unified AST.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">schema.zen (Root Entrypoint)</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">import</span> <span class="syn-str">"./config.zen"</span>
+<span class="syn-kw">import</span> <span class="syn-str">"./auth.zen"</span>
+<span class="syn-kw">import</span> <span class="syn-str">"./catalog.zen"</span>
+<span class="syn-kw">import</span> <span class="syn-str">"./orders.zen"</span>
+<span class="syn-kw">import</span> <span class="syn-str">"./jobs.zen"</span>
+<span class="syn-kw">import</span> <span class="syn-str">"./seeds.zen"</span></code></pre>
+      </div>
+
+      <!-- 12. Storage -->
+      <h2 class="section-heading" id="storage">12. Object Storage (S3 / MinIO)</h2>
+      <p>
+        Decorate fields with <code>@file</code> or <code>@image</code> to automatically generate multipart upload controllers and streaming download endpoints. Switch between MinIO and AWS S3 in <code>config</code> without altering code.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">storage_example.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">model</span> <span class="syn-type">Product</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">Long</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">title</span>: <span class="syn-type">String</span>
+
+    <span class="syn-com">// Media image upload with MIME type and size checks</span>
+    <span class="syn-prop">coverImage</span>: <span class="syn-type">String</span>? <span class="syn-ann">@image</span>(<span class="syn-prop">maxSize</span> = <span class="syn-str">"5MB"</span>, <span class="syn-prop">types</span> = [<span class="syn-str">"image/png"</span>, <span class="syn-str">"image/jpeg"</span>], <span class="syn-prop">path</span> = <span class="syn-str">"products/"</span>)
+
+    <span class="syn-com">// Datasheet PDF upload</span>
+    <span class="syn-prop">specSheet</span>: <span class="syn-type">String</span>? <span class="syn-ann">@file</span>(<span class="syn-prop">maxSize</span> = <span class="syn-str">"10MB"</span>, <span class="syn-prop">path</span> = <span class="syn-str">"specs/"</span>)
+}
+
+<span class="syn-com">// Generated Endpoints:</span>
+<span class="syn-com">// POST /api/v1/products/{id}/coverImage (multipart/form-data)</span>
+<span class="syn-com">// GET  /api/v1/products/{id}/coverImage (download stream)</span></code></pre>
+      </div>
+
+      <!-- 13. Jobs -->
+      <h2 class="section-heading" id="jobs">13. Scheduled Workers (Cron)</h2>
+      <p>
+        Declare background batch jobs and cleanup routines using <code>job Name { cron: "...", action: { ... } }</code>. Zenith generates a Spring <code>@Scheduled</code> component with <code>ThreadPoolTaskScheduler</code> and bulk stream pipelines.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">jobs.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">job</span> <span class="syn-type">ArchiveOldOrders</span> {
+    <span class="syn-prop">cron</span>: <span class="syn-str">"0 0 2 * * ?"</span>               <span class="syn-com">// Executes 2:00 AM daily</span>
+    <span class="syn-prop">description</span>: <span class="syn-str">"Nightly maintenance archiving delivered orders older than 60 days"</span>
+    <span class="syn-prop">action</span>: {
+        <span class="syn-kw">update</span> <span class="syn-type">Order</span> {
+            <span class="syn-prop">where</span>: status == OrderStatus.DELIVERED <span class="syn-kw">and</span> updatedAt &lt; <span class="syn-syn-fn">daysAgo</span>(<span class="syn-num">60</span>)
+            status = OrderStatus.CANCELLED
+        }
+    }
+}</code></pre>
+      </div>
+
+      <!-- 14. TypeScript SDK -->
+      <h2 class="section-heading" id="sdk">14. Full-Stack TypeScript Client SDK</h2>
+      <p>
+        Zenith generates a zero-dependency TypeScript client SDK in <code>sdk/typescript/</code> containing strongly-typed models, fetch API clients with JWT bearer injection, and React Query caching hooks.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">React Component Example</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">import</span> React <span class="syn-kw">from</span> <span class="syn-str">'react'</span>;
+<span class="syn-kw">import</span> { createClient } <span class="syn-kw">from</span> <span class="syn-str">'./sdk/typescript/src/client'</span>;
+<span class="syn-kw">import</span> { useOrderList } <span class="syn-kw">from</span> <span class="syn-str">'./sdk/typescript/src/react-query'</span>;
+
+<span class="syn-kw">const</span> api = createClient({
+  baseUrl: <span class="syn-str">'http://localhost:8080'</span>,
+  getToken: () =&gt; localStorage.getItem(<span class="syn-str">'jwt_token'</span>)
 });
 
-<span class="comment">// 1. Strongly-typed query with search and pagination</span>
-<span class="kw">const</span> page = <span class="kw">await</span> api.products.list({
-  page: <span class="num">0</span>,
-  size: <span class="num">20</span>,
-  search: <span class="str">'sneakers'</span>,
-  status: <span class="str">'ACTIVE'</span>
-});
+<span class="syn-kw">export function</span> <span class="syn-type">OrdersDashboard</span>() {
+  <span class="syn-kw">const</span> { data, isLoading } = useOrderList(api, { page: <span class="syn-num">0</span>, size: <span class="syn-num">10</span>, sort: <span class="syn-str">'createdAt,desc'</span> });
 
-<span class="comment">// 2. Typed creation payload</span>
-<span class="kw">const</span> product = <span class="kw">await</span> api.products.create({
-  sku: <span class="str">'SNK-9001'</span>,
-  title: <span class="str">'Aero Velocity Sneakers'</span>,
-  price: <span class="num">129.99</span>,
-  stock: <span class="num">50</span>
-});
+  <span class="syn-kw">if</span> (isLoading) <span class="syn-kw">return</span> &lt;div&gt;Loading orders...&lt;/div&gt;;
 
-<span class="comment">// 3. Auto-generated custom endpoint action</span>
-<span class="kw">await</span> api.products.postArchive(product.id);</code></pre>
-
-          <!-- React Query Tab -->
-          <pre id="tab-react" class="code-panel"><code><span class="kw">import</span> React <span class="kw">from</span> <span class="str">'react'</span>;
-<span class="kw">import</span> { useProductList, useCreateProduct } <span class="kw">from</span> <span class="str">'@shopsphere/sdk/react-query'</span>;
-
-<span class="kw">export function</span> <span class="type">ProductGrid</span>() {
-  <span class="comment">// Instant data hook with caching and loading state</span>
-  <span class="kw">const</span> { data, isLoading } = useProductList(api, { page: <span class="num">0</span>, size: <span class="num">12</span> });
-  
-  <span class="comment">// Mutation hook with auto query invalidation</span>
-  <span class="kw">const</span> createMutation = useCreateProduct(api);
-
-  <span class="kw">if</span> (isLoading) <span class="kw">return</span> &lt;div&gt;Loading catalog...&lt;/div&gt;;
-
-  <span class="kw">return</span> (
-    &lt;div className=<span class="str">"grid"</span>&gt;
-      {data?.content.map(p => (
-        &lt;div key={p.id} className=<span class="str">"card"</span>&gt;
-          &lt;h3&gt;{p.title}&lt;/h3&gt;
-          &lt;p&gt;${p.price.toFixed(<span class="num">2</span>)}&lt;/p&gt;
-        &lt;/div&gt;
+  <span class="syn-kw">return</span> (
+    &lt;ul&gt;
+      {data?.content.map(order =&gt; (
+        &lt;li key={order.id}&gt;{order.orderNumber} - ${order.totalAmount} ({order.status})&lt;/li&gt;
       ))}
-    &lt;/div&gt;
+    &lt;/ul&gt;
   );
 }</code></pre>
-
-          <!-- Docker Compose Tab -->
-          <pre id="tab-docker" class="code-panel"><code><span class="prop">version</span>: <span class="str">'3.8'</span>
-
-<span class="prop">services</span>:
-  <span class="prop">api</span>:
-    <span class="prop">build</span>: .
-    <span class="prop">ports</span>:
-      - <span class="str">"8080:8080"</span>
-    <span class="prop">environment</span>:
-      <span class="prop">SPRING_DATASOURCE_URL</span>: jdbc:postgresql://db:5432/shopsphere_db
-      <span class="prop">SPRING_DATASOURCE_USERNAME</span>: zenith
-      <span class="prop">SPRING_DATASOURCE_PASSWORD</span>: zenith_secret
-    <span class="prop">depends_on</span>:
-      <span class="prop">db</span>:
-        <span class="prop">condition</span>: service_healthy
-
-  <span class="prop">db</span>:
-    <span class="prop">image</span>: postgres:15-alpine
-    <span class="prop">environment</span>:
-      <span class="prop">POSTGRES_DB</span>: shopsphere_db
-      <span class="prop">POSTGRES_USER</span>: zenith
-      <span class="prop">POSTGRES_PASSWORD</span>: zenith_secret
-    <span class="prop">healthcheck</span>:
-      <span class="prop">test</span>: [<span class="str">"CMD-SHELL"</span>, <span class="str">"pg_isready -U zenith"</span>]</code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- The Comparison Section -->
-  <section id="comparison" class="comparison-section">
-    <div class="container">
-      <div class="section-header text-center">
-        <h2 class="section-title">Java Ceremony vs. Zenith</h2>
-        <p class="section-desc">Why write 9 files of boilerplate when you can describe intent in one?</p>
       </div>
 
-      <div class="comparison-grid">
-        <div class="comp-card legacy-card">
-          <div class="card-badge legacy-badge">Traditional Java / Spring Boot</div>
-          <h3 class="comp-card-title">9 Files &bull; ~350 Lines per Model</h3>
-          <ul class="comp-list">
-            <li><span>❌</span> <code>Entity.java</code> with 8+ Hibernate annotations</li>
-            <li><span>❌</span> <code>CreateRequest.java</code> record with validation</li>
-            <li><span>❌</span> <code>UpdateRequest.java</code> record with partial keys</li>
-            <li><span>❌</span> <code>Response.java</code> duplicate record</li>
-            <li><span>❌</span> <code>Mapper.java</code> hand-wired converters</li>
-            <li><span>❌</span> <code>Repository.java</code> interfaces with queries</li>
-            <li><span>❌</span> <code>Service.java</code> interface</li>
-            <li><span>❌</span> <code>ServiceImpl.java</code> tedious paging &amp; mapping</li>
-            <li><span>❌</span> <code>Controller.java</code> verbose routing boilerplate</li>
-          </ul>
-        </div>
+      <!-- 15. Testing -->
+      <h2 class="section-heading" id="testing">15. Automated Test Generation</h2>
+      <p>
+        Zenith synthesizes complete JUnit 5, Spring Boot Test, and MockMvc test suites under <code>src/test/</code>. Tests run against an isolated in-memory H2 profile (<code>application.yml</code>) so <code>mvn test</code> passes anywhere without requiring external databases or Docker.
+      </p>
 
-        <div class="comp-card zenith-card">
-          <div class="card-badge zenith-badge">Zenith DSL Solution</div>
-          <h3 class="comp-card-title">1 Schema &bull; 18 Lines &bull; &lt; 200ms Build</h3>
-          <ul class="comp-list">
-            <li><span>⚡</span> <strong>1 clean file</strong> describes the entire domain</li>
-            <li><span>⚡</span> <strong>Spring Security 6 + JWT</strong> auto-configured</li>
-            <li><span>⚡</span> <strong>OpenAPI 3 / Swagger UI</strong> auto-documented</li>
-            <li><span>⚡</span> <strong>Flyway SQL Migrations</strong> generated automatically</li>
-            <li><span>⚡</span> <strong>Declarative Business Logic</strong> with <code>guard:</code> blocks</li>
-            <li><span>⚡</span> <strong>TypeScript Client &amp; React Query</strong> included</li>
-            <li><span>⚡</span> <strong>Multi-stage Dockerfile</strong> ready to deploy</li>
-            <li><span>⚡</span> <strong>Sub-150ms Watch Mode</strong> hot reload</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Features Grid -->
-  <section id="features" class="features-section">
-    <div class="container">
-      <div class="section-header text-center">
-        <h2 class="section-title">Built for Real Enterprise Demands</h2>
-        <p class="section-desc">Not a toy DSL. Zenith generates battle-tested, idiomatic Spring Boot 3 code you'd proudly push to production.</p>
-      </div>
-
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon">🛡️</div>
-          <h3>Spring Security 6 &amp; JWT</h3>
-          <p>Activate with <code>auth: jwt</code>. Passwords annotated with <code>@password</code> are BCrypt hashed and stripped from response records. Roles integrate with Spring Security authorities.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">📚</div>
-          <h3>Swagger UI &amp; OpenAPI 3</h3>
-          <p>Every controller, route, and DTO is pre-annotated with <code>@Tag</code> and <code>@Operation</code>. Access interactive API documentation instantly on <code>/swagger-ui.html</code>.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">🗄️</div>
-          <h3>Flyway Database Migrations</h3>
-          <p>Generates idempotent <code>V1__initial_schema.sql</code> scripts with identity auto-increment, correct SQL data types, foreign keys, and indexes.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">🧠</div>
-          <h3>Guards &amp; Action Blocks</h3>
-          <p>Declare business conditions directly inside endpoints. Zenith transpiles <code>guard:</code> conditions into structured 400 Bad Request error handlers and executes mutations cleanly.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">🔥</div>
-          <h3>Lightning Hot Reload</h3>
-          <p>Run <code>zenith watch schema.zen</code>. In less than 150ms, your entire Java architecture is regenerated and kept synchronized with your ideas.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">💻</div>
-          <h3>VS Code Extension</h3>
-          <p>Full language tooling with rich syntax highlighting, auto-closing braces, and snippets for models, enums, and endpoints.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Installation Section -->
-  <section id="install" class="install-section">
-    <div class="container install-container">
-      <div class="section-header text-center">
-        <h2 class="section-title">Install in Seconds</h2>
-        <p class="section-desc">Get the Zenith CLI running on your machine with your preferred tool.</p>
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Test File</th>
+              <th>Framework</th>
+              <th>Assertion Coverage</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>application.yml</code></td>
+              <td>Spring Test Profile</td>
+              <td>In-memory H2 (<code>create-drop</code>), disabled Flyway, mock secrets.</td>
+            </tr>
+            <tr>
+              <td><code>*ApplicationTests.java</code></td>
+              <td><code>@SpringBootTest</code></td>
+              <td>Verifies application context startup and bean wiring.</td>
+            </tr>
+            <tr>
+              <td><code>AuthControllerTest.java</code></td>
+              <td><code>MockMvc</code></td>
+              <td>Asserts <code>/auth/login</code> and <code>/auth/register</code> validation errors and bad credentials.</td>
+            </tr>
+            <tr>
+              <td><code>*ControllerTest.java</code></td>
+              <td><code>MockMvc</code> + <code>@WithMockUser</code></td>
+              <td>Asserts unauthenticated (401), forbidden roles (403), validation (400), not found (404), and happy paths.</td>
+            </tr>
+            <tr>
+              <td><code>*RepositoryTest.java</code></td>
+              <td><code>@DataJpaTest</code></td>
+              <td>Verifies JPA entity mappings, constraints, foreign keys, and queries under H2.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div class="install-card">
-        <div class="install-tabs">
-          <button class="inst-tab active" onclick="switchInstall('scoop')">Windows (Scoop)</button>
-          <button class="inst-tab" onclick="switchInstall('manual')">Manual Binary / JAR</button>
-          <button class="inst-tab" onclick="switchInstall('vscode')">VS Code Extension</button>
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">Terminal</span>
+          <button class="code-copy-btn">Copy</button>
         </div>
+        <pre class="code-content"><code>mvn test</code></pre>
+      </div>
 
-        <div class="install-body">
-          <div id="inst-scoop" class="inst-panel active">
-            <p>Install via the official Zenith Scoop bucket:</p>
-            <div class="terminal-box">
-              <code>scoop bucket add zenith https://github.com/ouerghi0x/zenith-bucket<br />scoop install zenith</code>
-            </div>
-          </div>
+      <!-- 16. Docker -->
+      <h2 class="section-heading" id="docker">16. Docker Containerization</h2>
+      <p>
+        Zenith generates a multi-stage <code>Dockerfile</code> (Maven 3.9 builder + Eclipse Temurin 17 JRE Alpine runtime with unprivileged user) and a pre-configured <code>docker-compose.yml</code> pairing the API with PostgreSQL healthchecks and persistent storage volumes.
+      </p>
 
-          <div id="inst-manual" class="inst-panel">
-            <p>Download the standalone <code>zenith.jar</code> from GitHub Releases and run with Java 17+:</p>
-            <div class="terminal-box">
-              <code>curl -LO https://github.com/ouerghi0x/zenith-lang/releases/download/v1.0.0/zenith.jar<br />java -jar zenith.jar build schema.zen -o my-backend</code>
-            </div>
-          </div>
-
-          <div id="inst-vscode" class="inst-panel">
-            <p>Install the <code>.vsix</code> package directly into VS Code or VSCodium:</p>
-            <div class="terminal-box">
-              <code>code --install-extension editors/vscode/zenith-1.0.0.vsix</code>
-            </div>
-          </div>
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">Terminal</span>
+          <button class="code-copy-btn">Copy</button>
         </div>
+        <pre class="code-content"><code>docker compose up --build</code></pre>
       </div>
-    </div>
-  </section>
 
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="container footer-container">
-      <div class="footer-left">
-        <img src="assets/logo.png" alt="Zenith Logo" class="footer-logo" />
-        <span class="footer-brand">Zenith DSL</span>
-        <span class="footer-copy">&copy; 2026 Ouerghi. MIT License.</span>
-      </div>
-      <div class="footer-links">
-        <a href="https://github.com/ouerghi0x/zenith-lang" target="_blank">GitHub Repository</a>
-        <a href="https://github.com/ouerghi0x/zenith-bucket" target="_blank">Scoop Bucket</a>
-        <a href="https://github.com/ouerghi0x/zenith-lang/releases" target="_blank">Releases</a>
-      </div>
-    </div>
-  </footer>
+      <!-- 17. Showcase -->
+      <h2 class="section-heading" id="showcase">17. Complete Reference Project</h2>
+      <p>
+        The canonical reference project <strong>NexusCommerce</strong> illustrates how all Zenith features integrate cleanly. Inspect the complete codebase in <code>zenith-exemples/nexus-commerce/</code> or test it live in Zenith Studio.
+      </p>
+
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>

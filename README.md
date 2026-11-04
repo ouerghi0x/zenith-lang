@@ -148,6 +148,14 @@ Validates schema syntax, types, and foreign key references.
 
 Scaffolds a new starter schema file.
 
+### 6. `zenith studio <file.zen> [--port 3000]` ⚡ _(Zenith Studio PRO)_
+
+Launches **Zenith Studio PRO** — an in-browser visual architecture IDE featuring live entity relation diagrams (ERD), full Monaco code editor with live syntax diagnostics, clickable import navigation, instant ZIP export, and in-browser REST API testing.
+
+```cmd
+.\bin\zenith.bat studio examples\ecommerce.zen
+```
+
 ---
 
 ## 🎨 VS Code Extension (Phase 4)

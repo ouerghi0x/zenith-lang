@@ -344,6 +344,7 @@ public class ZenithCli {
     private static void handleStudio(String[] args) throws IOException {
         int port = 3000;
         Path schemaPath = null;
+        boolean desktopMode = false;
 
         for (int i = 1; i < args.length; i++) {
             if ("-p".equals(args[i]) || "--port".equals(args[i])) {
@@ -351,6 +352,8 @@ public class ZenithCli {
                     port = Integer.parseInt(args[i + 1]);
                     i++;
                 }
+            } else if ("--desktop".equals(args[i]) || "-d".equals(args[i])) {
+                desktopMode = true;
             } else if (!args[i].startsWith("-") && schemaPath == null) {
                 schemaPath = Paths.get(args[i]);
             }
@@ -360,6 +363,14 @@ public class ZenithCli {
         dev.zenith.studio.ZenithStudioServer server = new dev.zenith.studio.ZenithStudioServer(port, schemaPath);
         server.start();
 
+        if (desktopMode) {
+            System.out.println("   ? Desktop App Mode active: launching standalone native window...");
+            // If not already scheduled by zenith.bat wrapper, launch directly from Java
+            if (!"1".equals(System.getenv("ZENITH_DESKTOP_LAUNCHED"))) {
+                launchDesktopApp("http://localhost:" + port);
+            }
+        }
+
         // Keep main thread alive
         try {
             Thread.currentThread().join();
@@ -367,11 +378,37 @@ public class ZenithCli {
         }
     }
 
+    private static void launchDesktopApp(String url) {
+        Thread launcher = new Thread(() -> {
+            try {
+                Thread.sleep(600);
+                String os = System.getProperty("os.name", "").toLowerCase();
+                if (os.contains("win")) {
+                    try {
+                        new ProcessBuilder("cmd", "/c", "start", "msedge", "--app=" + url).start();
+                        return;
+                    } catch (Exception ignored) {}
+                    try {
+                        new ProcessBuilder("cmd", "/c", "start", "chrome", "--app=" + url).start();
+                        return;
+                    } catch (Exception ignored) {}
+                }
+                if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                    java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+                }
+            } catch (Exception e) {
+                System.err.println("   [Desktop] Could not launch app window automatically: " + e.getMessage());
+            }
+        }, "zenith-desktop-launcher");
+        launcher.setDaemon(true);
+        launcher.start();
+    }
+
     private static void printHelp() {
         System.out.println(BANNER);
         System.out.println("Zenith CLI - The high-level Web DSL targeting Spring Boot & Java 17\n");
         System.out.println("Usage:");
-        System.out.println("  zenith studio [file.zen] [-p <port>]      Launch Zenith Studio real-time visual IDE");
+        System.out.println("  zenith studio [file.zen] [-p <port>] [--desktop]  Launch Zenith Studio (add --desktop for native app window)");
         System.out.println("  zenith build <file.zen> [-o <out-dir>]    Compile schema to a full Spring Boot 3 app");
         System.out
                 .println("  zenith watch <file.zen> [-o <out-dir>]    Watch schema file and auto-recompile on change");

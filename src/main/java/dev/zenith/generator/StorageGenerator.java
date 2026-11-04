@@ -226,9 +226,7 @@ public class StorageGenerator {
 
     private static JavaSourceFile generateStorageProperties(String basePkg, String pkgDir) {
         String content = "package " + basePkg + ".storage;\n\n"
-                + "import org.springframework.boot.context.properties.ConfigurationProperties;\n"
-                + "import org.springframework.context.annotation.Configuration;\n\n"
-                + "@Configuration\n"
+                + "import org.springframework.boot.context.properties.ConfigurationProperties;\n\n"
                 + "@ConfigurationProperties(prefix = \"zenith.storage\")\n"
                 + "public class StorageProperties {\n"
                 + "    private String provider = \"minio\"; // minio or s3\n"

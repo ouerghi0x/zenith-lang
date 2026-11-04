@@ -15,18 +15,40 @@ public class PropertiesGenerator {
         sb.append("server:\n");
         sb.append("  port: ").append(port).append("\n\n");
 
+        String appName = file.getConfig().getApp().toLowerCase().replaceAll("[^a-z0-9]", "");
+        String defaultDbName = appName.isEmpty() ? "appdb" : appName + "_db";
+        String customUrl = file.getConfig().getString("dbUrl", null);
+        String customUser = file.getConfig().getString("dbUser", null);
+        String customPass = file.getConfig().getString("dbPassword", null);
+
         sb.append("spring:\n");
         sb.append("  datasource:\n");
-        if ("postgres".equalsIgnoreCase(db)) {
-            sb.append("    url: jdbc:postgresql://localhost:5432/appdb\n");
-            sb.append("    username: postgres\n");
-            sb.append("    password: postgres\n");
+        if ("postgres".equalsIgnoreCase(db) || "postgresql".equalsIgnoreCase(db)) {
+            String defaultUrl = "jdbc:postgresql://localhost:5432/" + defaultDbName;
+            String url = customUrl != null ? customUrl : defaultUrl;
+            String user = customUser != null ? customUser : "zenith";
+            String pass = customPass != null ? customPass : "zenith_secret";
+
+            sb.append("    url: ${SPRING_DATASOURCE_URL:").append(url).append("}\n");
+            sb.append("    username: ${SPRING_DATASOURCE_USERNAME:").append(user).append("}\n");
+            sb.append("    password: ${SPRING_DATASOURCE_PASSWORD:").append(pass).append("}\n");
             sb.append("    driver-class-name: org.postgresql.Driver\n");
+        } else if ("mysql".equalsIgnoreCase(db)) {
+            String defaultUrl = "jdbc:mysql://localhost:3306/" + defaultDbName + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+            String url = customUrl != null ? customUrl : defaultUrl;
+            String user = customUser != null ? customUser : "zenith";
+            String pass = customPass != null ? customPass : "zenith_secret";
+
+            sb.append("    url: ${SPRING_DATASOURCE_URL:").append(url).append("}\n");
+            sb.append("    username: ${SPRING_DATASOURCE_USERNAME:").append(user).append("}\n");
+            sb.append("    password: ${SPRING_DATASOURCE_PASSWORD:").append(pass).append("}\n");
+            sb.append("    driver-class-name: com.mysql.cj.jdbc.Driver\n");
         } else {
-            sb.append("    url: jdbc:h2:mem:appdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=KEY,VALUE\n");
+            sb.append("    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:").append(defaultDbName)
+                    .append(";DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=KEY,VALUE}\n");
             sb.append("    driver-class-name: org.h2.Driver\n");
-            sb.append("    username: sa\n");
-            sb.append("    password: \"\"\n");
+            sb.append("    username: ${SPRING_DATASOURCE_USERNAME:sa}\n");
+            sb.append("    password: ${SPRING_DATASOURCE_PASSWORD:\"\"}\n");
         }
 
         sb.append("  h2:\n");

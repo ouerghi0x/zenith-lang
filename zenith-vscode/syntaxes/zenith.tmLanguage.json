@@ -64,7 +64,7 @@
       "patterns": [
         {
           "name": "keyword.control.zenith",
-          "match": "\\b(import|config|model|enum|body|seed|dto|relations|endpoints|crud|guard|action)\\b"
+          "match": "\\b(import|config|model|enum|job|update|create|body|seed|dto|relations|endpoints|crud|guard|action)\\b"
         },
         {
           "name": "keyword.other.http.zenith",
