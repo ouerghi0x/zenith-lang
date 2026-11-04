@@ -175,3 +175,4 @@ Other directories:
 ## Code of Conduct
 
 Zenith is dedicated to providing an open, welcoming, and harassment-free community for everyone. We expect all contributors, maintainers, and community members to communicate professionally, treat each other with respect, provide constructive feedback, and prioritize technical excellence.
+
