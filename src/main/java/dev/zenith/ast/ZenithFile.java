@@ -2,7 +2,9 @@ package dev.zenith.ast;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ZenithFile {
     private final AppConfig config;
@@ -148,5 +150,75 @@ public class ZenithFile {
             }
         }
         return false;
+    }
+
+    public String getDefaultRole() {
+        ModelDef userModel = getUserModel();
+        if (userModel != null) {
+            for (FieldDef f : userModel.getFields()) {
+                if (f.hasAnnotation("role") || f.getName().equalsIgnoreCase("role") || f.getName().toLowerCase().endsWith("role")) {
+                    if (f.getDefaultValue() != null) {
+                        return f.getDefaultValue().toString();
+                    }
+                    EnumDef enumDef = findEnum(f.getType().getName());
+                    if (enumDef != null && !enumDef.getValues().isEmpty()) {
+                        for (String v : enumDef.getValues()) {
+                            if (!v.toUpperCase().contains("ADMIN")) {
+                                return v;
+                            }
+                        }
+                        return enumDef.getValues().get(0);
+                    }
+                }
+            }
+        }
+        for (EnumDef e : enums) {
+            if (e.getName().toLowerCase().contains("role")) {
+                for (String val : e.getValues()) {
+                    if (val.equalsIgnoreCase("USER") || val.equalsIgnoreCase("CUSTOMER") || val.equalsIgnoreCase("PATIENT") || val.equalsIgnoreCase("MEMBER")) {
+                        return val;
+                    }
+                }
+                for (String v : e.getValues()) {
+                    if (!v.toUpperCase().contains("ADMIN")) {
+                        return v;
+                    }
+                }
+                if (!e.getValues().isEmpty()) return e.getValues().get(0);
+            }
+        }
+        return "USER";
+    }
+
+    public String getDefaultAdminRole() {
+        for (EnumDef e : enums) {
+            for (String val : e.getValues()) {
+                if (val.equalsIgnoreCase("ADMIN") || val.equalsIgnoreCase("ADMINISTRATOR") || val.equalsIgnoreCase("SUPERADMIN") || val.equalsIgnoreCase("SUPER_ADMIN")) {
+                    return val;
+                }
+            }
+        }
+        return "ADMIN";
+    }
+
+    public Set<String> getAllDefinedRoles() {
+        Set<String> roles = new LinkedHashSet<>();
+        ModelDef userModel = getUserModel();
+        if (userModel != null) {
+            for (FieldDef f : userModel.getFields()) {
+                if (f.hasAnnotation("role") || f.getName().equalsIgnoreCase("role") || f.getName().toLowerCase().endsWith("role")) {
+                    EnumDef ed = findEnum(f.getType().getName());
+                    if (ed != null) {
+                        roles.addAll(ed.getValues());
+                    }
+                }
+            }
+        }
+        for (EnumDef e : enums) {
+            if (e.getName().toLowerCase().contains("role")) {
+                roles.addAll(e.getValues());
+            }
+        }
+        return roles;
     }
 }

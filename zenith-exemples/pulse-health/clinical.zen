@@ -1,0 +1,150 @@
+// clinical.zen
+
+enum BloodType {
+    A_POS,
+    A_NEG,
+    B_POS,
+    B_NEG,
+    AB_POS,
+    AB_NEG,
+    O_POS,
+    O_NEG,
+    UNKNOWN
+}
+
+enum AppointmentStatus {
+    SCHEDULED,
+    CONFIRMED,
+    IN_PROGRESS,
+    COMPLETED,
+    CANCELLED,
+    NO_SHOW
+}
+
+model DoctorProfile {
+    id: Long @id @auto
+    licenseNumber: String(length = 32) @unique
+    fullName: String(min = 3, max = 120)
+    specialty: String(min = 2, max = 80)
+    consultationFee: Decimal(precision = 10, scale = 2) @positive
+    bio: String? @text
+    avatar: String? @image(maxSize = "7MB", types = ["image/jpeg", "image/png"])
+
+    relations {
+        account: UserEntity @relation(oneToOne)
+        appointments: List<Appointment> @relation(oneToMany, mappedBy = "doctor")
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            search: [fullName, specialty, licenseNumber]
+            sort: [fullName, consultationFee]
+            auth:true
+            list:ADMIN
+            CREATE :ADMIN
+            DELETE:ADMIN
+        }
+    }
+}
+
+model PatientProfile {
+    id: Long @id @auto
+    medicalRecordNumber: String(length = 24) @unique
+    fullName: String(min = 3, max = 120)
+    dateOfBirth: Date
+    bloodType: BloodType = UNKNOWN
+    emergencyContactPhone: String(length = 20)
+    allergies: String? @text
+
+    relations {
+        account: UserEntity @relation(oneToOne)
+        appointments: List<Appointment> @relation(oneToMany, mappedBy = "patient")
+        vitals: List<VitalReading> @relation(oneToMany, mappedBy = "patient")
+        prescriptions: List<Prescription> @relation(oneToMany, mappedBy = "patient")
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            search: [fullName, medicalRecordNumber]
+            filter: [bloodType]
+            sort: [fullName]
+            auth: true
+            list:[ADMIN,DOCTOR]
+            DELETE:ADMIN
+        }
+    }
+}
+
+model Appointment {
+    id: Long @id @auto
+    scheduledAt: DateTime
+    status: AppointmentStatus = SCHEDULED
+    reasonForVisit: String(min = 5, max = 255)
+    clinicalNotes: String? @text
+    labReportDocument: String? @file
+    radiologyScan: String? @image
+    createdAt: DateTime @autoNow
+    updatedAt: DateTime @autoUpdate
+
+    relations {
+        doctor: DoctorProfile @relation(manyToOne)
+        patient: PatientProfile @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [status, scheduledAt]
+            sort: [scheduledAt]
+        }
+
+        // Confirm appointment booking
+        post "/{id}/confirm" -> Void {
+            description: "Confirms a scheduled appointment"
+            guard: status == AppointmentStatus.SCHEDULED, "Only scheduled appointments can be confirmed"
+            action: {
+                status = AppointmentStatus.CONFIRMED,
+                notify ( 
+                    entity.doctor.account.email,
+                    "Appointment Confirmed"+
+                     "Your appointment with Dr. " + entity.doctor.account.userName + " is confirmed."
+                )
+            }
+        }
+
+        // Check-in and start consultation
+        post "/{id}/start" -> Void {
+            description: "Starts the consultation visit"
+            guard: status == AppointmentStatus.CONFIRMED, "Appointment must be confirmed before starting"
+            action: {
+                status = AppointmentStatus.IN_PROGRESS
+            }
+        }
+
+        // Conclude consultation
+        post "/{id}/complete" -> Void {
+            description: "Concludes consultation and dispatches clinical summary"
+            guard: status == AppointmentStatus.IN_PROGRESS, "Consultation must be in progress to complete"
+            action: {
+                status = AppointmentStatus.COMPLETED,
+                notify ( 
+                    entity.doctor.account.email,
+                    "Consultation Complete"+
+                     "Your consultation summary and prescriptions are ready for review."
+                )
+                
+            }
+        }
+
+        // Patient or clinic cancellation
+        post "/{id}/cancel" -> Void {
+            description: "Cancels an upcoming consultation"
+            guard: status == AppointmentStatus.SCHEDULED || status == AppointmentStatus.CONFIRMED, "Cannot cancel completed or ongoing consultations"
+            action: {
+                status = AppointmentStatus.CANCELLED
+            }
+        }
+    }
+}

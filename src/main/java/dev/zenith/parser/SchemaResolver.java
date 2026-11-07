@@ -33,8 +33,9 @@ public class SchemaResolver {
         visitedFiles.clear();
         importStack.clear();
 
+        String rootFileName = basePath != null ? basePath.getFileName().toString() : "main.zen";
         Lexer lexer = new Lexer(rootSource);
-        Parser parser = new Parser(lexer.tokenize());
+        Parser parser = new Parser(lexer.tokenize(), rootFileName);
         ZenithFile rootFile = parser.parse();
 
         Path currentDir = basePath != null ? basePath.toAbsolutePath().normalize() : Paths.get(".").toAbsolutePath().normalize();
@@ -55,7 +56,7 @@ public class SchemaResolver {
         for (ImportDef imp : rootFile.getImports()) {
             Path targetPath = currentDir.resolve(imp.getPath()).normalize();
             if (!fileOverrides.containsKey(targetPath) && !Files.exists(targetPath)) {
-                throw new ParseException("Imported file not found: '" + imp.getPath() + "'", imp.getLine(), imp.getColumn());
+                throw new ParseException("Imported file not found: '" + imp.getPath() + "'", imp.getLine(), imp.getColumn(), rootFileName);
             }
 
             ZenithFile importedFile = resolveFile(targetPath);
@@ -116,8 +117,9 @@ public class SchemaResolver {
         String source = fileOverrides.containsKey(normalizedPath)
                 ? fileOverrides.get(normalizedPath)
                 : Files.readString(normalizedPath);
+        String currentFileName = normalizedPath.getFileName().toString();
         Lexer lexer = new Lexer(source);
-        Parser parser = new Parser(lexer.tokenize());
+        Parser parser = new Parser(lexer.tokenize(), currentFileName);
         ZenithFile currentFile = parser.parse();
 
         AppConfig finalConfig = currentFile.hasExplicitConfig() ? currentFile.getConfig() : null;
@@ -138,8 +140,8 @@ public class SchemaResolver {
         for (ImportDef imp : currentFile.getImports()) {
             Path targetPath = currentDir.resolve(imp.getPath()).normalize();
             if (!fileOverrides.containsKey(targetPath) && !Files.exists(targetPath)) {
-                throw new ParseException("Imported file not found: '" + imp.getPath() + "' in " + normalizedPath.getFileName(),
-                        imp.getLine(), imp.getColumn());
+                throw new ParseException("Imported file not found: '" + imp.getPath() + "'",
+                        imp.getLine(), imp.getColumn(), currentFileName);
             }
 
             ZenithFile importedFile = resolveFile(targetPath);

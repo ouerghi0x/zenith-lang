@@ -9,9 +9,19 @@ import java.util.*;
 public class Parser {
     private final List<Token> tokens;
     private int cursor = 0;
+    private final String sourceFile;
+
+    private static final Set<String> ALLOWED_CONFIG_KEYS = Set.of(
+        "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket", "usermodel"
+    );
 
     public Parser(List<Token> tokens) {
+        this(tokens, null);
+    }
+
+    public Parser(List<Token> tokens, String sourceFile) {
         this.tokens = tokens != null ? tokens : Collections.emptyList();
+        this.sourceFile = sourceFile;
     }
 
     public ZenithFile parse() {
@@ -149,7 +159,10 @@ public class Parser {
         }
         consume(TokenType.RBRACE, "Expected '}' closing job block");
 
-        return new JobDef(nameTok.getValue(), cron, fixedRate, guards, actions, description, enabled);
+        JobDef job = new JobDef(nameTok.getValue(), cron, fixedRate, guards, actions, description, enabled);
+        job.setSourceFile(sourceFile);
+        job.setSourceLine(nameTok.getLine());
+        return job;
     }
 
     private ImportDef parseImport() {
@@ -261,20 +274,71 @@ public class Parser {
 
         consume(TokenType.RBRACE, "Expected '}' closing dto block");
 
-        return new DtoDef(nameToken.getValue(), fields);
+        DtoDef dto = new DtoDef(nameToken.getValue(), fields);
+        dto.setSourceFile(sourceFile);
+        dto.setSourceLine(nameToken.getLine());
+        return dto;
     }
 
     private AppConfig parseConfig() {
         consume(TokenType.CONFIG, "Expected 'config'");
         consume(TokenType.LBRACE, "Expected '{' after 'config'");
 
-        Map<String, Object> props = new HashMap<>();
+        Map<String, Object> props = new LinkedHashMap<>();
 
         while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
             Token keyToken = consumeKeyName();
-            consume(TokenType.COLON, "Expected ':' after key '" + keyToken.getValue() + "'");
+            String key = keyToken.getValue();
+            String keyLower = key.toLowerCase();
+
+            if (!ALLOWED_CONFIG_KEYS.contains(keyLower)) {
+                throw error(keyToken, "Invalid configuration key '" + key + "'. Supported configuration keys are: "
+                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket.");
+            }
+
+            boolean isDuplicate = props.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(key));
+            if (isDuplicate) {
+                throw error(keyToken, "Duplicate configuration key '" + key + "' in config block. Each configuration key can only be declared once.");
+            }
+
+            consume(TokenType.COLON, "Expected ':' after key '" + key + "'");
             Object val = parseLiteralOrIdentifier();
-            props.put(keyToken.getValue(), val);
+
+            if (val != null) {
+                String valStr = val.toString().trim();
+                if ("database".equals(keyLower)) {
+                    String d = valStr.toLowerCase();
+                    if (!d.equals("postgres") && !d.equals("postgresql") && !d.equals("mysql") && !d.equals("h2")) {
+                        throw error(keyToken, "Invalid database dialect '" + valStr + "'. Supported database options are: postgres, mysql, h2.");
+                    }
+                } else if ("auth".equals(keyLower)) {
+                    String a = valStr.toLowerCase();
+                    if (!a.equals("jwt") && !a.equals("none") && !a.equals("false") && !a.equals("true")) {
+                        throw error(keyToken, "Invalid auth mode '" + valStr + "'. Supported options are: jwt, none.");
+                    }
+                } else if ("port".equals(keyLower)) {
+                    try {
+                        int p = Integer.parseInt(valStr);
+                        if (p < 1 || p > 65535) {
+                            throw error(keyToken, "Port number must be between 1 and 65535, found: " + valStr);
+                        }
+                    } catch (NumberFormatException nfe) {
+                        throw error(keyToken, "Port must be an integer, found: '" + valStr + "'");
+                    }
+                } else if ("storage".equals(keyLower)) {
+                    String s = valStr.toLowerCase();
+                    if (!s.equals("minio") && !s.equals("s3") && !s.equals("none")) {
+                        throw error(keyToken, "Invalid storage provider '" + valStr + "'. Supported options are: minio, s3.");
+                    }
+                } else if ("swagger".equals(keyLower) || "flyway".equals(keyLower)) {
+                    String b = valStr.toLowerCase();
+                    if (!b.equals("true") && !b.equals("false")) {
+                        throw error(keyToken, "Property '" + key + "' must be a boolean (true or false), found: '" + valStr + "'");
+                    }
+                }
+            }
+
+            props.put(key, val);
 
             // optional comma
             match(TokenType.COMMA);
@@ -298,7 +362,10 @@ public class Parser {
         }
 
         consume(TokenType.RBRACE, "Expected '}' closing enum block");
-        return new EnumDef(nameToken.getValue(), values);
+        EnumDef enumDef = new EnumDef(nameToken.getValue(), values);
+        enumDef.setSourceFile(sourceFile);
+        enumDef.setSourceLine(nameToken.getLine());
+        return enumDef;
     }
 
     private ModelDef parseModel() {
@@ -352,7 +419,10 @@ public class Parser {
             }
         }
 
-        return new ModelDef(nameToken.getValue(), fields, relations, crudConfig, customEndpoints);
+        ModelDef model = new ModelDef(nameToken.getValue(), fields, relations, crudConfig, customEndpoints);
+        model.setSourceFile(sourceFile);
+        model.setSourceLine(nameToken.getLine());
+        return model;
     }
 
     private FieldDef parseField() {
@@ -499,7 +569,7 @@ public class Parser {
     }
 
     private CrudConfig parseCrudBlock() {
-        consume(TokenType.CRUD, "Expected 'crud'");
+        Token crudTok = consume(TokenType.CRUD, "Expected 'crud'");
         boolean enabled = true;
         boolean paginate = true;
         List<String> search = new ArrayList<>();
@@ -572,7 +642,10 @@ public class Parser {
             consume(TokenType.RBRACE, "Expected '}' closing crud block");
         }
 
-        return new CrudConfig(enabled, paginate, search, filter, sort, requiresAuth, defaultRoles, operationRoles);
+        CrudConfig crud = new CrudConfig(enabled, paginate, search, filter, sort, requiresAuth, defaultRoles, operationRoles);
+        crud.setSourceFile(sourceFile);
+        crud.setSourceLine(crudTok.getLine());
+        return crud;
     }
 
     private List<String> parseRoleListOrSingle() {
@@ -783,8 +856,11 @@ public class Parser {
             consume(TokenType.RBRACE, "Expected '}' closing custom endpoint block");
         }
 
-        return new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards, actions, requiresAuth,
+        CustomEndpointDef cep = new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards, actions, requiresAuth,
                 userScoped, query, paramTypes, bodyType);
+        cep.setSourceFile(sourceFile);
+        cep.setSourceLine(methodTok.getLine());
+        return cep;
     }
 
     private String parseActionStatement() {
@@ -1097,6 +1173,6 @@ public class Parser {
     }
 
     private ParseException error(Token token, String message) {
-        return new ParseException(message, token.getLine(), token.getColumn());
+        return new ParseException(message, token.getLine(), token.getColumn(), sourceFile);
     }
 }

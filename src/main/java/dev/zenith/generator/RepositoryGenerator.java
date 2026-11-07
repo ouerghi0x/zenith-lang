@@ -19,7 +19,9 @@ public class RepositoryGenerator {
         sb.append("package ").append(basePkg).append(".repository;\n\n");
 
         sb.append("import ").append(basePkg).append(".entity.").append(className).append(";\n");
-        sb.append("import ").append(basePkg).append(".model.*;\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
         sb.append("import org.springframework.data.jpa.repository.JpaRepository;\n");
         sb.append("import org.springframework.data.jpa.repository.JpaSpecificationExecutor;\n");
         sb.append("import org.springframework.data.jpa.repository.Query;\n");
@@ -28,8 +30,10 @@ public class RepositoryGenerator {
         sb.append("import org.springframework.data.domain.Pageable;\n");
         sb.append("import org.springframework.stereotype.Repository;\n");
         sb.append("import java.util.Optional;\n");
-        sb.append("import java.util.List;\n\n");
+        sb.append("import java.util.List;\n");
         sb.append("import java.util.UUID;\n");
+        sb.append("import java.time.LocalDateTime;\n");
+        sb.append("import java.time.LocalDate;\n");
         sb.append("@Repository\n");
         sb.append("public interface ").append(repoName).append(" extends JpaRepository<").append(className).append(", ")
                 .append(idType).append(">, JpaSpecificationExecutor<").append(className).append("> {\n\n");

@@ -96,8 +96,16 @@ public class LogicTranspiler {
                 var field = model.findField(left);
                 if (field != null) {
                     String cap = TypeHelper.capitalize(field.getName());
+                    String fType = TypeHelper.toSimpleJavaType(field.getType());
+                    if ("LocalDate".equalsIgnoreCase(fType) || "Date".equalsIgnoreCase(field.getType().getName())) {
+                        if (right.contains("java.time.LocalDateTime.now()")) {
+                            right = right.replace("java.time.LocalDateTime.now()", "java.time.LocalDate.now()");
+                        }
+                    }
                     if ("now()".equalsIgnoreCase(right)) {
-                        right = "java.time.LocalDateTime.now()";
+                        right = ("LocalDate".equalsIgnoreCase(fType) || "Date".equalsIgnoreCase(field.getType().getName()))
+                                ? "java.time.LocalDate.now()"
+                                : "java.time.LocalDateTime.now()";
                     }
                     return "entity.set" + cap + "(" + right + ");";
                 }
@@ -119,18 +127,19 @@ public class LogicTranspiler {
                             + "    entity.set" + cap + "(null);\n"
                             + "}";
                 }
+
+                throw new dev.zenith.analyzer.AnalysisException(
+                        "Cannot assign to unknown field or relation '" + left + "' on model '" + model.getName() + "'.");
             }
         }
 
         // Check if return
-        if (s.startsWith("return ")) {
-            return "// " + s;
+        if (s.startsWith("return ") || s.equals("return")) {
+            return transpileReturnStatement(s, model, file);
         }
 
-        if (!s.endsWith(";")) {
-            s += ";";
-        }
-        return s;
+        throw new dev.zenith.analyzer.AnalysisException("Unsupported action statement or expression: '" + s + "'. "
+                + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'notify(to, message)', or 'return ...'.");
     }
 
     private static String transpileCreateStatement(String s, ModelDef model) {
@@ -363,6 +372,36 @@ public class LogicTranspiler {
         return value;
     }
 
+    public static String normalizeDateOperations(String code) {
+        if (code == null) return null;
+        String s = code;
+        s = s.replaceAll("(?<!\\.)\\bnow\\s*\\(\\s*\\)", "java.time.LocalDateTime.now()");
+        s = s.replaceAll("(?<!\\.)\\btoday\\s*\\(\\s*\\)", "java.time.LocalDate.now()");
+
+        s = s.replaceAll("\\bdaysFromNow\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().plusDays($1)");
+        s = s.replaceAll("\\bhoursFromNow\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().plusHours($1)");
+        s = s.replaceAll("\\bminutesFromNow\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().plusMinutes($1)");
+        s = s.replaceAll("\\bmonthsFromNow\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().plusMonths($1)");
+        s = s.replaceAll("\\byearsFromNow\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().plusYears($1)");
+
+        s = s.replaceAll("\\bdaysAgo\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().minusDays($1)");
+        s = s.replaceAll("\\bhoursAgo\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().minusHours($1)");
+        s = s.replaceAll("\\bminutesAgo\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().minusMinutes($1)");
+        s = s.replaceAll("\\bmonthsAgo\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().minusMonths($1)");
+        s = s.replaceAll("\\byearsAgo\\s*\\(\\s*([^)]+)\\s*\\)", "java.time.LocalDateTime.now().minusYears($1)");
+
+        s = s.replaceAll("\\b([a-zA-Z0-9_]+)\\.daysFromNow\\b", "java.time.LocalDateTime.now().plusDays($1)");
+        s = s.replaceAll("\\b([a-zA-Z0-9_]+)\\.hoursFromNow\\b", "java.time.LocalDateTime.now().plusHours($1)");
+        s = s.replaceAll("\\b([a-zA-Z0-9_]+)\\.minutesFromNow\\b", "java.time.LocalDateTime.now().plusMinutes($1)");
+        s = s.replaceAll("\\b([a-zA-Z0-9_]+)\\.daysAgo\\b", "java.time.LocalDateTime.now().minusDays($1)");
+        s = s.replaceAll("\\b([a-zA-Z0-9_]+)\\.hoursAgo\\b", "java.time.LocalDateTime.now().minusHours($1)");
+        s = s.replaceAll("\\b([a-zA-Z0-9_]+)\\.minutesAgo\\b", "java.time.LocalDateTime.now().minusMinutes($1)");
+
+        s = s.replace("java.time.LocalDateTime.java.time.LocalDateTime", "java.time.LocalDateTime");
+        s = s.replace("java.time.LocalDate.java.time.LocalDate", "java.time.LocalDate");
+        return s;
+    }
+
     public static String transpileFilterCondition(String cond, String targetModel) {
         return transpileFilterCondition(cond, targetModel, null);
     }
@@ -372,10 +411,37 @@ public class LogicTranspiler {
         String s = cond.trim();
         s = s.replaceAll("(?i)\\b(and)\\b", "&&");
         s = s.replaceAll("(?i)\\b(or)\\b", "||");
-        s = s.replaceAll("\\bdaysAgo\\s*\\(\\s*(\\d+)\\s*\\)", "java.time.LocalDateTime.now().minusDays($1)");
-        s = s.replaceAll("\\bhoursAgo\\s*\\(\\s*(\\d+)\\s*\\)", "java.time.LocalDateTime.now().minusHours($1)");
-        s = s.replaceAll("\\bminutesAgo\\s*\\(\\s*(\\d+)\\s*\\)", "java.time.LocalDateTime.now().minusMinutes($1)");
-        s = s.replaceAll("\\bnow\\s*\\(\\s*\\)", "java.time.LocalDateTime.now()");
+        s = normalizeDateOperations(s);
+
+        // Convert `var <= java.time` to `(!var.isAfter(...))`
+        Pattern ltePattern = Pattern.compile("([a-zA-Z0-9_.]+)\\s*<=\\s*(java\\.time\\.[^&|]+)");
+        Matcher lteMatcher = ltePattern.matcher(s);
+        StringBuffer lteSb = new StringBuffer();
+        while (lteMatcher.find()) {
+            String left = lteMatcher.group(1);
+            String right = lteMatcher.group(2).trim();
+            if (!left.startsWith("target.")) {
+                left = "target.get" + TypeHelper.capitalize(left) + "()";
+            }
+            lteMatcher.appendReplacement(lteSb, Matcher.quoteReplacement("(" + left + " != null && !" + left + ".isAfter(" + right + "))"));
+        }
+        lteMatcher.appendTail(lteSb);
+        s = lteSb.toString();
+
+        // Convert `var >= java.time` to `(!var.isBefore(...))`
+        Pattern gtePattern = Pattern.compile("([a-zA-Z0-9_.]+)\\s*>=\\s*(java\\.time\\.[^&|]+)");
+        Matcher gteMatcher = gtePattern.matcher(s);
+        StringBuffer gteSb = new StringBuffer();
+        while (gteMatcher.find()) {
+            String left = gteMatcher.group(1);
+            String right = gteMatcher.group(2).trim();
+            if (!left.startsWith("target.")) {
+                left = "target.get" + TypeHelper.capitalize(left) + "()";
+            }
+            gteMatcher.appendReplacement(gteSb, Matcher.quoteReplacement("(" + left + " != null && !" + left + ".isBefore(" + right + "))"));
+        }
+        gteMatcher.appendTail(gteSb);
+        s = gteSb.toString();
 
         // Convert `var < java.time` to `var.isBefore(...)`
         Pattern ltPattern = Pattern.compile("([a-zA-Z0-9_.]+)\\s*<\\s*(java\\.time\\.[^&|]+)");
@@ -469,11 +535,8 @@ public class LogicTranspiler {
         // 3. Replace body.field with body.field() for Java record accessors
         code = code.replaceAll("\\bbody\\.([a-zA-Z0-9_]+)(?!\\()", "body.$1()");
 
-        // 4. Replace now() with java.time.LocalDateTime.now()
-        code = code.replaceAll("\\bnow\\s*\\(\\s*\\)", "java.time.LocalDateTime.now()");
-        code = code.replaceAll("\\bdaysAgo\\s*\\(\\s*(\\d+)\\s*\\)", "java.time.LocalDateTime.now().minusDays($1)");
-        code = code.replaceAll("\\bhoursAgo\\s*\\(\\s*(\\d+)\\s*\\)", "java.time.LocalDateTime.now().minusHours($1)");
-        code = code.replaceAll("\\bminutesAgo\\s*\\(\\s*(\\d+)\\s*\\)", "java.time.LocalDateTime.now().minusMinutes($1)");
+        // 4. Normalize date operations (now, today, daysAgo, daysFromNow, etc.)
+        code = normalizeDateOperations(code);
 
         // 5. Transform entity.prop1.prop2 into entity.getProp1().getProp2()
         Pattern chainedPattern = Pattern.compile("\\bentity(?:\\.[a-zA-Z0-9_]+)+");

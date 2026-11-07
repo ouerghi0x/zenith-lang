@@ -89,16 +89,15 @@ public class AppConfig {
 
     public boolean isAuthEnabled() {
         String auth = getString("auth", null);
-        if ("jwt".equalsIgnoreCase(auth) || "true".equalsIgnoreCase(auth)) return true;
-        return getBoolean("auth", false);
+        return "jwt".equalsIgnoreCase(auth);
     }
 
     public boolean isSwaggerEnabled() {
-        return getBoolean("swagger", true);
+        return getBoolean("swagger", false);
     }
 
     public boolean isFlywayEnabled() {
-        return getBoolean("flyway", true);
+        return getBoolean("flyway", false);
     }
 
     public String getJwtSecret() {

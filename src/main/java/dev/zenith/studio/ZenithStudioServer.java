@@ -60,6 +60,7 @@ public class ZenithStudioServer {
         server.createContext("/api/run", new RunHandler());
         server.createContext("/api/stop", new StopHandler());
         server.createContext("/api/logs", new LogsHandler());
+        server.createContext("/api/logs/clear", new ClearLogsHandler());
         server.createContext("/api/export", new ExportHandler());
         server.createContext("/api/schema", new SchemaHandler());
         server.createContext("/download/desktop", new DesktopDownloadHandler());
@@ -187,6 +188,7 @@ public class ZenithStudioServer {
                 json.append("    \"basePath\": \"").append(escape(analyzed.getConfig().getBasePath())).append("\",\n");
                 json.append("    \"port\": ").append(analyzed.getConfig().getPort()).append(",\n");
                 json.append("    \"hasAuth\": ").append(analyzed.hasAuth()).append(",\n");
+                json.append("    \"hasStorage\": ").append(analyzed.hasStorage()).append(",\n");
                 json.append("    \"auth\": \"").append(escape(analyzed.getConfig().getString("auth", "none")))
                         .append("\"\n");
                 json.append("  },\n");
@@ -215,7 +217,9 @@ public class ZenithStudioServer {
                                 .append(escape(f.getDefaultValue() != null ? f.getDefaultValue().toString() : ""))
                                 .append("\",\n");
                         json.append("          \"unique\": ").append(f.hasAnnotation("unique")).append(",\n");
-                        json.append("          \"password\": ").append(f.hasAnnotation("password")).append("\n");
+                        json.append("          \"password\": ").append(f.hasAnnotation("password")).append(",\n");
+                        json.append("          \"file\": ").append(f.hasAnnotation("file")).append(",\n");
+                        json.append("          \"image\": ").append(f.hasAnnotation("image")).append("\n");
                         json.append("        }");
                     }
                     json.append("\n      ],\n");
@@ -341,12 +345,19 @@ public class ZenithStudioServer {
             } catch (Exception e) {
                 int errLine = 1;
                 int errCol = 1;
+                String errFile = null;
                 String msg = e.getMessage() != null ? e.getMessage() : e.toString();
 
                 if (e instanceof dev.zenith.parser.ParseException) {
                     dev.zenith.parser.ParseException pe = (dev.zenith.parser.ParseException) e;
                     errLine = pe.getLine();
                     errCol = pe.getColumn();
+                    errFile = pe.getSourceFile();
+                } else if (e instanceof dev.zenith.analyzer.AnalysisException) {
+                    dev.zenith.analyzer.AnalysisException ae = (dev.zenith.analyzer.AnalysisException) e;
+                    errLine = ae.getLine();
+                    errCol = ae.getColumn();
+                    errFile = ae.getSourceFile();
                 } else if (msg.contains("Lexical error at ")) {
                     try {
                         String loc = msg.substring(msg.indexOf("at ") + 3);
@@ -356,9 +367,22 @@ public class ZenithStudioServer {
                     }
                 }
 
+                if (errFile == null && msg.startsWith("[")) {
+                    int colon = msg.indexOf(':');
+                    int closeBracket = msg.indexOf(']');
+                    if (closeBracket > 1) {
+                        int end = colon > 0 && colon < closeBracket ? colon : closeBracket;
+                        errFile = msg.substring(1, end).trim();
+                    }
+                }
+                if (errFile == null) {
+                    errFile = currentFile;
+                }
+
                 String errJson = "{\n" +
                         "  \"success\": false,\n" +
                         "  \"error\": \"" + escape(msg) + "\",\n" +
+                        "  \"file\": \"" + escape(errFile) + "\",\n" +
                         "  \"line\": " + errLine + ",\n" +
                         "  \"column\": " + errCol + "\n" +
                         "}";
@@ -381,8 +405,13 @@ public class ZenithStudioServer {
             processLogs.add("[Zenith Studio] Generating project files into target/studio-run...");
 
             try {
-                // Terminate any leftover Spring Boot instance on port 8080 before launching
-                killProcessOnPort(8080);
+                // Terminate any leftover Spring Boot instance on configured port before launching
+                int appPort = (latestCompiledFile != null && latestCompiledFile.getConfig() != null)
+                        ? latestCompiledFile.getConfig().getPort() : 8080;
+                killProcessOnPort(appPort);
+                if (appPort != 8080) {
+                    killProcessOnPort(8080);
+                }
 
                 if (latestCompiledFile == null) {
                     if (schemaPath != null && Files.exists(schemaPath)) {
@@ -489,7 +518,12 @@ public class ZenithStudioServer {
                 runningSpringProcess = null;
                 processLogs.add("[Zenith Studio] Spring Boot application stopped.");
             }
-            killProcessOnPort(8080);
+            int appPort = (latestCompiledFile != null && latestCompiledFile.getConfig() != null)
+                    ? latestCompiledFile.getConfig().getPort() : 8080;
+            killProcessOnPort(appPort);
+            if (appPort != 8080) {
+                killProcessOnPort(8080);
+            }
             sendResponse(exchange, 200, "application/json", "{\"success\": true}");
         }
     }
@@ -498,7 +532,8 @@ public class ZenithStudioServer {
     private class LogsHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            StringBuilder sb = new StringBuilder("{\"logs\": [");
+            boolean isRunning = runningSpringProcess != null && runningSpringProcess.isAlive();
+            StringBuilder sb = new StringBuilder("{\"running\": ").append(isRunning).append(", \"logs\": [");
             for (int i = 0; i < processLogs.size(); i++) {
                 if (i > 0)
                     sb.append(",");
@@ -506,6 +541,15 @@ public class ZenithStudioServer {
             }
             sb.append("]}");
             sendResponse(exchange, 200, "application/json", sb.toString());
+        }
+    }
+
+    // Clear Logs
+    private class ClearLogsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            processLogs.clear();
+            sendResponse(exchange, 200, "application/json", "{\"success\": true}");
         }
     }
 

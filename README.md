@@ -256,34 +256,75 @@ Run `.\update-extension.bat` from the root directory to package and install the 
 
 ## Enterprise Features (Phase 2 & 3)
 
-### 1. Spring Security 6 & JWT Authentication
+### Application Configuration Reference (`config { ... }`)
 
-Set `auth: jwt` in `config` and designate a model with `@password` and `@role`:
+Declare application-wide architecture, database dialect, authentication, and external services:
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `app` | `String` | `"ZenithApp"` | Application name used in Maven artifact ID, OpenAPI metadata, and Docker naming. |
+| `package` | `String` | `"com.example.app"` | Base Java package for generated controllers, services, repositories, and models. |
+| `basePath` | `String` | `"/api/v1"` | Global REST URL prefix for all generated controllers. |
+| `port` | `Int` | `8080` | Embedded Tomcat server port (`server.port`). |
+| `database` | `Identifier` | `h2` | Target SQL dialect: `postgres`, `mysql`, or `h2`. Selecting `mysql` automatically includes `com.mysql:mysql-connector-j`, MySQLDialect, and MySQL DDL. |
+| `auth` | `Identifier` | `none` | Security mode: `jwt` or `none` (default: `none`). Spring Security 6, JJWT dependencies, JWT filters, and AuthController are strictly included only when `auth: jwt` is explicitly declared. |
+| `swagger` | `Boolean` | `false` | Generates OpenAPI 3.0 / Swagger UI at `/swagger-ui.html`. Disabled by default; explicitly opt-in with `swagger: true`. |
+| `flyway` | `Boolean` | `false` | Generates Flyway database migration scripts (`V1__initial_schema.sql`). Disabled by default; explicitly opt-in with `flyway: true`. |
+| `storage` | `Identifier` | `minio` | Unified object storage provider: `minio` (local S3-compatible dev storage) or `s3` (AWS S3 cloud production). |
+| `storageBucket`| `String` | `"zenith-bucket"`| Default bucket name for media, images, and file uploads. |
 
 ```zen
+config {
+    app: "PulseHealth"
+    package: "com.pulsehealth.app"
+    basePath: "/api/v1"
+    port: 8080
+    database: mysql          // postgres | mysql | h2
+    auth: jwt                // Explicitly enables Spring Security 6 & JWT
+    swagger: true            // Opt-in OpenAPI 3.0 Swagger UI
+    flyway: true             // Opt-in Flyway versioned DDL migrations
+    storage: minio           // minio | s3
+    storageBucket: "pulse-media"
+}
+```
+
+### 1. Spring Security 6 & JWT Authentication
+
+When `auth: jwt` is declared in `config`, Zenith integrates Spring Security 6 and generates complete token-based authentication. Designate a model with `@password` and `@role`:
+
+```zen
+enum UserRole {
+    ADMIN,
+    DOCTOR,
+    PATIENT
+}
+
 model Customer {
     id: Long @id @auto
     email: String @unique @email
-    password: String @password
-    role: UserRole = CUSTOMER @role
+    password: String @password                   // Automatically applies @NotBlank & @Size(min=8, max=100) to Create DTO
+    role: UserRole = PATIENT @role               // Canonical default role assigned on registration
 }
 ```
 
 Zenith generates:
 
-- `SecurityConfig.java`: Stateless session, CORS, CSRF disabled, BCrypt encoder.
-- `JwtService.java` & `JwtAuthenticationFilter.java`: Bearer token authorization.
-- `AuthController.java`: `POST /api/v1/auth/login` and `POST /api/v1/auth/register`.
-- Passwords are automatically hidden and excluded from all Response DTOs.
+- `SecurityConfig.java`: Stateless session management, CORS configuration, CSRF disabled, and BCrypt password encoder.
+- `JwtService.java` & `JwtAuthenticationFilter.java`: Bearer token extraction and validation.
+- `AuthController.java`: `POST /api/v1/auth/login` and `POST /api/v1/auth/register` (new registrations automatically receive the designated default role).
+- **DTO Validation Propagation**: `@password` automatically applies `@NotBlank` and `@Size(min = 8, max = 100)` on the `CreateCustomerRequest` DTO; `@email`, `@positive`, `@min`, `@max`, and string lengths propagate to both JPA entities and request DTOs.
+- Passwords are automatically hashed with BCrypt and excluded from all API response DTOs (`@JsonIgnore`).
 
-### 2. Interactive Swagger UI / OpenAPI 3
+### 2. Interactive Swagger UI / OpenAPI 3 (Opt-In)
 
-- Live interactive Swagger UI at: `http://localhost:8080/swagger-ui.html`
+- Enable with `swagger: true` in `config`. If omitted or set to `false`, OpenAPI dependencies and Swagger annotations are completely excluded from the generated project.
+- Interactive Swagger UI available at: `http://localhost:8080/swagger-ui.html`.
 - `@Tag` and `@Operation` auto-documented on all endpoints.
 
-### 3. Flyway Database Migrations
+### 3. Flyway Database Migrations (Opt-In)
 
-- Generates `src/main/resources/db/migration/V1__initial_schema.sql` with exact DDL, foreign keys, and indexes.
+- Enable with `flyway: true` in `config`. If omitted or set to `false`, Flyway dependencies and migration files are not generated.
+- Generates `src/main/resources/db/migration/V1__initial_schema.sql` with exact DDL, foreign keys, and indexes for PostgreSQL, MySQL, or H2.
 
 ### 4. API Security & Role-Based Access Control (RBAC)
 
@@ -369,7 +410,7 @@ get "/my-products" -> List<ProductResponse> {
 
 ### 5. Declarative Logic & Domain Actions
 
-Zenith supports complete domain business logic: instantiate secondary entities, update related models, record audit trails, notify owners, and resolve authenticated users:
+Zenith supports complete domain business logic: instantiate secondary entities, update related models, record audit trails, notify owners, perform date calculations, and resolve authenticated users:
 
 ```zen
 post "/{id}/complete" -> Void {
@@ -378,19 +419,21 @@ post "/{id}/complete" -> Void {
     action: {
         // 1. Mutate primary entity
         status = TaskStatus.DONE
-        completedAt = DateTime.now
+        completedAt = now()
 
         // 2. Update secondary related model (Parent Project)
         update Project {
             where: id == entity.project.id
             completedTasks = entity.project.completedTasks + 1
             status = ProjectStatus.ACTIVE
+            lastActivityAt = now()
         }
 
-        // 3. Secondary entity instantiation
+        // 3. Secondary entity instantiation with forward date calculation
         create AuditLog {
             action = "TASK_COMPLETED",
-            details = "Task " + entity.title + " completed by " + currentUser.email
+            details = "Task " + entity.title + " completed by " + currentUser.email,
+            retentionUntil = daysFromNow(90)
         }
 
         // 4. Notification hook
@@ -398,6 +441,12 @@ post "/{id}/complete" -> Void {
     }
 }
 ```
+
+#### Strict Compile-Time Analysis & Error Prevention
+
+Zenith enforces strict static analysis across all action and job blocks:
+- **Zero Silent Failures**: Any unrecognized method, unsupported statement, or misspelled property (e.g. updating a field that does not exist on the target model) immediately triggers a clear, descriptive compilation error.
+- **Valid Java Guarantee**: Unsupported logic is caught during the analysis phase, ensuring the compiler never produces invalid or broken Java output.
 
 ### 6. File Uploads & Media Storage (`@file`, `@image`)
 
@@ -609,7 +658,12 @@ The Zenith transpiler automatically converts high-level temporal functions and b
 
 - **Time Expressions**:
   - `now()` &rarr; `java.time.LocalDateTime.now()`
-  - `daysAgo(n)` &rarr; `java.time.LocalDateTime.now().minusDays(n)`
+  - `today()` &rarr; `java.time.LocalDate.now()`
+  - `daysFromNow(n)` or `n.daysFromNow` &rarr; `java.time.LocalDateTime.now().plusDays(n)`
+  - `hoursFromNow(n)` &rarr; `java.time.LocalDateTime.now().plusHours(n)`
+  - `minutesFromNow(n)` &rarr; `java.time.LocalDateTime.now().plusMinutes(n)`
+  - `monthsFromNow(n)` / `yearsFromNow(n)` &rarr; `java.time.LocalDateTime.now().plusMonths/Years(n)`
+  - `daysAgo(n)` or `n.daysAgo` &rarr; `java.time.LocalDateTime.now().minusDays(n)`
   - `hoursAgo(n)` &rarr; `java.time.LocalDateTime.now().minusHours(n)`
   - `minutesAgo(n)` &rarr; `java.time.LocalDateTime.now().minusMinutes(n)`
 - **Bulk Filter Pipeline**: When `where:` contains collection criteria (e.g. `status == DONE and updatedAt < daysAgo(30)`), the transpiler generates:
@@ -622,7 +676,8 @@ The Zenith transpiler automatically converts high-level temporal functions and b
           taskRepository.save(target);
       });
   ```
-- **Null-Safe Comparisons**: Temporal comparisons (`<` and `>`) automatically compile into `.isBefore(...)` and `.isAfter(...)` with explicit null guards.
+- **Null-Safe Temporal Operators**: Complete comparison operators (`<`, `<=`, `>`, `>=`, `==`, `!=`) compile into null-safe `.isBefore(...)`, `(!.isAfter(...))`, `.isAfter(...)`, `(!.isBefore(...))`, and `.isEqual(...)` method calls.
+- **Automatic Date Imports**: `java.time.LocalDateTime` and `java.time.LocalDate` are automatically imported in all affected controllers, services, repositories, and jobs.
 
 ### 11. Automated Unit & Integration Tests Generation
 

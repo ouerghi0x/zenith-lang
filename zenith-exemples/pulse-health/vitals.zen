@@ -1,0 +1,45 @@
+// vitals.zen
+
+enum VitalSeverity {
+    NORMAL,
+    ATTENTION,
+    CRITICAL
+}
+
+model VitalReading {
+    id: Long @id @auto
+    recordedAt: DateTime @autoNow
+    heartRateBpm: Int @min(30) @max(260)
+    systolicBp: Int @min(50) @max(260)
+    diastolicBp: Int @min(30) @max(160)
+    oxygenSaturationPct: Int @min(50) @max(100)
+    bodyTemperatureCelsius: Decimal(precision = 4, scale = 1)
+    bloodGlucoseMgDl: Int? @min(20) @max(600)
+    severity: VitalSeverity = NORMAL
+    deviceIdentifier: String(length = 64)?
+
+    relations {
+        patient: PatientProfile @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [severity, recordedAt]
+            sort: [recordedAt]
+        }
+
+        // Flag vital reading as critical and alert attending doctor
+        post "/{id}/flag-critical" -> Void {
+            description: "Escalates anomalous vital reading to attending medical staff"
+            action: {
+                severity = VitalSeverity.CRITICAL,
+                notify  (
+                    entity.patient.account.email,
+                    "Urgent Vital Alert"
+                    +"An anomalous telemetry reading was recorded. Please consult your care team."
+                )
+            }
+        }
+    }
+}

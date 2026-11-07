@@ -15,6 +15,24 @@ public class CrudConfig {
     private final Boolean requiresAuth; // null = default convention, true = authenticated, false = public
     private final List<String> defaultRoles; // default roles for all operations in this crud block
     private final Map<String, List<String>> operationRoles; // granular roles e.g. "delete" -> ["ADMIN"], "getAll" -> ["public"]
+    private String sourceFile;
+    private int sourceLine;
+
+    public String getSourceFile() {
+        return sourceFile;
+    }
+
+    public void setSourceFile(String sourceFile) {
+        this.sourceFile = sourceFile;
+    }
+
+    public int getSourceLine() {
+        return sourceLine;
+    }
+
+    public void setSourceLine(int sourceLine) {
+        this.sourceLine = sourceLine;
+    }
 
     public CrudConfig(boolean enabled, boolean paginate, List<String> searchFields, List<String> filterFields,
                       List<String> sortFields, Boolean requiresAuth, List<String> defaultRoles,

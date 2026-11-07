@@ -14,7 +14,7 @@ public class ExceptionHandlerGenerator {
 
         list.add(generateResourceNotFoundException(basePkg, pkgDir));
         list.add(generateErrorResponse(basePkg, pkgDir));
-        list.add(generateGlobalExceptionHandler(basePkg, pkgDir));
+        list.add(generateGlobalExceptionHandler(basePkg, pkgDir, file.hasAuth()));
 
         return list;
     }
@@ -52,43 +52,54 @@ public class ExceptionHandlerGenerator {
         return new JavaSourceFile(pkgDir + "ErrorResponse.java", content);
     }
 
-    private static JavaSourceFile generateGlobalExceptionHandler(String basePkg, String pkgDir) {
-        String content = "package " + basePkg + ".exception;\n\n" +
-                "import org.springframework.http.HttpStatus;\n" +
-                "import org.springframework.http.ResponseEntity;\n" +
-                "import org.springframework.validation.FieldError;\n" +
-                "import org.springframework.web.bind.MethodArgumentNotValidException;\n" +
-                "import org.springframework.web.bind.annotation.ExceptionHandler;\n" +
-                "import org.springframework.web.bind.annotation.RestControllerAdvice;\n" +
-                "import java.util.HashMap;\n" +
-                "import java.util.Map;\n\n" +
-                "@RestControllerAdvice\n" +
-                "public class GlobalExceptionHandler {\n\n" +
-                "    @ExceptionHandler(ResourceNotFoundException.class)\n" +
-                "    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {\n" +
-                "        ErrorResponse error = ErrorResponse.of(HttpStatus.NOT_FOUND.value(), ex.getMessage());\n" +
-                "        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);\n" +
-                "    }\n\n" +
-                "    @ExceptionHandler(MethodArgumentNotValidException.class)\n" +
-                "    public ResponseEntity<ErrorResponse> handleValidationErrors(MethodArgumentNotValidException ex) {\n" +
-                "        Map<String, String> errors = new HashMap<>();\n" +
-                "        for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {\n" +
-                "            errors.put(fieldError.getField(), fieldError.getDefaultMessage());\n" +
-                "        }\n" +
-                "        ErrorResponse error = ErrorResponse.validation(HttpStatus.BAD_REQUEST.value(), \"Validation failed\", errors);\n" +
-                "        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);\n" +
-                "    }\n\n" +
-                "    @ExceptionHandler(IllegalArgumentException.class)\n" +
-                "    public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {\n" +
-                "        ErrorResponse error = ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), ex.getMessage());\n" +
-                "        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);\n" +
-                "    }\n\n" +
-                "    @ExceptionHandler(Exception.class)\n" +
-                "    public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {\n" +
-                "        ErrorResponse error = ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), \"An unexpected error occurred: \" + ex.getMessage());\n" +
-                "        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);\n" +
-                "    }\n" +
-                "}\n";
-        return new JavaSourceFile(pkgDir + "GlobalExceptionHandler.java", content);
+    private static JavaSourceFile generateGlobalExceptionHandler(String basePkg, String pkgDir, boolean hasAuth) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(basePkg).append(".exception;\n\n");
+        sb.append("import org.springframework.http.HttpStatus;\n");
+        sb.append("import org.springframework.http.ResponseEntity;\n");
+        sb.append("import org.springframework.validation.FieldError;\n");
+        sb.append("import org.springframework.web.bind.MethodArgumentNotValidException;\n");
+        sb.append("import org.springframework.web.bind.annotation.ExceptionHandler;\n");
+        sb.append("import org.springframework.web.bind.annotation.RestControllerAdvice;\n");
+        if (hasAuth) {
+            sb.append("import org.springframework.security.access.AccessDeniedException;\n");
+        }
+        sb.append("import java.util.HashMap;\n");
+        sb.append("import java.util.Map;\n\n");
+        sb.append("@RestControllerAdvice\n");
+        sb.append("public class GlobalExceptionHandler {\n\n");
+        sb.append("    @ExceptionHandler(ResourceNotFoundException.class)\n");
+        sb.append("    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {\n");
+        sb.append("        ErrorResponse error = ErrorResponse.of(HttpStatus.NOT_FOUND.value(), ex.getMessage());\n");
+        sb.append("        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);\n");
+        sb.append("    }\n\n");
+        sb.append("    @ExceptionHandler(MethodArgumentNotValidException.class)\n");
+        sb.append("    public ResponseEntity<ErrorResponse> handleValidationErrors(MethodArgumentNotValidException ex) {\n");
+        sb.append("        Map<String, String> errors = new HashMap<>();\n");
+        sb.append("        for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {\n");
+        sb.append("            errors.put(fieldError.getField(), fieldError.getDefaultMessage());\n");
+        sb.append("        }\n");
+        sb.append("        ErrorResponse error = ErrorResponse.validation(HttpStatus.BAD_REQUEST.value(), \"Validation failed\", errors);\n");
+        sb.append("        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);\n");
+        sb.append("    }\n\n");
+        sb.append("    @ExceptionHandler(IllegalArgumentException.class)\n");
+        sb.append("    public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {\n");
+        sb.append("        ErrorResponse error = ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), ex.getMessage());\n");
+        sb.append("        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);\n");
+        sb.append("    }\n\n");
+        if (hasAuth) {
+            sb.append("    @ExceptionHandler(AccessDeniedException.class)\n");
+            sb.append("    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {\n");
+            sb.append("        ErrorResponse error = ErrorResponse.of(HttpStatus.FORBIDDEN.value(), \"Access Denied: Insufficient permissions\");\n");
+            sb.append("        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);\n");
+            sb.append("    }\n\n");
+        }
+        sb.append("    @ExceptionHandler(Exception.class)\n");
+        sb.append("    public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {\n");
+        sb.append("        ErrorResponse error = ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), \"An unexpected error occurred: \" + ex.getMessage());\n");
+        sb.append("        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);\n");
+        sb.append("    }\n");
+        sb.append("}\n");
+        return new JavaSourceFile(pkgDir + "GlobalExceptionHandler.java", sb.toString());
     }
 }

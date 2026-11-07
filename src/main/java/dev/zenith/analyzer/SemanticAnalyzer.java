@@ -13,25 +13,25 @@ public class SemanticAnalyzer {
 
         for (DtoDef d : file.getDtos()) {
             if (!dtoNames.add(d.getName())) {
-                throw new AnalysisException("Duplicate dto defined: '" + d.getName() + "'");
+                throw new AnalysisException("Duplicate dto defined: '" + d.getName() + "'", d.getSourceFile(), d.getSourceLine(), 1);
             }
             Set<String> dtoFieldNames = new HashSet<>();
             for (FieldDef f : d.getFields()) {
                 if (!dtoFieldNames.add(f.getName().toLowerCase())) {
-                    throw new AnalysisException("Duplicate field '" + f.getName() + "' in dto '" + d.getName() + "'");
+                    throw new AnalysisException("Duplicate field '" + f.getName() + "' in dto '" + d.getName() + "'", d.getSourceFile(), d.getSourceLine(), 1);
                 }
             }
         }
 
         for (EnumDef e : file.getEnums()) {
             if (!enumNames.add(e.getName())) {
-                throw new AnalysisException("Duplicate enum defined: '" + e.getName() + "'");
+                throw new AnalysisException("Duplicate enum defined: '" + e.getName() + "'", e.getSourceFile(), e.getSourceLine(), 1);
             }
         }
 
         for (ModelDef m : file.getModels()) {
             if (!modelNames.add(m.getName())) {
-                throw new AnalysisException("Duplicate model defined: '" + m.getName() + "'");
+                throw new AnalysisException("Duplicate model defined: '" + m.getName() + "'", m.getSourceFile(), m.getSourceLine(), 1);
             }
         }
 
@@ -45,7 +45,8 @@ public class SemanticAnalyzer {
             for (FieldDef f : fields) {
                 if (!fieldNames.add(f.getName().toLowerCase())) {
                     throw new AnalysisException(
-                            "Duplicate field '" + f.getName() + "' in model '" + model.getName() + "'");
+                            "Duplicate field '" + f.getName() + "' in model '" + model.getName() + "'",
+                            model.getSourceFile(), model.getSourceLine(), 1);
                 }
                 if (f.hasAnnotation("id")) {
                     hasId = true;
@@ -68,7 +69,8 @@ public class SemanticAnalyzer {
                     if (!"String".equalsIgnoreCase(tName)) {
                         throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
                                 + "' annotated with @" + (field.hasAnnotation("image") ? "image" : "file")
-                                + " must be of type String (to store file key/URL)");
+                                + " must be of type String (to store file key/URL)",
+                                model.getSourceFile(), model.getSourceLine(), 1);
                     }
                 }
             }
@@ -77,56 +79,53 @@ public class SemanticAnalyzer {
             for (RelationDef rel : model.getRelations()) {
                 if (!modelNames.contains(rel.getTargetModel())) {
                     throw new AnalysisException("Model '" + model.getName()
-                            + "' references unknown relation target model '" + rel.getTargetModel() + "'");
+                            + "' references unknown relation target model '" + rel.getTargetModel() + "'",
+                            model.getSourceFile(), model.getSourceLine(), 1);
                 }
             }
 
             // Validate crud search/filter/sort fields
             CrudConfig crud = model.getCrudConfig();
             if (crud != null) {
+                String crudFile = crud.getSourceFile() != null ? crud.getSourceFile() : model.getSourceFile();
+                int crudLine = crud.getSourceLine() > 0 ? crud.getSourceLine() : model.getSourceLine();
                 for (String sf : crud.getSearchFields()) {
                     if (findFieldCaseInsensitive(fields, sf) == null) {
                         throw new AnalysisException("Search field '" + sf + "' in crud config does not exist on model '"
-                                + model.getName() + "'");
+                                + model.getName() + "'", crudFile, crudLine, 1);
                     }
                 }
                 for (String ff : crud.getFilterFields()) {
                     if (findFieldCaseInsensitive(fields, ff) == null && !isRelation(model.getRelations(), ff)) {
                         throw new AnalysisException(
-                                "Filter field '" + ff + "' does not exist on model '" + model.getName() + "'");
+                                "Filter field '" + ff + "' does not exist on model '" + model.getName() + "'",
+                                crudFile, crudLine, 1);
                     }
                 }
             }
 
             // Validate custom endpoint bodies & action model references
             for (CustomEndpointDef endpoint : model.getCustomEndpoints()) {
+                String epFile = endpoint.getSourceFile() != null ? endpoint.getSourceFile() : model.getSourceFile();
+                int epLine = endpoint.getSourceLine() > 0 ? endpoint.getSourceLine() : model.getSourceLine();
                 if (endpoint.hasBody()) {
                     String bt = endpoint.getBodyType();
                     if (!dtoNames.contains(bt) && !modelNames.contains(bt)) {
                         throw new AnalysisException("Endpoint '" + endpoint.getMethod() + " " + endpoint.getPath()
                                 + "' in model '" + model.getName() + "' references unknown request body type '" + bt
-                                + "'");
+                                + "'", epFile, epLine, 1);
                     }
                 }
                 for (String stmt : endpoint.getActionStatements()) {
-                    String t = stmt.trim();
-                    if (t.startsWith("create ") || t.startsWith("update ")) {
-                        String kw = t.startsWith("create ") ? "create" : "update";
-                        String rest = t.substring(kw.length() + 1).trim();
-                        int space = rest.indexOf(' ');
-                        int brace = rest.indexOf('{');
-                        int end = space > 0 ? (brace > 0 ? Math.min(space, brace) : space) : (brace > 0 ? brace : rest.length());
-                        String targetModel = rest.substring(0, end).trim();
-                        if (!targetModel.isEmpty() && !modelNames.contains(targetModel)) {
-                            throw new AnalysisException("Action '" + kw + "' in endpoint '" + endpoint.getMethod() + " "
-                                    + endpoint.getPath() + "' references unknown model '" + targetModel + "'");
-                        }
-                    }
+                    validateActionStatement(stmt, model, file, modelNames, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, epLine);
                 }
             }
 
-            validatedModels.add(new ModelDef(model.getName(), fields, model.getRelations(), model.getCrudConfig(),
-                    model.getCustomEndpoints()));
+            ModelDef validatedModel = new ModelDef(model.getName(), fields, model.getRelations(), model.getCrudConfig(),
+                    model.getCustomEndpoints());
+            validatedModel.setSourceFile(model.getSourceFile());
+            validatedModel.setSourceLine(model.getSourceLine());
+            validatedModels.add(validatedModel);
             modelFieldsMap.put(model.getName(), fields);
         }
         for (SeedDef seed : file.getSeeds()) {
@@ -170,15 +169,157 @@ public class SemanticAnalyzer {
         Set<String> jobNames = new HashSet<>();
         for (JobDef j : file.getJobs()) {
             if (!jobNames.add(j.getName().toLowerCase())) {
-                throw new AnalysisException("Duplicate background job defined: '" + j.getName() + "'");
+                throw new AnalysisException("Duplicate background job defined: '" + j.getName() + "'", j.getSourceFile(), j.getSourceLine(), 1);
             }
             if (j.getCronExpression() == null && j.getFixedRate() == null) {
-                throw new AnalysisException("Job '" + j.getName() + "' must specify either 'cron' or 'fixedRate'");
+                throw new AnalysisException("Job '" + j.getName() + "' must specify either 'cron' or 'fixedRate'", j.getSourceFile(), j.getSourceLine(), 1);
+            }
+            for (String stmt : j.getActionStatements()) {
+                validateActionStatement(stmt, null, file, modelNames, "job '" + j.getName() + "'", j.getSourceFile(), j.getSourceLine());
             }
         }
 
+        // Validate all role references in crud configs and endpoint guards
+        validateRoleReferences(file, validatedModels);
+
         return new ZenithFile(file.getConfig(), file.getEnums(), validatedModels, file.getDtos(), file.getSeeds(),
                 file.getJobs(), file.getImports(), file.hasExplicitConfig());
+    }
+
+    private void validateRoleReferences(ZenithFile file, List<ModelDef> models) {
+        Set<String> definedRoles = file.getAllDefinedRoles();
+
+        for (ModelDef model : models) {
+            CrudConfig crud = model.getCrudConfig();
+            if (crud != null) {
+                String srcFile = crud.getSourceFile() != null ? crud.getSourceFile() : model.getSourceFile();
+                int srcLine = crud.getSourceLine() > 0 ? crud.getSourceLine() : model.getSourceLine();
+
+                for (String role : crud.getDefaultRoles()) {
+                    validateSingleRole(role, definedRoles, srcFile, srcLine, "crud configuration on model '" + model.getName() + "'");
+                }
+                for (Map.Entry<String, List<String>> entry : crud.getOperationRoles().entrySet()) {
+                    String op = entry.getKey();
+                    for (String role : entry.getValue()) {
+                        validateSingleRole(role, definedRoles, srcFile, srcLine, "crud operation '" + op + "' on model '" + model.getName() + "'");
+                    }
+                }
+            }
+
+            for (CustomEndpointDef endpoint : model.getCustomEndpoints()) {
+                String epFile = endpoint.getSourceFile() != null ? endpoint.getSourceFile() : model.getSourceFile();
+                int epLine = endpoint.getSourceLine() > 0 ? endpoint.getSourceLine() : model.getSourceLine();
+
+                for (GuardDef guard : endpoint.getGuards()) {
+                    for (String role : guard.extractRoles()) {
+                        validateSingleRole(role, definedRoles, epFile, epLine, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "' on model '" + model.getName() + "'");
+                    }
+                }
+            }
+        }
+    }
+
+    private void validateSingleRole(String role, Set<String> definedRoles, String file, int line, String context) {
+        if (role == null || role.trim().isEmpty()) return;
+        String r = role.trim();
+        if ("public".equalsIgnoreCase(r) || "authenticated".equalsIgnoreCase(r) || "auth".equalsIgnoreCase(r)) {
+            return;
+        }
+
+        boolean found = false;
+        for (String dr : definedRoles) {
+            if (dr.equalsIgnoreCase(r)) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            throw new AnalysisException("Role '" + r + "' referenced in " + context + " does not exist. Available roles: " + (definedRoles.isEmpty() ? "none" : String.join(", ", definedRoles)), file, line, 1);
+        }
+    }
+
+    private void validateActionStatement(String stmt, ModelDef model, ZenithFile file, Set<String> modelNames, String context, String srcFile, int srcLine) {
+        if (stmt == null || stmt.trim().isEmpty()) return;
+        String s = stmt.trim();
+
+        if (s.startsWith("create ")) {
+            String rest = s.substring(7).trim();
+            int brace = rest.indexOf('{');
+            String targetModel = brace > 0 ? rest.substring(0, brace).trim() : rest;
+            if (!modelNames.contains(targetModel)) {
+                throw new AnalysisException("Action 'create' in " + context + " references unknown model '" + targetModel + "'", srcFile, srcLine, 1);
+            }
+            return;
+        }
+
+        if (s.startsWith("update ")) {
+            String rest = s.substring(7).trim();
+            int brace = rest.indexOf('{');
+            String targetModel = brace > 0 ? rest.substring(0, brace).trim() : rest;
+            if (targetModel.contains(" on ")) {
+                targetModel = targetModel.substring(0, targetModel.indexOf(" on ")).trim();
+            }
+            if (!modelNames.contains(targetModel)) {
+                throw new AnalysisException("Action 'update' in " + context + " references unknown model '" + targetModel + "'", srcFile, srcLine, 1);
+            }
+            return;
+        }
+
+        if (s.startsWith("notify") || s.matches("^notify\\s*\\(.*")) {
+            validateExpressionFunctions(s, context, srcFile, srcLine);
+            return;
+        }
+
+        if (s.startsWith("return ") || s.equals("return")) {
+            validateExpressionFunctions(s, context, srcFile, srcLine);
+            return;
+        }
+
+        if (s.contains("=") && !s.contains("==") && !s.contains("!=") && !s.contains("<=") && !s.contains(">=")) {
+            String[] parts = s.split("=", 2);
+            String left = parts[0].trim().replaceAll("\\s+", "");
+            if (left.startsWith("entity.")) {
+                left = left.substring(7);
+            }
+            if (model != null) {
+                if (left.startsWith(model.getName().toLowerCase() + ".")) {
+                    left = left.substring(model.getName().length() + 1);
+                }
+                if (model.findField(left) == null && model.findRelation(left) == null) {
+                    throw new AnalysisException("Assignment in " + context + " targets unknown field or relation '" + left + "' on model '" + model.getName() + "'", srcFile, srcLine, 1);
+                }
+            }
+            validateExpressionFunctions(parts[1], context, srcFile, srcLine);
+            return;
+        }
+
+        throw new AnalysisException("Unsupported action statement in " + context + ": '" + s + "'. "
+                + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'notify(to, message)', or 'return ...'.", srcFile, srcLine, 1);
+    }
+
+    private void validateExpressionFunctions(String expr, String context, String srcFile, int srcLine) {
+        if (expr == null) return;
+        java.util.regex.Pattern fnPattern = java.util.regex.Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(");
+        java.util.regex.Matcher m = fnPattern.matcher(expr);
+        Set<String> supportedFns = Set.of(
+            "now", "today",
+            "daysago", "daysfromnow",
+            "hoursago", "hoursfromnow",
+            "minutesago", "minutesfromnow",
+            "monthsago", "monthsfromnow",
+            "yearsago", "yearsfromnow",
+            "notify"
+        );
+        while (m.find()) {
+            String fnName = m.group(1);
+            if (fnName.startsWith("___STR_")) continue;
+            if (fnName.equalsIgnoreCase("if") || fnName.equalsIgnoreCase("for") || fnName.equalsIgnoreCase("while")) continue;
+            if (!supportedFns.contains(fnName.toLowerCase())) {
+                throw new AnalysisException("Unsupported function '" + fnName + "(...)' in " + context + " expression: '" + expr.trim() + "'. "
+                        + "Supported date/time functions: now(), today(), daysAgo(n), daysFromNow(n), hoursAgo(n), hoursFromNow(n), minutesAgo(n), minutesFromNow(n). Supported operations: notify(recipient, message).", srcFile, srcLine, 1);
+            }
+        }
     }
 
     private FieldDef findFieldCaseInsensitive(List<FieldDef> fields, String name) {

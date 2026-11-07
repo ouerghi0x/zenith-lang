@@ -1,5 +1,6 @@
 package dev.zenith.generator;
 
+import dev.zenith.ast.AnnotationDef;
 import dev.zenith.ast.FieldDef;
 import dev.zenith.ast.ModelDef;
 import dev.zenith.ast.TypeRef;
@@ -124,30 +125,92 @@ public class TypeHelper {
             }
         }
 
-        // Check params min/max
+        list.addAll(toValidationRules(field));
+        return list;
+    }
+
+    public static List<String> toValidationAnnotationsWithoutNullCheck(FieldDef field) {
+        return toValidationRules(field);
+    }
+
+    private static List<String> toValidationRules(FieldDef field) {
+        List<String> list = new ArrayList<>();
+        String javaType = toSimpleJavaType(field.getType());
+
+        // 1. Password validation
+        if (field.hasAnnotation("password") || "password".equalsIgnoreCase(field.getName())) {
+            int minLen = 8;
+            int maxLen = 100;
+            if (field.hasAnnotation("password")) {
+                AnnotationDef pAnn = field.getAnnotation("password");
+                if (pAnn != null) {
+                    Object minArg = pAnn.getArgument("min");
+                    if (minArg instanceof Number) minLen = ((Number) minArg).intValue();
+                    Object maxArg = pAnn.getArgument("max");
+                    if (maxArg instanceof Number) maxLen = ((Number) maxArg).intValue();
+                }
+            }
+            list.add("@jakarta.validation.constraints.Size(min = " + minLen + ", max = " + maxLen
+                    + ", message = \"Password must be between " + minLen + " and " + maxLen + " characters\")");
+        }
+
+        // 2. String length/min/max
+        Object length = field.getType().getParams().get("length");
         Object min = field.getType().getParams().get("min");
         Object max = field.getType().getParams().get("max");
-        if ("String".equals(javaType) && (min != null || max != null)) {
-            String mPart = min != null ? "min = " + min : "";
-            String mxPart = max != null ? "max = " + max : "";
-            String join = (!mPart.isEmpty() && !mxPart.isEmpty()) ? ", " : "";
-            list.add("@jakarta.validation.constraints.Size(" + mPart + join + mxPart + ")");
-        } else if (("Integer".equals(javaType) || "Long".equals(javaType)) && (min != null || max != null)) {
+        if (field.hasAnnotation("length")) {
+            AnnotationDef lAnn = field.getAnnotation("length");
+            if (lAnn != null) {
+                Object val = lAnn.getArgument("value");
+                if (val == null) val = lAnn.getArgument("max");
+                if (val != null) length = val;
+                Object mVal = lAnn.getArgument("min");
+                if (mVal != null) min = mVal;
+            }
+        }
+
+        if ("String".equals(javaType)) {
+            if (length != null && min == null && max == null) {
+                list.add("@jakarta.validation.constraints.Size(max = " + length + ", message = \""
+                        + field.getName() + " must not exceed " + length + " characters\")");
+            } else if (min != null || max != null) {
+                String mPart = min != null ? "min = " + min : "";
+                String mxPart = max != null ? "max = " + max : (length != null ? "max = " + length : "");
+                String join = (!mPart.isEmpty() && !mxPart.isEmpty()) ? ", " : "";
+                list.add("@jakarta.validation.constraints.Size(" + mPart + join + mxPart + ")");
+            }
+        } else if (("Integer".equals(javaType) || "Long".equals(javaType) || "int".equals(javaType) || "long".equals(javaType)) && (min != null || max != null)) {
             if (min != null)
                 list.add("@jakarta.validation.constraints.Min(" + min + ")");
             if (max != null)
                 list.add("@jakarta.validation.constraints.Max(" + max + ")");
+        } else if (("BigDecimal".equals(javaType) || "Double".equals(javaType)) && (min != null || max != null)) {
+            if (min != null)
+                list.add("@jakarta.validation.constraints.DecimalMin(\"" + min + "\")");
+            if (max != null)
+                list.add("@jakarta.validation.constraints.DecimalMax(\"" + max + "\")");
         }
 
+        // 3. Annotations: @positive, @positiveOrZero, @negative, @negativeOrZero
         if (field.hasAnnotation("positive")) {
             list.add("@jakarta.validation.constraints.Positive");
         }
         if (field.hasAnnotation("positiveOrZero")) {
             list.add("@jakarta.validation.constraints.PositiveOrZero");
         }
-        if (field.hasAnnotation("email")) {
-            list.add("@jakarta.validation.constraints.Email");
+        if (field.hasAnnotation("negative")) {
+            list.add("@jakarta.validation.constraints.Negative");
         }
+        if (field.hasAnnotation("negativeOrZero")) {
+            list.add("@jakarta.validation.constraints.NegativeOrZero");
+        }
+
+        // 4. @email
+        if (field.hasAnnotation("email")) {
+            list.add("@jakarta.validation.constraints.Email(message = \"Invalid email format\")");
+        }
+
+        // 5. Explicit @min / @max annotations
         if (field.hasAnnotation("min")) {
             Object val = field.getAnnotation("min").getArguments().getOrDefault("0",
                     field.getAnnotation("min").getArgument("value"));
@@ -160,6 +223,16 @@ public class TypeHelper {
                     field.getAnnotation("max").getArgument("value"));
             if (val != null) {
                 list.add("@jakarta.validation.constraints.Max(" + val + ")");
+            }
+        }
+
+        // 6. @pattern
+        if (field.hasAnnotation("pattern")) {
+            AnnotationDef patAnn = field.getAnnotation("pattern");
+            Object reg = patAnn.getArgument("regexp");
+            if (reg == null) reg = patAnn.getArgument("value");
+            if (reg != null) {
+                list.add("@jakarta.validation.constraints.Pattern(regexp = \"" + reg.toString().replace("\"", "\\\"") + "\")");
             }
         }
 

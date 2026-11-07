@@ -1,0 +1,54 @@
+// prescriptions.zen
+
+enum PrescriptionStatus {
+    ISSUED,
+    TRANSMITTED_TO_PHARMACY,
+    DISPENSED,
+    DISCONTINUED
+}
+
+dto PrescriptionSummaryResponse {
+    id: Long
+    medicationName: String
+    dosage: String
+    instructions: String
+    refillsRemaining: Int
+    status: PrescriptionStatus
+    prescribedByName: String
+}
+
+model Prescription {
+    id: Long @id @auto
+    medicationName: String(min = 2, max = 150)
+    dosage: String(min = 2, max = 60)
+    frequency: String(min = 2, max = 100)
+    durationDays: Int @min(1)
+    refillsRemaining: Int @min(0) = 0
+    instructions: String @text
+    status: PrescriptionStatus = ISSUED
+    issuedAt: DateTime @autoNow
+    validUntil: Date
+
+    relations {
+        patient: PatientProfile @relation(manyToOne)
+        doctor: DoctorProfile @relation(manyToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            filter: [status]
+            search: [medicationName]
+            sort: [issuedAt]
+        }
+
+        // Transmit prescription to fulfillment pharmacy
+        post "/{id}/transmit" -> PrescriptionSummaryResponse {
+            description: "Transmits prescription to partner pharmacy network"
+            guard: status == PrescriptionStatus.ISSUED, "Only newly issued prescriptions can be transmitted"
+            action: {
+                status = PrescriptionStatus.TRANSMITTED_TO_PHARMACY
+            }
+        }
+    }
+}

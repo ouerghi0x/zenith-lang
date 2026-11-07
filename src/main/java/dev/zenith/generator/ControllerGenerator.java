@@ -36,9 +36,11 @@ public class ControllerGenerator {
             sb.append("import org.springframework.security.access.prepost.PreAuthorize;\n");
         }
         sb.append("import java.net.URI;\n");
-        sb.append("import java.util.List;\n\n");
+        sb.append("import java.util.List;\n");
         sb.append("import java.util.UUID;\n");
         sb.append("import java.math.BigDecimal;\n");
+        sb.append("import java.time.LocalDateTime;\n");
+        sb.append("import java.time.LocalDate;\n\n");
         sb.append("@RestController\n");
         sb.append("@RequestMapping(\"").append(basePath).append("\")\n");
         sb.append("@CrossOrigin\n");

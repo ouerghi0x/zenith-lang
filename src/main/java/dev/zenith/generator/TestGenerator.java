@@ -453,25 +453,11 @@ public class TestGenerator {
     }
 
     private static String getPrimaryAdminRole(ZenithFile file) {
-        for (EnumDef e : file.getEnums()) {
-            for (String val : e.getValues()) {
-                if (val.equalsIgnoreCase("ADMIN") || val.equalsIgnoreCase("ADMINISTRATOR") || val.equalsIgnoreCase("SUPERADMIN")) {
-                    return val;
-                }
-            }
-        }
-        return "ADMIN";
+        return file.getDefaultAdminRole();
     }
 
     private static String getPrimaryUserRole(ZenithFile file) {
-        for (EnumDef e : file.getEnums()) {
-            for (String val : e.getValues()) {
-                if (val.equalsIgnoreCase("USER") || val.equalsIgnoreCase("CUSTOMER") || val.equalsIgnoreCase("MEMBER")) {
-                    return val;
-                }
-            }
-        }
-        return "USER";
+        return file.getDefaultRole();
     }
 }
 

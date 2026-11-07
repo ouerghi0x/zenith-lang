@@ -17,6 +17,7 @@ zenith.jar
 tools/
 sources.txt
 *.log
+/private/
 generated-app/
 demo/
 schema.zen

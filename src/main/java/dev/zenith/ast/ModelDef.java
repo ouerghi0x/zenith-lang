@@ -10,6 +10,8 @@ public class ModelDef {
     private final List<RelationDef> relations;
     private final CrudConfig crudConfig;
     private final List<CustomEndpointDef> customEndpoints;
+    private String sourceFile;
+    private int sourceLine;
 
     public ModelDef(String name, List<FieldDef> fields, List<RelationDef> relations, CrudConfig crudConfig, List<CustomEndpointDef> customEndpoints) {
         this.name = name;
@@ -17,6 +19,22 @@ public class ModelDef {
         this.relations = relations != null ? relations : new ArrayList<>();
         this.crudConfig = crudConfig;
         this.customEndpoints = customEndpoints != null ? customEndpoints : new ArrayList<>();
+    }
+
+    public String getSourceFile() {
+        return sourceFile;
+    }
+
+    public void setSourceFile(String sourceFile) {
+        this.sourceFile = sourceFile;
+    }
+
+    public int getSourceLine() {
+        return sourceLine;
+    }
+
+    public void setSourceLine(int sourceLine) {
+        this.sourceLine = sourceLine;
     }
 
     public boolean hasEndpoints() {

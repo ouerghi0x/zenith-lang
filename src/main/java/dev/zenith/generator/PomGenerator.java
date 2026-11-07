@@ -58,11 +58,17 @@ public class PomGenerator {
             sb.append("            <groupId>org.flywaydb</groupId>\n");
             sb.append("            <artifactId>flyway-core</artifactId>\n");
             sb.append("        </dependency>\n");
-            if ("postgres".equalsIgnoreCase(file.getConfig().getDatabase()) || "postgresql".equalsIgnoreCase(file.getConfig().getDatabase())) {
+            String db = file.getConfig().getDatabase() != null ? file.getConfig().getDatabase().toLowerCase() : "postgres";
+            if ("postgres".equals(db) || "postgresql".equals(db)) {
                 sb.append("        <dependency>\n");
                 sb.append("            <groupId>org.flywaydb</groupId>\n");
                 sb.append("            <artifactId>flyway-database-postgresql</artifactId>\n");
                 sb.append("            <version>10.10.0</version>\n");
+                sb.append("        </dependency>\n");
+            } else if ("mysql".equals(db) || "mariadb".equals(db)) {
+                sb.append("        <dependency>\n");
+                sb.append("            <groupId>org.flywaydb</groupId>\n");
+                sb.append("            <artifactId>flyway-mysql</artifactId>\n");
                 sb.append("        </dependency>\n");
             }
         }
@@ -99,14 +105,24 @@ public class PomGenerator {
             sb.append("        </dependency>\n");
         }
 
+        String configuredDb = file.getConfig().getDatabase() != null ? file.getConfig().getDatabase().toLowerCase() : "postgres";
+        if ("mysql".equals(configuredDb) || "mariadb".equals(configuredDb)) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>com.mysql</groupId>\n");
+            sb.append("            <artifactId>mysql-connector-j</artifactId>\n");
+            sb.append("            <scope>runtime</scope>\n");
+            sb.append("        </dependency>\n");
+        } else if ("postgres".equals(configuredDb) || "postgresql".equals(configuredDb)) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>org.postgresql</groupId>\n");
+            sb.append("            <artifactId>postgresql</artifactId>\n");
+            sb.append("            <scope>runtime</scope>\n");
+            sb.append("        </dependency>\n");
+        }
+
         sb.append("        <dependency>\n");
         sb.append("            <groupId>com.h2database</groupId>\n");
         sb.append("            <artifactId>h2</artifactId>\n");
-        sb.append("            <scope>runtime</scope>\n");
-        sb.append("        </dependency>\n");
-        sb.append("        <dependency>\n");
-        sb.append("            <groupId>org.postgresql</groupId>\n");
-        sb.append("            <artifactId>postgresql</artifactId>\n");
         sb.append("            <scope>runtime</scope>\n");
         sb.append("        </dependency>\n");
         sb.append("        <dependency>\n");

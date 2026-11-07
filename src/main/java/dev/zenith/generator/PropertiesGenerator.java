@@ -51,10 +51,12 @@ public class PropertiesGenerator {
             sb.append("    password: ${SPRING_DATASOURCE_PASSWORD:\"\"}\n");
         }
 
-        sb.append("  h2:\n");
-        sb.append("    console:\n");
-        sb.append("      enabled: true\n");
-        sb.append("      path: /h2-console\n");
+        if (!"postgres".equalsIgnoreCase(db) && !"postgresql".equalsIgnoreCase(db) && !"mysql".equalsIgnoreCase(db) && !"mariadb".equalsIgnoreCase(db)) {
+            sb.append("  h2:\n");
+            sb.append("    console:\n");
+            sb.append("      enabled: true\n");
+            sb.append("      path: /h2-console\n");
+        }
 
         if (flyway) {
             sb.append("  flyway:\n");
@@ -72,7 +74,13 @@ public class PropertiesGenerator {
         sb.append("    show-sql: true\n");
         sb.append("    properties:\n");
         sb.append("      hibernate:\n");
-        sb.append("        format_sql: true\n\n");
+        sb.append("        format_sql: true\n");
+        if ("mysql".equalsIgnoreCase(db) || "mariadb".equalsIgnoreCase(db)) {
+            sb.append("        dialect: org.hibernate.dialect.MySQLDialect\n");
+        } else if ("postgres".equalsIgnoreCase(db) || "postgresql".equalsIgnoreCase(db)) {
+            sb.append("        dialect: org.hibernate.dialect.PostgreSQLDialect\n");
+        }
+        sb.append("\n");
 
         if (swagger) {
             sb.append("springdoc:\n");

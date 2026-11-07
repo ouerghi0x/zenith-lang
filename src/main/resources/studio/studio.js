@@ -5,6 +5,8 @@ let currentCompilation = null;
 window.currentCompilation = null;
 let isSpringRunning = false;
 let logPollInterval = null;
+let consoleAutoScroll = true;
+let renderedConsoleLogsCount = 0;
 let monacoMarkers = [];
 
 // Redraw ERD arrows if ERD tab is active (cheap SVG path update without destroying DOM)
@@ -517,11 +519,424 @@ function initPaneResizer() {
   });
 }
 
-// Ensure resizer runs on DOM load as well
+// Pane Toggling / Maximize Mode
+function toggleEditorPane(forceState) {
+  const workspace = document.getElementById('studioWorkspace');
+  if (!workspace) return;
+  const isCurrentlyCollapsed = workspace.classList.contains('editor-collapsed');
+  const shouldCollapse = (forceState !== undefined) ? forceState : !isCurrentlyCollapsed;
+
+  if (shouldCollapse) {
+    workspace.classList.remove('preview-collapsed');
+    workspace.classList.add('editor-collapsed');
+  } else {
+    workspace.classList.remove('editor-collapsed');
+    const editorPane = document.getElementById('editorPane');
+    const savedW = localStorage.getItem('zenith_studio_editor_width');
+    if (editorPane && savedW) {
+      editorPane.style.width = savedW + 'px';
+      editorPane.style.flex = `0 0 ${savedW}px`;
+    }
+  }
+
+  requestAnimationFrame(() => {
+    if (window.editor) window.editor.layout();
+    if (window.viewerEditor) window.viewerEditor.layout();
+    redrawErdIfActive();
+  });
+}
+
+function togglePreviewPane(forceState) {
+  const workspace = document.getElementById('studioWorkspace');
+  if (!workspace) return;
+  const isCurrentlyCollapsed = workspace.classList.contains('preview-collapsed');
+  const shouldCollapse = (forceState !== undefined) ? forceState : !isCurrentlyCollapsed;
+
+  if (shouldCollapse) {
+    workspace.classList.remove('editor-collapsed');
+    workspace.classList.add('preview-collapsed');
+  } else {
+    workspace.classList.remove('preview-collapsed');
+    const editorPane = document.getElementById('editorPane');
+    const savedW = localStorage.getItem('zenith_studio_editor_width');
+    if (editorPane && savedW) {
+      editorPane.style.width = savedW + 'px';
+      editorPane.style.flex = `0 0 ${savedW}px`;
+    }
+  }
+
+  requestAnimationFrame(() => {
+    if (window.editor) window.editor.layout();
+    if (window.viewerEditor) window.viewerEditor.layout();
+    redrawErdIfActive();
+  });
+}
+
+// Global Keyboard Shortcuts for Pane Toggle (Alt+[ for Editor, Alt+] for Preview)
+window.addEventListener('keydown', (e) => {
+  if (e.altKey && e.key === '[') {
+    e.preventDefault();
+    toggleEditorPane();
+  } else if (e.altKey && e.key === ']') {
+    e.preventDefault();
+    togglePreviewPane();
+  }
+});
+
+// Notes & Scratchpad Manager with Native Markdown Preview & Syntax Highlighting
+let notesSaveTimeout = null;
+let currentNotesViewMode = 'split'; // 'edit', 'split', 'preview'
+
+function initNotes() {
+  const textarea = document.getElementById('notesTextarea');
+  if (!textarea) return;
+
+  try {
+    const saved = localStorage.getItem('zenith_studio_notes');
+    if (saved !== null) {
+      textarea.value = saved;
+    }
+    const savedMode = localStorage.getItem('zenith_notes_mode');
+    if (savedMode && ['edit', 'split', 'preview'].includes(savedMode)) {
+      currentNotesViewMode = savedMode;
+    } else {
+      currentNotesViewMode = window.innerWidth > 960 ? 'split' : 'edit';
+    }
+  } catch (_) {}
+
+  setNotesViewMode(currentNotesViewMode, false);
+  updateNotesStats();
+  renderNotesPreview();
+
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      textarea.value = textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
+      textarea.selectionStart = textarea.selectionEnd = start + 2;
+      handleNotesInput();
+    }
+  });
+}
+
+function setNotesViewMode(mode, savePref = true) {
+  currentNotesViewMode = mode;
+  const wrap = document.getElementById('notesBodyWrap');
+  if (wrap) {
+    wrap.setAttribute('data-mode', mode);
+  }
+
+  ['edit', 'split', 'preview'].forEach(m => {
+    const btn = document.getElementById(`notesModeBtn-${m}`);
+    if (btn) {
+      if (m === mode) btn.classList.add('active');
+      else btn.classList.remove('active');
+    }
+  });
+
+  if (savePref) {
+    try {
+      localStorage.setItem('zenith_notes_mode', mode);
+    } catch (_) {}
+  }
+
+  if (mode === 'split' || mode === 'preview') {
+    renderNotesPreview();
+  }
+}
+
+function handleNotesInput() {
+  const textarea = document.getElementById('notesTextarea');
+  const statusEl = document.getElementById('notesSaveStatus');
+  if (!textarea) return;
+
+  if (statusEl) {
+    statusEl.textContent = 'Saving...';
+    statusEl.style.color = '#f59e0b';
+  }
+
+  updateNotesStats();
+
+  if (currentNotesViewMode === 'split' || currentNotesViewMode === 'preview') {
+    renderNotesPreview();
+  }
+
+  if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
+  notesSaveTimeout = setTimeout(() => {
+    try {
+      localStorage.setItem('zenith_studio_notes', textarea.value);
+    } catch (_) {}
+    if (statusEl) {
+      statusEl.textContent = 'Saved';
+      statusEl.style.color = '#22c55e';
+    }
+  }, 350);
+}
+
+function updateNotesStats() {
+  const textarea = document.getElementById('notesTextarea');
+  const statsEl = document.getElementById('notesStats');
+  if (!textarea || !statsEl) return;
+  const val = textarea.value.trim();
+  const words = val.length > 0 ? val.split(/\s+/).length : 0;
+  const chars = textarea.value.length;
+  statsEl.textContent = `${words} words • ${chars} chars`;
+}
+
+function renderNotesPreview() {
+  const textarea = document.getElementById('notesTextarea');
+  const previewEl = document.getElementById('notesRenderedPreview');
+  if (!textarea || !previewEl) return;
+  previewEl.innerHTML = parseMarkdownToHtml(textarea.value);
+}
+
+function parseMarkdownToHtml(md) {
+  if (!md || !md.trim()) {
+    return `<div class="notes-empty-state">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px; opacity:0.6;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+      <div>No notes yet. Type something in the editor!</div>
+      <div style="font-size:11px; margin-top:4px; opacity:0.7;">Supports GFM Markdown, tables, checklists, and code highlighting.</div>
+    </div>`;
+  }
+
+  // 1. Extract fenced code blocks
+  const codeBlocks = [];
+  let html = md.replace(/```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```/g, (match, lang, code) => {
+    const id = `__CODE_BLOCK_${codeBlocks.length}__`;
+    codeBlocks.push({ lang: (lang || 'text').trim().toLowerCase(), code });
+    return id;
+  });
+
+  // 2. Extract inline codes
+  const inlineCodes = [];
+  html = html.replace(/`([^`\r\n]+)`/g, (match, code) => {
+    const id = `__INLINE_CODE_${inlineCodes.length}__`;
+    inlineCodes.push(escapeHtml(code));
+    return id;
+  });
+
+  // 3. Escape HTML
+  html = escapeHtml(html);
+
+  // 4. Headings
+  html = html.replace(/^######\s+(.*?)$/gm, '<h6>$1</h6>');
+  html = html.replace(/^#####\s+(.*?)$/gm, '<h5>$1</h5>');
+  html = html.replace(/^####\s+(.*?)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^###\s+(.*?)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^##\s+(.*?)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^#\s+(.*?)$/gm, '<h1>$1</h1>');
+
+  // 5. Horizontal rules
+  html = html.replace(/^(?:---|___|\*\*\*)\s*$/gm, '<hr>');
+
+  // 6. Blockquotes
+  html = html.replace(/^>\s?(.*?)$/gm, '<blockquote>$1</blockquote>');
+  html = html.replace(/<\/blockquote>\r?\n<blockquote>/g, '<br>');
+
+  // 7. Markdown Tables
+  html = html.replace(/((?:^\|.*?\|\r?\n)+)/gm, (match) => {
+    const lines = match.trim().split(/\r?\n/);
+    if (lines.length < 2) return match;
+    if (!/^\|(?:\s*[:-]+[-|\s:]*)\|$/.test(lines[1])) return match;
+
+    const headers = lines[0].split('|').slice(1, -1).map(h => `<th>${h.trim()}</th>`).join('');
+    let rowsHtml = '';
+    for (let i = 2; i < lines.length; i++) {
+      const cells = lines[i].split('|').slice(1, -1).map(c => `<td>${c.trim()}</td>`).join('');
+      rowsHtml += `<tr>${cells}</tr>`;
+    }
+    return `<div class="table-container"><table class="guide-table"><thead><tr>${headers}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  });
+
+  // 8. Task Lists & Standard Lists
+  html = html.replace(/^[-*]\s+\[x\]\s+(.*?)$/gm, '<li class="task-list-item"><input type="checkbox" checked disabled> <del>$1</del></li>');
+  html = html.replace(/^[-*]\s+\[ \]\s+(.*?)$/gm, '<li class="task-list-item"><input type="checkbox" disabled> $1</li>');
+  html = html.replace(/^[-*]\s+(.*?)$/gm, '<li>$1</li>');
+  html = html.replace(/((?:<li[\s\S]*?<\/li>\r?\n?)+)/g, '<ul>$1</ul>');
+
+  // Ordered lists
+  html = html.replace(/^\d+\.\s+(.*?)$/gm, '<li class="ord-li">$1</li>');
+  html = html.replace(/((?:<li class="ord-li"[\s\S]*?<\/li>\r?\n?)+)/g, '<ol>$1</ol>');
+
+  // 9. Emphasis (bold, italic, strikethrough)
+  html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+  // 10. Links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  // 11. Paragraphs (split on double newlines)
+  html = html.split(/\n{2,}/).map(para => {
+    para = para.trim();
+    if (!para) return '';
+    if (/^<(h[1-6]|ul|ol|blockquote|div|hr|table|pre)/.test(para)) return para;
+    return `<p>${para.replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
+
+  // 12. Restore inline code
+  html = html.replace(/__INLINE_CODE_(\d+)__/g, (match, idx) => {
+    return `<code class="inline-code">${inlineCodes[parseInt(idx, 10)]}</code>`;
+  });
+
+  // 13. Restore code blocks with native syntax highlighting
+  html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, idx) => {
+    const item = codeBlocks[parseInt(idx, 10)];
+    return renderCodeBlockSnippet(item.code, item.lang);
+  });
+
+  return html;
+}
+
+function renderCodeBlockSnippet(code, lang) {
+  const snippetId = 'codeSnippet_' + Math.random().toString(36).substring(2, 9);
+  const clean = code.trim();
+  const highlighted = highlightCodeTokens(clean, lang);
+  const displayLang = (lang || 'TEXT').toUpperCase();
+
+  return `<div class="code-block-wrap">
+    <div class="code-block-header">
+      <span class="code-block-lang">${displayLang}</span>
+      <button class="code-block-copy-btn" onclick="copyCodeSnippet('${snippetId}')" title="Copy code">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        <span>Copy</span>
+      </button>
+    </div>
+    <pre class="code-block-pre"><code id="${snippetId}" class="language-${lang}">${highlighted}</code></pre>
+  </div>`;
+}
+
+function highlightCodeTokens(code, lang) {
+  let safe = escapeHtml(code);
+
+  // Comments (// ...)
+  safe = safe.replace(/(\/\/[^\n]*)/g, '<span class="syntax-comment">$1</span>');
+
+  // Strings ("..." or '...')
+  safe = safe.replace(/(&quot;[\s\S]*?&quot;|&#39;[\s\S]*?&#39;|"[^"\n]*"|'[^'\n]*')/g, '<span class="syntax-string">$1</span>');
+
+  // Decorators / Annotations (@...)
+  safe = safe.replace(/(@[a-zA-Z0-9_]+)/g, '<span class="syntax-decorator">$1</span>');
+
+  // Language specific keywords
+  const zenithKeywords = /\b(model|enum|config|endpoints|endpoint|crud|guard|action|create|update|import|dto|mail|send|client|call|var|try|catch|fail|return|auth|storage|broadcast|service|system|library)\b/g;
+  const javaKeywords = /\b(public|private|protected|class|interface|record|extends|implements|return|if|else|try|catch|throw|new|void|static|final|package)\b/g;
+  const types = /\b(String|Int|Long|Decimal|Boolean|DateTime|UUID|Float|Double|UserEntity|Order|Product)\b/g;
+
+  if (lang === 'zenith' || lang === 'zen') {
+    safe = safe.replace(zenithKeywords, '<span class="syntax-keyword">$1</span>');
+    safe = safe.replace(types, '<span class="syntax-type">$1</span>');
+  } else if (lang === 'java') {
+    safe = safe.replace(javaKeywords, '<span class="syntax-keyword">$1</span>');
+    safe = safe.replace(types, '<span class="syntax-type">$1</span>');
+  } else if (['javascript', 'js', 'typescript', 'ts'].includes(lang)) {
+    const jsKeywords = /\b(const|let|var|function|export|import|from|async|await|return|class|interface|type)\b/g;
+    safe = safe.replace(jsKeywords, '<span class="syntax-keyword">$1</span>');
+    safe = safe.replace(types, '<span class="syntax-type">$1</span>');
+  }
+
+  // Operators (->, =>, |>)
+  safe = safe.replace(/(-&gt;|=&gt;|\|\&gt;)/g, '<span class="syntax-operator">$1</span>');
+
+  // Numbers
+  safe = safe.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="syntax-number">$1</span>');
+
+  return safe;
+}
+
+function copyCodeSnippet(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const text = el.innerText || el.textContent;
+  const btn = el.closest('.code-block-wrap')?.querySelector('.code-block-copy-btn');
+
+  const onDone = () => {
+    if (btn) {
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = `<span style="color:#22c55e;">✓ Copied</span>`;
+      setTimeout(() => { btn.innerHTML = origHtml; }, 1800);
+    }
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(onDone).catch(onDone);
+  } else {
+    onDone();
+  }
+}
+
+function copyNotesToClipboard() {
+  const textarea = document.getElementById('notesTextarea');
+  const statusEl = document.getElementById('notesSaveStatus');
+  if (!textarea) return;
+
+  const onCopied = () => {
+    if (statusEl) {
+      const prev = statusEl.textContent;
+      const prevColor = statusEl.style.color;
+      statusEl.textContent = '✓ Copied to clipboard!';
+      statusEl.style.color = '#60a5fa';
+      setTimeout(() => {
+        statusEl.textContent = prev;
+        statusEl.style.color = prevColor;
+      }, 1800);
+    }
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(textarea.value).then(onCopied).catch(() => {
+      textarea.select();
+      document.execCommand('copy');
+      onCopied();
+    });
+  } else {
+    textarea.select();
+    document.execCommand('copy');
+    onCopied();
+  }
+}
+
+function downloadNotesAsMarkdown() {
+  const textarea = document.getElementById('notesTextarea');
+  if (!textarea) return;
+  const content = textarea.value;
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'zenith-notes.md';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function clearNotes() {
+  const textarea = document.getElementById('notesTextarea');
+  if (!textarea) return;
+  if (!textarea.value.trim()) return;
+  if (confirm('Are you sure you want to clear all your notes?')) {
+    textarea.value = '';
+    handleNotesInput();
+    renderNotesPreview();
+  }
+}
+
+// Ensure resizer, tab drag & drop, notes and console run on DOM load
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initPaneResizer);
+  document.addEventListener('DOMContentLoaded', () => {
+    initPaneResizer();
+    initTabDragAndDrop();
+    initNotes();
+    initConsole();
+  });
 } else {
   initPaneResizer();
+  initTabDragAndDrop();
+  initNotes();
+  initConsole();
 }
 
 function escapeHtml(str) {
@@ -777,6 +1192,9 @@ async function triggerCompile() {
       currentCompilation = data;
       window.currentCompilation = data;
 
+      // Update Swagger button link dynamically with configured port
+      updateSwaggerButton(data.config);
+
       // Clear Monaco error markers
       monaco.editor.setModelMarkers(editor.getModel(), 'zenith', []);
       dismissError();
@@ -801,24 +1219,30 @@ async function triggerCompile() {
       const errLine = data.line || 1;
       const errCol = data.column || 1;
       const errMsg = data.error || 'Syntax error';
+      const errFile = data.file || window.currentActiveFile || 'schema.zen';
 
-      monaco.editor.setModelMarkers(editor.getModel(), 'zenith', [{
-        startLineNumber: errLine,
-        startColumn: errCol,
-        endLineNumber: errLine,
-        endColumn: errCol + 15,
-        message: errMsg,
-        severity: monaco.MarkerSeverity.Error
-      }]);
+      if (!data.file || data.file === window.currentActiveFile) {
+        monaco.editor.setModelMarkers(editor.getModel(), 'zenith', [{
+          startLineNumber: errLine,
+          startColumn: errCol,
+          endLineNumber: errLine,
+          endColumn: errCol + 15,
+          message: errMsg,
+          severity: monaco.MarkerSeverity.Error
+        }]);
+      } else {
+        monaco.editor.setModelMarkers(editor.getModel(), 'zenith', []);
+      }
 
-      showErrorDrawer(errMsg, errLine, errCol);
+      showErrorDrawer(errMsg, errLine, errCol, errFile);
 
+      const fileLabel = (errFile && errFile !== window.currentActiveFile) ? ` in ${errFile}` : '';
       document.getElementById('schemaStatus').innerHTML = `
         <span class="status-dot error"></span>
-        <span id="statusText" style="color: #ef4444;">Error at line ${errLine}</span>
+        <span id="statusText" style="color: #ef4444;">Error at line ${errLine}${fileLabel}</span>
       `;
       const badge = document.getElementById('compileTimeBadge');
-      badge.innerText = `Syntax Error`;
+      badge.innerText = `Error${fileLabel ? ' (' + errFile + ')' : ''}`;
       badge.className = 'compile-badge error-badge';
     }
   } catch (err) {
@@ -827,19 +1251,169 @@ async function triggerCompile() {
 }
 
 // Show Diagnostic Drawer
-function showErrorDrawer(msg, line, col) {
+function showErrorDrawer(msg, line, col, file) {
   const drawer = document.getElementById('errorDrawer');
   const body = document.getElementById('errorDrawerBody');
-  body.innerHTML = `<strong>Line ${line}, Column ${col}:</strong><br/>${escapeHtml(msg)}`;
+  const fileBadge = file ? `<span class="badge" style="background:#ef4444;color:#fff;padding:2px 8px;border-radius:4px;font-weight:600;margin-right:8px;cursor:pointer;font-size:11px;" title="Click to view file" onclick="switchToFile('${file}')">${file}</span> ` : '';
+  body.innerHTML = `<strong>${fileBadge}Line ${line}${col ? ', Col ' + col : ''}:</strong><br/>${escapeHtml(msg)}`;
   drawer.className = 'error-drawer show';
+}
+
+function updateSwaggerButton(config) {
+  const swaggerBtn = document.getElementById('swaggerBtn');
+  if (!swaggerBtn) return;
+  const port = (config && config.port) || (currentCompilation && currentCompilation.config && currentCompilation.config.port) || 8080;
+  swaggerBtn.href = `http://localhost:${port}/swagger-ui.html`;
 }
 
 function dismissError() {
   document.getElementById('errorDrawer').className = 'error-drawer';
 }
 
+// Tab Drag and Drop Reordering
+let draggedTabItem = null;
+let isTabDragging = false;
+let tabDragTimeoutId = null;
+
+function initTabDragAndDrop() {
+  const container = document.getElementById('previewTabGroup');
+  if (!container) return;
+
+  // Restore saved order first
+  restoreTabOrder();
+
+  const getDraggableItems = () => Array.from(container.children).filter(el => el.hasAttribute('data-tab'));
+
+  getDraggableItems().forEach(tab => {
+    tab.setAttribute('draggable', 'true');
+
+    tab.addEventListener('dragstart', (e) => {
+      // Don't drag if clicking inside dropdown menu
+      if (e.target && e.target.closest && e.target.closest('.tab-dropdown-menu')) {
+        e.preventDefault();
+        return;
+      }
+      draggedTabItem = tab;
+      isTabDragging = true;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', tab.getAttribute('data-tab') || '');
+      closeArtifactsDropdown();
+      setTimeout(() => {
+        if (draggedTabItem) draggedTabItem.classList.add('tab-dragging');
+      }, 0);
+    });
+
+    tab.addEventListener('dragend', () => {
+      if (draggedTabItem) {
+        draggedTabItem.classList.remove('tab-dragging');
+      }
+      clearTabDropIndicators();
+      draggedTabItem = null;
+      if (tabDragTimeoutId) clearTimeout(tabDragTimeoutId);
+      tabDragTimeoutId = setTimeout(() => {
+        isTabDragging = false;
+      }, 80);
+    });
+
+    tab.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (!draggedTabItem || draggedTabItem === tab) return;
+
+      clearTabDropIndicators();
+      const rect = tab.getBoundingClientRect();
+      const midX = rect.left + rect.width / 2;
+      if (e.clientX < midX) {
+        tab.classList.add('drop-target-left');
+      } else {
+        tab.classList.add('drop-target-right');
+      }
+    });
+
+    tab.addEventListener('dragleave', (e) => {
+      const rect = tab.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+        tab.classList.remove('drop-target-left', 'drop-target-right');
+      }
+    });
+
+    tab.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (!draggedTabItem || draggedTabItem === tab) return;
+
+      const rect = tab.getBoundingClientRect();
+      const midX = rect.left + rect.width / 2;
+      if (e.clientX < midX) {
+        container.insertBefore(draggedTabItem, tab);
+      } else {
+        container.insertBefore(draggedTabItem, tab.nextSibling);
+      }
+      clearTabDropIndicators();
+      saveTabOrder();
+    });
+  });
+
+  container.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  });
+
+  container.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (!draggedTabItem) return;
+    if (e.target === container) {
+      container.appendChild(draggedTabItem);
+      clearTabDropIndicators();
+      saveTabOrder();
+    }
+  });
+
+  // Horizontal mouse wheel scrolling without scrollbar clutter
+  container.addEventListener('wheel', (e) => {
+    if (e.deltaY !== 0) {
+      e.preventDefault();
+      container.scrollLeft += e.deltaY;
+    }
+  }, { passive: false });
+}
+
+function clearTabDropIndicators() {
+  document.querySelectorAll('.drop-target-left, .drop-target-right').forEach(el => {
+    el.classList.remove('drop-target-left', 'drop-target-right');
+  });
+}
+
+function saveTabOrder() {
+  const container = document.getElementById('previewTabGroup');
+  if (!container) return;
+  const tabs = Array.from(container.children)
+    .map(el => el.getAttribute('data-tab'))
+    .filter(Boolean);
+  try {
+    localStorage.setItem('zenith_studio_tab_order', JSON.stringify(tabs));
+  } catch (_) {}
+}
+
+function restoreTabOrder() {
+  const container = document.getElementById('previewTabGroup');
+  if (!container) return;
+  try {
+    const saved = localStorage.getItem('zenith_studio_tab_order');
+    if (!saved) return;
+    const order = JSON.parse(saved);
+    if (!Array.isArray(order) || order.length === 0) return;
+    order.forEach(tabKey => {
+      const el = container.querySelector(`[data-tab="${tabKey}"]`);
+      if (el) {
+        container.appendChild(el);
+      }
+    });
+  } catch (_) {}
+}
+
 // Switch Right Preview Tabs
 function switchPreviewTab(tabKey) {
+  if (isTabDragging) return;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.preview-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-dropdown-item').forEach(i => i.classList.remove('active'));
@@ -849,22 +1423,21 @@ function switchPreviewTab(tabKey) {
   const labelEl = document.getElementById('artifactsTabLabel');
   if (labelEl) labelEl.textContent = 'SDK & Docker';
 
-  if (typeof event !== 'undefined' && event && event.currentTarget && event.currentTarget.classList) {
-    event.currentTarget.classList.add('active');
-  } else {
-    const btn = document.querySelector(`.tab-btn[onclick*="'${tabKey}'"]`);
-    if (btn) btn.classList.add('active');
-  }
+  const btn = document.querySelector(`.tab-btn[data-tab="${tabKey}"]`) || document.querySelector(`.tab-btn[onclick*="'${tabKey}'"]`);
+  if (btn) btn.classList.add('active');
 
   const panel = document.getElementById(`tab-${tabKey}`);
   if (panel) panel.classList.add('active');
 
   if (tabKey === 'erd') {
     requestAnimationFrame(redrawErdIfActive);
+  } else if (tabKey === 'notes') {
+    renderNotesPreview();
   }
 }
 
 function toggleArtifactsDropdown(e) {
+  if (isTabDragging) return;
   if (e) e.stopPropagation();
   const menu = document.getElementById('artifactsDropdownMenu');
   const wrap = document.getElementById('artifactsDropdownWrap');
@@ -912,6 +1485,8 @@ function selectArtifactTab(tabKey, label) {
 
   if (tabKey === 'erd') {
     requestAnimationFrame(redrawErdIfActive);
+  } else if (tabKey === 'notes') {
+    renderNotesPreview();
   }
 
   closeArtifactsDropdown();
@@ -1570,12 +2145,11 @@ function renderApiExplorer(models, config) {
   const basePath = config.basePath || '/api/v1';
   let firstItem = null;
 
-  // 1. Auth Group (if auth is enabled)
+  // 1. Auth Group (only when auth: jwt is explicitly enabled)
   const isAuthEnabled = Boolean(
-    config.hasAuth ||
+    config.hasAuth === true ||
     config.auth === 'jwt' ||
-    (config.auth && config.auth !== 'none') ||
-    (typeof editor !== 'undefined' && editor && editor.getValue && editor.getValue().includes('auth: jwt'))
+    (typeof editor !== 'undefined' && editor && editor.getValue && /\bauth\s*:\s*jwt\b/i.test(editor.getValue()))
   );
 
   if (isAuthEnabled) {
@@ -1606,14 +2180,58 @@ function renderApiExplorer(models, config) {
     if (!firstItem && authGroup.first) firstItem = authGroup.first;
   }
 
-  // 2. Model Groups
+  // 2. Storage & Media Group (when storage is enabled or file/image fields exist)
+  const isStorageEnabled = Boolean(
+    config.hasStorage === true ||
+    (typeof editor !== 'undefined' && editor && editor.getValue && /\bstorage\s*:\s*(minio|s3)/i.test(editor.getValue())) ||
+    models.some(m => m.fields && m.fields.some(f => f.file || f.image))
+  );
+
+  if (isStorageEnabled) {
+    const storageGroup = createEndpointGroup('📁 Storage & Media', [
+      {
+        method: 'POST',
+        pathDisplay: '/files/upload',
+        fullUrl: `${basePath}/files/upload`,
+        desc: 'Upload file to storage',
+        isMultipart: true,
+        sampleBody: 'Sample file content for upload test'
+      },
+      {
+        method: 'GET',
+        pathDisplay: '/files/{fileKey}',
+        fullUrl: `${basePath}/files/{fileKey}`,
+        desc: 'Download or view file',
+        isStorage: true
+      },
+      {
+        method: 'GET',
+        pathDisplay: '/files/{fileKey}/metadata',
+        fullUrl: `${basePath}/files/{fileKey}/metadata`,
+        desc: 'Retrieve file metadata',
+        isStorage: true
+      },
+      {
+        method: 'DELETE',
+        pathDisplay: '/files/{fileKey}',
+        fullUrl: `${basePath}/files/{fileKey}`,
+        desc: 'Delete file & metadata',
+        isStorage: true
+      }
+    ]);
+    container.appendChild(storageGroup.el);
+    if (!firstItem && storageGroup.first) firstItem = storageGroup.first;
+  }
+
+  // 3. Model Groups
   models.forEach(m => {
     const slug = getModelSlug(m.name);
     const hasCrud = m.hasCrud !== false;
     const customList = m.customEndpoints || [];
+    const hasStorageRoutes = Boolean(m.fields && m.fields.some(f => f.file || f.image));
 
     // Skip models that have no endpoints
-    if (!hasCrud && customList.length === 0) return;
+    if (!hasCrud && customList.length === 0 && !hasStorageRoutes) return;
 
     const routes = [];
     const modelSample = generateSamplePayload(m);
@@ -1654,16 +2272,48 @@ function renderApiExplorer(models, config) {
       });
     }
 
+    // Model-bound File & Media Storage Routes (if model has @file or @image fields)
+    if (m.fields) {
+      m.fields.forEach(f => {
+        if (f.file || f.image) {
+          const fieldType = f.image ? 'image' : 'file';
+          routes.push({
+            method: 'POST',
+            pathDisplay: `/${slug}/{id}/${f.name}`,
+            fullUrl: `${basePath}/${slug}/{id}/${f.name}`,
+            desc: `Upload ${f.name} ${fieldType}`,
+            isMultipart: true,
+            sampleBody: `Sample content for ${f.name} ${fieldType}`
+          });
+          routes.push({
+            method: 'GET',
+            pathDisplay: `/${slug}/{id}/${f.name}`,
+            fullUrl: `${basePath}/${slug}/{id}/${f.name}`,
+            desc: `Download ${f.name} ${fieldType}`,
+            isStorage: true
+          });
+          routes.push({
+            method: 'DELETE',
+            pathDisplay: `/${slug}/{id}/${f.name}`,
+            fullUrl: `${basePath}/${slug}/{id}/${f.name}`,
+            desc: `Delete ${f.name} ${fieldType}`,
+            isStorage: true
+          });
+        }
+      });
+    }
+
     // Custom Actions & Sub-resources
     customList.forEach(cep => {
       let customSample = null;
       if (cep.bodyType) {
         customSample = generateDtoSamplePayload(cep.bodyType) || modelSample;
       }
+      const fullPath = `/${slug}${cep.path.startsWith('/') ? cep.path : '/' + cep.path}`;
       routes.push({
         method: cep.method.toUpperCase(),
-        pathDisplay: cep.path,
-        fullUrl: `${basePath}/${slug}${cep.path.startsWith('/') ? cep.path : '/' + cep.path}`,
+        pathDisplay: fullPath,
+        fullUrl: `${basePath}${fullPath}`,
         desc: cep.description || (cep.bodyType ? `body: ${cep.bodyType}` : 'Action'),
         sampleBody: customSample
       });
@@ -1769,7 +2419,16 @@ function selectEndpoint(route, el) {
 
     paramMatches.forEach(m => {
       const pName = m[1];
-      const defaultVal = paramValues[pName] || (pName.toLowerCase().includes('id') ? '3fa85f64-5717-4562-b3fc-2c963f66afa6' : '1');
+      let defaultVal = paramValues[pName];
+      if (!defaultVal) {
+        if (pName.toLowerCase().includes('key') || pName.toLowerCase().includes('file')) {
+          defaultVal = 'uploads/sample_document.txt';
+        } else if (pName.toLowerCase().includes('id')) {
+          defaultVal = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+        } else {
+          defaultVal = '1';
+        }
+      }
       paramValues[pName] = defaultVal;
 
       const pill = document.createElement('div');
@@ -1971,16 +2630,29 @@ async function sendApiRequest() {
 
   const startTime = performance.now();
   try {
-    const headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    };
+    const isMultipart = Boolean(activeEndpointTemplate && activeEndpointTemplate.isMultipart);
+    const headers = {};
+    if (!isMultipart) {
+      headers['Content-Type'] = 'application/json';
+      headers['Accept'] = 'application/json';
+    }
     if (token) {
       headers['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
     }
 
     const opts = { method, headers };
-    if (['POST', 'PUT', 'PATCH'].includes(method) && bodyText.trim()) {
+    if (isMultipart) {
+      const formData = new FormData();
+      const content = bodyText.trim() || 'Sample Zenith upload test content';
+      const filename = url.includes('image') || url.includes('avatar') ? 'photo.png' : 'document.txt';
+      const mimeType = url.includes('image') || url.includes('avatar') ? 'image/png' : 'text/plain';
+      const blob = new Blob([content], { type: mimeType });
+      formData.append('file', blob, filename);
+      if (url.includes('/files/upload')) {
+        formData.append('folder', 'uploads/');
+      }
+      opts.body = formData;
+    } else if (['POST', 'PUT', 'PATCH'].includes(method) && bodyText.trim()) {
       opts.body = bodyText;
     }
 
@@ -1995,18 +2667,27 @@ async function sendApiRequest() {
     statusSpan.style.color = statusColor;
     timeSpan.innerText = durationText;
 
-    const text = await res.text();
-    try {
-      const parsed = JSON.parse(text);
-      resBox.innerText = JSON.stringify(parsed, null, 2);
-      const extractedToken = parsed.token || parsed.accessToken || parsed.access_token ||
-                             (parsed.data && (parsed.data.token || parsed.data.accessToken));
-      if (extractedToken) {
-        document.getElementById('runnerAuthToken').value = extractedToken;
-        try { localStorage.setItem('zenith_auth_token', extractedToken); } catch (_) {}
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const text = await res.text();
+      try {
+        const parsed = JSON.parse(text);
+        resBox.innerText = JSON.stringify(parsed, null, 2);
+        const extractedToken = parsed.token || parsed.accessToken || parsed.access_token ||
+                               (parsed.data && (parsed.data.token || parsed.data.accessToken));
+        if (extractedToken) {
+          document.getElementById('runnerAuthToken').value = extractedToken;
+          try { localStorage.setItem('zenith_auth_token', extractedToken); } catch (_) {}
+        }
+      } catch (_) {
+        resBox.innerText = text || '(Empty response)';
       }
-    } catch (_) {
+    } else if (contentType.includes('text/') || contentType.includes('xml')) {
+      const text = await res.text();
       resBox.innerText = text || '(Empty response)';
+    } else {
+      const blob = await res.blob();
+      resBox.innerText = `[Binary File Response]\nContent-Type: ${contentType || 'application/octet-stream'}\nSize: ${blob.size} bytes (${(blob.size / 1024).toFixed(1)} KB)`;
     }
 
     // Persist full execution state so returning to this endpoint keeps everything
@@ -2358,11 +3039,109 @@ function renderDocker(files) {
   if (dc) document.getElementById('dockerComposePreview').innerText = dc.content;
 }
 
+// Initialize Console & Scroll Listeners
+function initConsole() {
+  const box = document.getElementById('consoleOutput');
+  if (box && !box.dataset.initialized) {
+    box.dataset.initialized = 'true';
+    box.addEventListener('scroll', handleConsoleScroll, { passive: true });
+  }
+}
+
+// User-aware scroll detection (prevents snap-down when reading stack traces)
+function handleConsoleScroll() {
+  const box = document.getElementById('consoleOutput');
+  if (!box) return;
+
+  const distanceFromBottom = box.scrollHeight - (box.scrollTop + box.clientHeight);
+  const isAtBottom = distanceFromBottom <= 40;
+
+  consoleAutoScroll = isAtBottom;
+  updateConsoleAutoScrollUI();
+
+  const jumpBtn = document.getElementById('consoleJumpBottomBtn');
+  if (jumpBtn) {
+    jumpBtn.style.display = isAtBottom ? 'none' : 'inline-flex';
+  }
+}
+
+function updateConsoleAutoScrollUI() {
+  const label = document.getElementById('consoleAutoScrollLabel');
+  const btn = document.getElementById('consoleAutoScrollBtn');
+  if (label) {
+    label.innerText = consoleAutoScroll ? 'Auto-scroll: ON' : 'Auto-scroll: OFF';
+  }
+  if (btn) {
+    if (consoleAutoScroll) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  }
+}
+
+function toggleConsoleAutoScroll() {
+  consoleAutoScroll = !consoleAutoScroll;
+  const box = document.getElementById('consoleOutput');
+  if (consoleAutoScroll && box) {
+    box.scrollTop = box.scrollHeight;
+    const jumpBtn = document.getElementById('consoleJumpBottomBtn');
+    if (jumpBtn) jumpBtn.style.display = 'none';
+  }
+  updateConsoleAutoScrollUI();
+}
+
+function jumpConsoleToBottom() {
+  const box = document.getElementById('consoleOutput');
+  if (box) {
+    box.scrollTop = box.scrollHeight;
+    consoleAutoScroll = true;
+    updateConsoleAutoScrollUI();
+    const jumpBtn = document.getElementById('consoleJumpBottomBtn');
+    if (jumpBtn) jumpBtn.style.display = 'none';
+  }
+}
+
+function copyConsoleLogs() {
+  const box = document.getElementById('consoleOutput');
+  const badge = document.getElementById('consoleStatusBadge');
+  if (!box) return;
+
+  const text = box.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    if (badge) {
+      const prevText = badge.textContent;
+      const prevClass = badge.className;
+      badge.textContent = '✓ Copied!';
+      badge.className = 'console-status-badge success';
+      setTimeout(() => {
+        badge.textContent = prevText;
+        badge.className = prevClass;
+      }, 1600);
+    }
+  }).catch(() => {});
+}
+
+function clearConsoleOutput() {
+  const box = document.getElementById('consoleOutput');
+  if (box) {
+    box.innerHTML = '';
+    renderedConsoleLogsCount = 0;
+  }
+  const badge = document.getElementById('consoleStatusBadge');
+  if (badge && !isSpringRunning) {
+    badge.textContent = 'Idle';
+    badge.className = 'console-status-badge';
+  }
+  fetch('/api/logs/clear', { method: 'POST' }).catch(() => {});
+}
+
 // Toggle Run / Stop Spring Boot Process
 async function toggleRunApp() {
   const runBtn = document.getElementById('runBtn');
   const runBtnText = document.getElementById('runBtnText');
   const swaggerBtn = document.getElementById('swaggerBtn');
+  const badge = document.getElementById('consoleStatusBadge');
 
   if (isSpringRunning) {
     // STOP process
@@ -2372,7 +3151,12 @@ async function toggleRunApp() {
       runBtnText.innerText = 'Run';
       runBtn.className = 'btn btn-primary';
       swaggerBtn.style.display = 'none';
+      if (badge) {
+        badge.textContent = 'Stopped';
+        badge.className = 'console-status-badge';
+      }
       clearInterval(logPollInterval);
+      logPollInterval = null;
       appendConsoleLog('[Zenith Studio] Stopped application.');
     } catch (err) {
       console.error('Stop error:', err);
@@ -2394,10 +3178,17 @@ async function toggleRunApp() {
         runBtnText.innerText = 'Stop';
         runBtn.className = 'btn btn-primary running-state';
         swaggerBtn.style.display = 'inline-flex';
+        if (badge) {
+          badge.textContent = 'Running';
+          badge.className = 'console-status-badge running';
+        }
 
         // Switch to console tab automatically
         const consoleTabBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.innerText.includes('Console'));
         if (consoleTabBtn) consoleTabBtn.click();
+
+        consoleAutoScroll = true;
+        updateConsoleAutoScrollUI();
 
         startLogPolling();
       } else {
@@ -2411,42 +3202,107 @@ async function toggleRunApp() {
   }
 }
 
-// Poll logs from Zenith Studio Server
+// Poll logs from Zenith Studio Server incrementally
 function startLogPolling() {
   clearInterval(logPollInterval);
   logPollInterval = setInterval(async () => {
     try {
       const res = await fetch('/api/logs');
       const data = await res.json();
-      const box = document.getElementById('consoleOutput');
-      box.innerHTML = '';
-
-      data.logs.forEach(line => {
-        const el = document.createElement('div');
-        el.className = 'log-line';
-        if (line.includes('ERROR') || line.includes('Exception') || line.includes('FAILURE')) {
-          el.className += ' error';
-        } else if (line.includes('Started ShopSphere') || line.includes('Started ')) {
-          el.className += ' success';
-        } else if (line.includes('[Zenith Studio]')) {
-          el.className += ' info';
-        }
-        el.innerText = line;
-        box.appendChild(el);
-      });
-
-      box.scrollTop = box.scrollHeight;
+      renderConsoleLogs(data.logs || [], data.running);
     } catch (_) {}
-  }, 1000);
+  }, 800);
+}
+
+// Incremental render without innerHTML wiping (preserves scroll position & selections)
+function renderConsoleLogs(logs, isRunning) {
+  const box = document.getElementById('consoleOutput');
+  if (!box) return;
+
+  // If server cleared logs (e.g. fresh run)
+  if (logs.length < renderedConsoleLogsCount) {
+    box.innerHTML = '';
+    renderedConsoleLogsCount = 0;
+  }
+
+  // Only render new lines (no DOM wipe, zero scroll interruption)
+  if (logs.length > renderedConsoleLogsCount) {
+    const newLines = logs.slice(renderedConsoleLogsCount);
+    const fragment = document.createDocumentFragment();
+
+    for (let i = 0; i < newLines.length; i++) {
+      const line = newLines[i];
+      const el = document.createElement('div');
+      el.className = 'log-line';
+      if (line.includes('ERROR') || line.includes('Exception') || line.includes('FAILURE')) {
+        el.className += ' error';
+      } else if (line.includes('Started ShopSphere') || line.includes('Started ') || line.includes('SUCCESS') || line.includes('Process finished')) {
+        el.className += ' success';
+      } else if (line.includes('[Zenith Studio]')) {
+        el.className += ' info';
+      }
+      el.innerText = line;
+      fragment.appendChild(el);
+    }
+
+    box.appendChild(fragment);
+    renderedConsoleLogsCount = logs.length;
+
+    // Only auto-scroll down if user is NOT reading earlier logs
+    if (consoleAutoScroll) {
+      box.scrollTop = box.scrollHeight;
+    }
+  }
+
+  updateConsoleProcessStatus(isRunning, logs);
+}
+
+function updateConsoleProcessStatus(isRunning, logs) {
+  const badge = document.getElementById('consoleStatusBadge');
+  const runBtnText = document.getElementById('runBtnText');
+  const runBtn = document.getElementById('runBtn');
+  const swaggerBtn = document.getElementById('swaggerBtn');
+
+  if (isRunning) {
+    if (badge && badge.textContent !== '✓ Copied!') {
+      badge.textContent = 'Running';
+      badge.className = 'console-status-badge running';
+    }
+    if (runBtnText) runBtnText.innerText = 'Stop';
+    if (runBtn) runBtn.className = 'btn btn-primary running-state';
+    if (swaggerBtn) swaggerBtn.style.display = 'inline-flex';
+  } else {
+    // Process terminated or not running
+    if (isSpringRunning) {
+      isSpringRunning = false;
+      if (runBtnText) runBtnText.innerText = 'Run';
+      if (runBtn) runBtn.className = 'btn btn-primary';
+      if (swaggerBtn) swaggerBtn.style.display = 'none';
+
+      const hasFailure = logs.some(l => l.includes('BUILD FAILURE') || l.includes('Process terminated with exit code 1') || l.includes('FAILURE'));
+      if (badge && badge.textContent !== '✓ Copied!') {
+        badge.textContent = hasFailure ? 'Failed (Exit 1)' : 'Terminated';
+        badge.className = hasFailure ? 'console-status-badge failed' : 'console-status-badge';
+      }
+
+      // Stop log polling when process ends
+      clearInterval(logPollInterval);
+      logPollInterval = null;
+    }
+  }
 }
 
 function appendConsoleLog(line) {
   const box = document.getElementById('consoleOutput');
+  if (!box) return;
   const el = document.createElement('div');
   el.className = 'log-line info';
   el.innerText = line;
   box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
+  renderedConsoleLogsCount++;
+  if (consoleAutoScroll) {
+    box.scrollTop = box.scrollHeight;
+  }
 }
 
 // Download Project ZIP
@@ -2454,17 +3310,9 @@ function exportZip() {
   window.location.href = '/api/export';
 }
 
-// Reference Modal
+// Reference Tab
 function toggleCheatSheet(forceOpen) {
-  const modal = document.getElementById('referenceModal');
-  if (!modal) return;
-  const isShown = modal.classList.contains('show');
-  const shouldOpen = (forceOpen !== undefined) ? forceOpen : !isShown;
-  if (shouldOpen) {
-    modal.classList.add('show');
-  } else {
-    modal.classList.remove('show');
-  }
+  switchPreviewTab('reference');
 }
 
 // Close on Escape key
@@ -2476,4 +3324,183 @@ window.addEventListener('keydown', (e) => {
 
 function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ==========================================
+// Local Screen & Studio Video Recorder
+// ==========================================
+let screenMediaRecorder = null;
+let recordedMediaChunks = [];
+let recordingTimerInterval = null;
+let recordingStartTimestamp = 0;
+let screenRecordingStream = null;
+
+async function toggleScreenRecording() {
+  if (screenMediaRecorder && screenMediaRecorder.state === 'recording') {
+    stopScreenRecording();
+  } else {
+    await startScreenRecording();
+  }
+}
+
+async function startScreenRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    alert('Screen recording is not supported in this browser. Please use a modern Chromium browser (Chrome, Edge, Brave) or Firefox.');
+    return;
+  }
+
+  try {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'browser' },
+        audio: true
+      });
+    } catch (_) {
+      // Fallback if audio or displaySurface is rejected
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    }
+
+    screenRecordingStream = stream;
+    recordedMediaChunks = [];
+
+    // Choose the best supported video container/codec
+    const mimeTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4'
+    ];
+    let selectedMimeType = '';
+    for (const type of mimeTypes) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) {
+        selectedMimeType = type;
+        break;
+      }
+    }
+
+    const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
+    screenMediaRecorder = new MediaRecorder(stream, options);
+
+    screenMediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        recordedMediaChunks.push(event.data);
+      }
+    };
+
+    screenMediaRecorder.onstop = () => {
+      finalizeRecordingDownload(selectedMimeType);
+    };
+
+    // Listen for user stopping sharing via browser's native banner
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.addEventListener('ended', () => {
+        if (screenMediaRecorder && screenMediaRecorder.state === 'recording') {
+          stopScreenRecording();
+        }
+      });
+    }
+
+    screenMediaRecorder.start(1000); // 1-second timeslice for safe chunking
+    recordingStartTimestamp = Date.now();
+
+    updateRecordingUI(true);
+    recordingTimerInterval = setInterval(updateRecordingTimer, 500);
+
+    showStudioNotification('⏺ Screen recording active. Click Stop to save video.', 'recording');
+
+  } catch (err) {
+    console.error('Failed to start screen recording:', err);
+    if (err.name !== 'NotAllowedError') {
+      showStudioNotification(`Failed to record screen: ${err.message}`, 'error');
+    }
+  }
+}
+
+function stopScreenRecording() {
+  if (screenMediaRecorder && screenMediaRecorder.state !== 'inactive') {
+    screenMediaRecorder.stop();
+  }
+  if (screenRecordingStream) {
+    screenRecordingStream.getTracks().forEach(track => track.stop());
+    screenRecordingStream = null;
+  }
+  clearInterval(recordingTimerInterval);
+  recordingTimerInterval = null;
+  updateRecordingUI(false);
+}
+
+function updateRecordingUI(isRecording) {
+  const btn = document.getElementById('screenRecordBtn');
+  const btnText = document.getElementById('recordBtnText');
+  const dot = document.getElementById('recordDot');
+  if (!btn) return;
+
+  if (isRecording) {
+    btn.classList.add('recording');
+    btn.title = 'Click to stop recording and download video file';
+    if (btnText) btnText.innerText = 'Stop (00:00)';
+    if (dot) dot.style.display = 'inline-block';
+  } else {
+    btn.classList.remove('recording');
+    btn.title = 'Record Studio screen to video for local demos / walkthroughs';
+    if (btnText) btnText.innerText = 'Record';
+    if (dot) dot.style.display = 'none';
+  }
+}
+
+function updateRecordingTimer() {
+  const btnText = document.getElementById('recordBtnText');
+  if (!btnText || !recordingStartTimestamp) return;
+
+  const elapsedSec = Math.floor((Date.now() - recordingStartTimestamp) / 1000);
+  const minutes = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+  const seconds = String(elapsedSec % 60).padStart(2, '0');
+  btnText.innerText = `Stop (${minutes}:${seconds})`;
+}
+
+function finalizeRecordingDownload(mimeType) {
+  if (recordedMediaChunks.length === 0) return;
+
+  const actualType = mimeType || 'video/webm';
+  const blob = new Blob(recordedMediaChunks, { type: actualType });
+  const ext = actualType.includes('mp4') ? 'mp4' : 'webm';
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+  const filename = `zenith-studio-demo-${dateStr}_${timeStr}.${ext}`;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
+
+  const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
+  showStudioNotification(`✅ Video recording saved (${sizeMb} MB) &rarr; ${filename}`, 'success');
+}
+
+// Studio Toast Notification Helper
+function showStudioNotification(message, type = 'info') {
+  let toast = document.getElementById('studioNotificationToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'studioNotificationToast';
+    toast.className = 'studio-toast';
+    document.body.appendChild(toast);
+  }
+  toast.className = `studio-toast show ${type}`;
+  toast.innerHTML = message;
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => {
+    toast.className = 'studio-toast';
+  }, 4500);
 }

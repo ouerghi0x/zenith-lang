@@ -54,7 +54,9 @@ public class SeedGenerator {
         }
 
         sb.append("import ").append(basePkg).append(".entity.*;\n");
-        sb.append("import ").append(basePkg).append(".model.*;\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
         sb.append("import ").append(basePkg).append(".repository.*;\n\n");
 
         sb.append("@Component\n");

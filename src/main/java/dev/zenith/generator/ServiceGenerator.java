@@ -34,7 +34,9 @@ public class ServiceGenerator {
         }
         sb.append("import java.util.List;\n");
         sb.append("import java.util.UUID;\n");
-        sb.append("import java.math.BigDecimal;\n\n");
+        sb.append("import java.math.BigDecimal;\n");
+        sb.append("import java.time.LocalDateTime;\n");
+        sb.append("import java.time.LocalDate;\n\n");
 
         StringBuilder getAllParams = new StringBuilder(
                 "int page, int size, String sort, String direction, String search");
@@ -128,6 +130,8 @@ public class ServiceGenerator {
         }
         sb.append("import java.util.UUID;\n");
         sb.append("import java.math.BigDecimal;\n");
+        sb.append("import java.time.LocalDateTime;\n");
+        sb.append("import java.time.LocalDate;\n");
         sb.append("import ").append(basePkg).append(".exception.ResourceNotFoundException;\n");
 
         // Relation repository imports

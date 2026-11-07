@@ -12,6 +12,8 @@ public class JobDef {
     private final List<String> actionStatements;
     private final String description;
     private final boolean enabled;
+    private String sourceFile;
+    private int sourceLine;
 
     public JobDef(String name, String cronExpression, String fixedRate, List<GuardDef> guards,
             List<String> actionStatements, String description, boolean enabled) {
@@ -31,6 +33,22 @@ public class JobDef {
 
     public String getName() {
         return name;
+    }
+
+    public String getSourceFile() {
+        return sourceFile;
+    }
+
+    public void setSourceFile(String sourceFile) {
+        this.sourceFile = sourceFile;
+    }
+
+    public int getSourceLine() {
+        return sourceLine;
+    }
+
+    public void setSourceLine(int sourceLine) {
+        this.sourceLine = sourceLine;
     }
 
     public String getCronExpression() {

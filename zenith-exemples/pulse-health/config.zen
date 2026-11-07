@@ -1,0 +1,14 @@
+// config.zen
+
+config {
+    app : 'PulseHealth'
+    database : h2
+    package: "com.pulsehealth.app"
+    port: 8081
+    basePath: "/api/v1"
+    auth:jwt
+    swagger: true // comment 1 :if u put false here , in u code not exist but if u never  typed swagger it exist by default 
+    flyway : true // same as comment 1
+    storage:minio
+    storageBucket: "pulse-medical-vault"
+}

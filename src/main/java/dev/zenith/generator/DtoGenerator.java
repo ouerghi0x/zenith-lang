@@ -45,7 +45,10 @@ public class DtoGenerator {
         sb.append("import java.math.BigDecimal;\n");
         sb.append("import java.util.UUID;\n");
         sb.append("import java.util.List;\n");
-        sb.append("import ").append(basePkg).append(".model.*;\n\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
+        sb.append("\n");
 
         sb.append("public record ").append(className).append("(\n");
 
@@ -114,7 +117,10 @@ public class DtoGenerator {
         sb.append("import java.math.BigDecimal;\n");
         sb.append("import java.util.UUID;\n");
         sb.append("import java.util.List;\n");
-        sb.append("import ").append(basePkg).append(".model.*;\n\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
+        sb.append("\n");
 
         sb.append("public record ").append(className).append("(\n");
 
@@ -166,7 +172,10 @@ public class DtoGenerator {
         sb.append("import java.math.BigDecimal;\n");
         sb.append("import java.util.UUID;\n");
         sb.append("import java.util.List;\n");
-        sb.append("import ").append(basePkg).append(".model.*;\n\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
+        sb.append("\n");
 
         sb.append("public record ").append(className).append("(\n");
 
@@ -177,6 +186,10 @@ public class DtoGenerator {
                 continue;
             }
             StringBuilder comp = new StringBuilder();
+            List<String> validations = TypeHelper.toValidationAnnotationsWithoutNullCheck(field);
+            for (String v : validations) {
+                comp.append("    ").append(v).append("\n");
+            }
             comp.append("    ").append(TypeHelper.toSimpleJavaType(field.getType())).append(" ")
                     .append(field.getName());
             recordComponents.add(comp.toString());
@@ -205,7 +218,10 @@ public class DtoGenerator {
         sb.append("import java.math.BigDecimal;\n");
         sb.append("import java.util.UUID;\n");
         sb.append("import java.util.List;\n");
-        sb.append("import ").append(basePkg).append(".model.*;\n\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
+        sb.append("\n");
 
         sb.append("public record ").append(className).append("(\n");
 

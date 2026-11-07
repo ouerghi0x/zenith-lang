@@ -68,14 +68,18 @@ public class JobGenerator {
         sb.append("package ").append(basePkg).append(".job;\n\n");
 
         sb.append("import ").append(basePkg).append(".entity.*;\n");
-        sb.append("import ").append(basePkg).append(".model.*;\n");
+        if (!file.getEnums().isEmpty()) {
+            sb.append("import ").append(basePkg).append(".model.*;\n");
+        }
         sb.append("import ").append(basePkg).append(".repository.*;\n");
         sb.append("import org.slf4j.Logger;\n");
         sb.append("import org.slf4j.LoggerFactory;\n");
         sb.append("import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;\n");
         sb.append("import org.springframework.scheduling.annotation.Scheduled;\n");
         sb.append("import org.springframework.stereotype.Component;\n");
-        sb.append("import org.springframework.transaction.annotation.Transactional;\n\n");
+        sb.append("import org.springframework.transaction.annotation.Transactional;\n");
+        sb.append("import java.time.LocalDateTime;\n");
+        sb.append("import java.time.LocalDate;\n\n");
 
         if (job.getDescription() != null && !job.getDescription().isEmpty()) {
             sb.append("/**\n");

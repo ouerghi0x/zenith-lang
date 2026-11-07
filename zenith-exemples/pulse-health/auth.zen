@@ -1,0 +1,35 @@
+// auth.zen
+
+
+enum MedicalRole {
+    PATIENT,ADMIN,DOCTOR,NURSE
+}
+enum AccountStatus {
+    ACTIVE,
+    SUSPENDED,
+    PENDING_VERIFICATION
+}
+model UserEntity {
+    id : UUID @id @auto
+    email : String @email @unique // email anotation not doing anything
+    medicalRole : MedicalRole  = PATIENT @role // initializaton role not doing anything
+    account_status:AccountStatus = ACTIVE
+    userName : String // min or max ,length inside String not affacting User model ,String? need to make nullable = true,Text not adding @Lob
+    password : String @password // here also need to have validation
+    createdAt: DateTime @autoNow
+    updatedAt: DateTime @autoUpdate
+    relations {
+        doctorProfile: DoctorProfile? @relation(oneToOne, mappedBy = "account")
+        patientProfile: PatientProfile? @relation(oneToOne, mappedBy = "account")
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+            search: [email]
+            filter: [medicalRole, account_status]
+            sort: [createdAt,medicalRole]
+            auth:true
+        }
+    }
+}

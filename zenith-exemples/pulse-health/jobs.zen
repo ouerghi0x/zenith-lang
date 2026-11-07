@@ -1,0 +1,25 @@
+// jobs.zen
+
+job JobWorker {
+    cron: "0 0 8 * * ?"
+    description: "Sends reminders for consultations scheduled in the next 24 hours"
+    action: {
+        update Appointment {
+            where: status == CONFIRMED and createdAt < daysFromNow(1)
+            status = NO_SHOW
+            
+        }
+        
+    }
+}
+
+job StaleAppointmentCleanupWorker {
+    cron: "0 0 2 * * ?"
+    description: "Marks unconfirmed pending consultations as NO_SHOW if date has passed"
+    action: {
+        update Appointment {
+            where: status == SCHEDULED and scheduledAt < daysAgo(1)
+            status = NO_SHOW
+        }
+    }
+}

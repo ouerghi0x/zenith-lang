@@ -17,6 +17,24 @@ public class CustomEndpointDef {
     private final String query; // optional custom query / filter mapping like "orderNumber == trackingNumber"
     private final Map<String, String> paramTypes; // optional explicit parameter types: e.g. {"id": "UUID"}
     private final String bodyType; // optional body
+    private String sourceFile;
+    private int sourceLine;
+
+    public String getSourceFile() {
+        return sourceFile;
+    }
+
+    public void setSourceFile(String sourceFile) {
+        this.sourceFile = sourceFile;
+    }
+
+    public int getSourceLine() {
+        return sourceLine;
+    }
+
+    public void setSourceLine(int sourceLine) {
+        this.sourceLine = sourceLine;
+    }
 
     public String getBodyType() {
         return bodyType;

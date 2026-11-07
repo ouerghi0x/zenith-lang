@@ -1,0 +1,61 @@
+// seeds.zen
+
+seed UserEntity {
+[
+{
+    email: "dr.sarah.connor@pulsehealth.org",
+    password: "Password123!",
+    medicalRole: MedicalRole.DOCTOR,
+    account_status: AccountStatus.ACTIVE,
+    userName: "dr1"
+}
+,
+{
+    email: "patient.john.doe@gmail.com",
+    password: "Password123!",
+    medicalRole: MedicalRole.PATIENT,
+    account_status: AccountStatus.ACTIVE,
+    userName: "pj"
+}
+
+]
+}
+seed DoctorProfile{
+[ {
+    licenseNumber: "MED-TX-99201",
+    fullName: "Dr. Sarah Connor, MD",
+    specialty: "Cardiology",
+    consultationFee: 175.00,
+    account: UserEntity[1]
+}
+]
+}
+seed PatientProfile{ 
+   [ 
+    {
+    medicalRecordNumber: "MRN-2026-00481",
+    fullName: "John Doe",
+    dateOfBirth: "1988-04-12",
+    bloodType: BloodType.O_POS,
+    emergencyContactPhone: "+1-555-019-2834",
+    allergies: "Penicillin, NSAIDs",
+    account: UserEntity[2]
+    }
+    ]
+}
+
+seed VitalReading { 
+    [ 
+        {
+        heartRateBpm: 72,
+        systolicBp: 118,
+        diastolicBp: 78,
+        oxygenSaturationPct: 99,
+        bodyTemperatureCelsius: 36.6,
+        bloodGlucoseMgDl: 95,
+        severity: VitalSeverity.NORMAL,
+        deviceIdentifier: "PULSE-BAND-SN401",
+        patient: PatientProfile[1] 
+        }
+    ]
+}
