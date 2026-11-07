@@ -6,6 +6,8 @@
 
 > **A modern, concise language on top of Java that eliminates Spring Boot boilerplate.**
 
+[![YouTube Architectural Walkthrough](https://img.shields.io/badge/YouTube-Watch%20Architectural%20Benchmark-red?logo=youtube&style=for-the-badge)](https://www.youtube.com/watch?v=2znqx9ANIKc)
+
 Zenith is a domain-specific language designed to abstract away the ceremony-heavy parts of enterprise Java. Instead of manually writing 7 to 9 separate files (Entity, DTOs, Repository, Service, ServiceImpl, Controller, Mapper, and Exception Handlers) and dozens of repetitive annotations for every database table, you declare your models, relationships, validation rules, and REST APIs in a single, clean `.zen` file.
 
 Zenith then transpiles your specification into **production-grade Spring Boot 3 + Java 17** code in milliseconds.
