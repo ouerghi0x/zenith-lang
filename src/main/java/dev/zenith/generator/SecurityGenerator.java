@@ -108,6 +108,7 @@ public class SecurityGenerator {
         sb.append("import io.jsonwebtoken.Claims;\n");
         sb.append("import io.jsonwebtoken.Jwts;\n");
         sb.append("import io.jsonwebtoken.security.Keys;\n");
+        sb.append("import org.springframework.beans.factory.annotation.Value;\n");
         sb.append("import org.springframework.security.core.userdetails.UserDetails;\n");
         sb.append("import org.springframework.stereotype.Service;\n");
         sb.append("import javax.crypto.SecretKey;\n");
@@ -119,11 +120,13 @@ public class SecurityGenerator {
 
         sb.append("@Service\n");
         sb.append("public class JwtService {\n\n");
-        sb.append("    private static final String SECRET_STRING = \"").append(secret).append("\";\n");
-        sb.append("    private static final long EXPIRATION_MS = ").append(expirationMs).append("L;\n\n");
+        sb.append("    @Value(\"${jwt.secret}\")\n");
+        sb.append("    private String secretString;\n\n");
+        sb.append("    @Value(\"${jwt.expiration:").append(expirationMs).append("}\")\n");
+        sb.append("    private long expirationMs;\n\n");
 
         sb.append("    private SecretKey getSigningKey() {\n");
-        sb.append("        return Keys.hmacShaKeyFor(SECRET_STRING.getBytes(StandardCharsets.UTF_8));\n");
+        sb.append("        return Keys.hmacShaKeyFor(secretString.getBytes(StandardCharsets.UTF_8));\n");
         sb.append("    }\n\n");
 
         sb.append("    public String extractUsername(String token) {\n");

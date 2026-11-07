@@ -1,0 +1,3 @@
+5cf0724370e4789fec115dff8000a9f1018eeaf421383bba95ebe9f82354a05e  zenith-1.0.0.jar
+e9b2ff0895086be3ba88f8fc59c92fa0c38e63f57a2a0a2c58ffc64ffdc7401f  zenith-v1.0.0-linux-macos.tar.gz
+f70e621d1690753f0816d72f3113b7244b3ec1a65cce6afa2de6f6c0cf3cf4a0  zenith-v1.0.0-windows-x64.zip

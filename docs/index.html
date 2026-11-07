@@ -269,6 +269,18 @@ zenith studio schema.zen --desktop</code></pre>
               <td>Activates Spring Security 6, JJWT token filter, and auth endpoints.</td>
             </tr>
             <tr>
+              <td><code>jwtSecret</code></td>
+              <td>String</td>
+              <td>Auto default</td>
+              <td>Custom HMAC-SHA256 secret (min 32 chars). Supports <code>${JWT_SECRET:...}</code> env var override.</td>
+            </tr>
+            <tr>
+              <td><code>jwtExpiration</code></td>
+              <td>Long</td>
+              <td><code>86400000</code></td>
+              <td>Token TTL in milliseconds (default: 24h). Supports <code>${JWT_EXPIRATION_MS:...}</code> env var override.</td>
+            </tr>
+            <tr>
               <td><code>storage</code></td>
               <td><code>minio</code> | <code>s3</code></td>
               <td><code>minio</code></td>
@@ -302,6 +314,8 @@ zenith studio schema.zen --desktop</code></pre>
     <span class="syn-prop">port</span>: <span class="syn-num">8080</span>
     <span class="syn-prop">database</span>: <span class="syn-str">postgres</span>
     <span class="syn-prop">auth</span>: <span class="syn-str">jwt</span>
+    <span class="syn-prop">jwtSecret</span>: <span class="syn-str">"404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"</span>
+    <span class="syn-prop">jwtExpiration</span>: <span class="syn-num">86400000</span>
     <span class="syn-prop">storage</span>: <span class="syn-str">minio</span>
     <span class="syn-prop">flyway</span>: <span class="syn-kw">true</span>
     <span class="syn-prop">swagger</span>: <span class="syn-kw">true</span>
@@ -613,6 +627,10 @@ zenith studio schema.zen --desktop</code></pre>
       <p>
         Declare custom domain routes (<code>get</code>, <code>post</code>, <code>put</code>, <code>delete</code>) with path variables and decoupled DTO request bodies.
       </p>
+      <div style="margin: 12px 0 18px; padding: 14px 18px; background: rgba(245, 158, 11, 0.08); border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 0.92rem; color: #fde68a;">
+        <strong style="color: #fbbf24;">⚠️ Architectural Rule — Model DTOs Always End with <code>Response</code> or <code>Request</code> (Never Return Raw Entities):</strong><br/>
+        For every <code>model &lt;ModelName&gt;</code>, Zenith auto-generates <code>&lt;ModelName&gt;Response</code>, <code>Create&lt;ModelName&gt;Request</code>, and <code>Update&lt;ModelName&gt;Request</code>. You <strong>cannot</strong> return a raw JPA entity as a REST API response (e.g., <code>-&gt; Order</code> is rejected at compile time in Zenith Studio). Always return <code>-&gt; &lt;ModelName&gt;Response</code>, <code>-&gt; List&lt;&lt;ModelName&gt;Response&gt;</code>, a custom <code>dto</code>, or <code>-&gt; Void</code>.
+      </div>
 
       <div class="code-block-wrap">
         <div class="code-block-header">
@@ -699,7 +717,7 @@ zenith studio schema.zen --desktop</code></pre>
       <!-- 9. DTO -->
       <h2 class="section-heading" id="dto">9. DTOs &amp; Custom Return Types</h2>
       <p>
-        Define decoupled Java 17 records and TypeScript interfaces using <code>dto Name { ... }</code>. When an endpoint returns a custom DTO, Zenith supports two approaches:
+        Define decoupled Java 17 records and TypeScript interfaces using <code>dto Name { ... }</code>. Note that auto-generated DTOs for any <code>model &lt;ModelName&gt;</code> always end with <code>&lt;ModelName&gt;Response</code>, <code>Create&lt;ModelName&gt;Request</code>, or <code>Update&lt;ModelName&gt;Request</code> — raw <code>model</code> entities can never be returned directly from REST endpoints. When an endpoint returns a custom DTO, Zenith supports two approaches:
       </p>
 
       <div class="code-block-wrap">

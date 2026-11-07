@@ -495,6 +495,18 @@
                 <td>Security mode: <code>jwt</code> or <code>none</code>. Spring Security 6, JJWT dependencies, JWT filters, AuthController (login &amp; register), and BCrypt hashing are strictly included only when <code>auth: jwt</code> is declared.</td>
               </tr>
               <tr>
+                <td><code>jwtSecret</code></td>
+                <td><code>String</code></td>
+                <td><code>"404E63...Y70"</code></td>
+                <td>Custom HMAC-SHA256 signing secret (min 32 chars / 256 bits). Injected via <code>@Value("${jwt.secret}")</code> with runtime override via <code>${JWT_SECRET:...}</code>.</td>
+              </tr>
+              <tr>
+                <td><code>jwtExpiration</code></td>
+                <td><code>Long</code></td>
+                <td><code>86400000</code></td>
+                <td>JWT token validity in milliseconds (default: 24h). Injected via <code>@Value("${jwt.expiration}")</code> with runtime override via <code>${JWT_EXPIRATION_MS:...}</code>.</td>
+              </tr>
+              <tr>
                 <td><code>swagger</code></td>
                 <td><code>Boolean</code></td>
                 <td><code>false</code></td>
@@ -528,6 +540,8 @@
     port: 8080
     database: postgres       // postgres | mysql | h2 (default: h2)
     auth: jwt                // jwt | none (default: none; jwt enables Spring Security 6)
+    jwtSecret: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" // optional min 32 chars
+    jwtExpiration: 86400000  // optional token validity in ms (default: 24h)
     swagger: true            // true | false (default: false; opt-in OpenAPI 3.0)
     flyway: true             // true | false (default: false; opt-in Flyway DDL migrations)
     storage: minio           // minio (local dev) | s3 (AWS cloud)
@@ -926,11 +940,22 @@ model Task {
               <tr>
                 <td>Custom DTO Return Endpoint</td>
                 <td><code>post "/{id}/pay" -> OrderSummaryResponse</code></td>
-                <td>Generates <code>toOrderSummaryResponse(entity)</code> mapper with coincident field & foreign key matching</td>
+                <td>Generates <code>toOrderSummaryResponse(entity)</code> mapper with coincident field &amp; foreign key matching</td>
                 <td>Returns specialized DTO payload mapped automatically from entity.</td>
+              </tr>
+              <tr>
+                <td>Model Default DTO Return</td>
+                <td><code>post "/{id}/confirm" -> OrderResponse</code></td>
+                <td>Maps updated entity via <code>mapper.toResponse(entity)</code></td>
+                <td>Model DTOs always end with <code>&lt;ModelName&gt;Response</code> or <code>Request</code>. Raw JPA entities (<code>-> Order</code>) are rejected at compile time.</td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div style="margin: 12px 0 14px; padding: 10px 14px; background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; border-radius: 6px; font-size: 12px; color: #fde68a;">
+          <strong style="color: #fbbf24;">⚠️ Architectural Rule — Never Return Raw Entity Models in REST Endpoints:</strong><br/>
+          Auto-generated DTOs for any <code>model &lt;ModelName&gt;</code> <strong>always end with <code>&lt;ModelName&gt;Response</code> or <code>Request</code></strong> (<code>&lt;ModelName&gt;Response</code>, <code>Create&lt;ModelName&gt;Request</code>, <code>Update&lt;ModelName&gt;Request</code>). You <strong>cannot</strong> return a raw JPA entity directly in a REST endpoint (e.g., <code>post "/{id}/cancel" -&gt; Order</code> is invalid and caught immediately by the Zenith Studio compiler). Always use <code>-&gt; &lt;ModelName&gt;Response</code>, <code>-&gt; List&lt;&lt;ModelName&gt;Response&gt;</code>, a custom <code>dto</code>, or <code>-&gt; Void</code>.
         </div>
 
         <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Comprehensive Example: Granular CRUD &amp; Custom Endpoint Security</h4>
@@ -1137,6 +1162,10 @@ org.slf4j.LoggerFactory.getLogger(getClass()).info("Notification to {}: {}", ent
         <!-- 8. Data Transfer Objects -->
         <h3 class="guide-section-title" id="ref-dto">8. Data Transfer Objects &amp; Endpoint Auto-Mapping <span class="guide-badge">dto</span></h3>
         <p style="font-size: 12px; margin-bottom: 8px;">Define custom request and response payloads decoupled from JPA database models with strict typing and optionality. DTOs compile directly to Java 17 records and TypeScript client interfaces.</p>
+        <div style="margin: 8px 0 12px; padding: 10px 14px; background: rgba(239, 68, 68, 0.08); border-left: 3px solid #ef4444; border-radius: 6px; font-size: 12px; color: #fecaca;">
+          <strong style="color: #f87171;">⚠️ Mandatory DTO Naming &amp; Entity Protection:</strong>
+          For every <code>model &lt;ModelName&gt;</code>, Zenith automatically generates <code>&lt;ModelName&gt;Response</code>, <code>Create&lt;ModelName&gt;Request</code>, and <code>Update&lt;ModelName&gt;Request</code>. Model DTO names <strong>always end with <code>Response</code> or <code>Request</code></strong>. Returning or accepting a raw <code>model</code> entity in an endpoint (e.g. <code>-&gt; CustomerOrder</code> or <code>(body: CustomerOrder)</code>) is strictly forbidden and raises a compile-time error in Zenith Studio.
+        </div>
         <pre class="guide-code"><code>dto AssignTaskRequest {
     assigneeId: UUID
     comment: String?

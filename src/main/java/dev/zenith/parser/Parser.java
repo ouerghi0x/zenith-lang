@@ -12,7 +12,8 @@ public class Parser {
     private final String sourceFile;
 
     private static final Set<String> ALLOWED_CONFIG_KEYS = Set.of(
-        "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket", "usermodel"
+            "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket",
+            "usermodel", "jwtsecret", "jwtexpiration"
     );
 
     public Parser(List<Token> tokens) {
@@ -56,7 +57,8 @@ public class Parser {
                 jobs.add(parseJob());
             } else {
                 throw error(tok,
-                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', or 'job' but found '" + tok.getValue()
+                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', or 'job' but found '"
+                                + tok.getValue()
                                 + "'");
             }
         }
@@ -293,12 +295,13 @@ public class Parser {
 
             if (!ALLOWED_CONFIG_KEYS.contains(keyLower)) {
                 throw error(keyToken, "Invalid configuration key '" + key + "'. Supported configuration keys are: "
-                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket.");
+                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration.");
             }
 
             boolean isDuplicate = props.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(key));
             if (isDuplicate) {
-                throw error(keyToken, "Duplicate configuration key '" + key + "' in config block. Each configuration key can only be declared once.");
+                throw error(keyToken, "Duplicate configuration key '" + key
+                        + "' in config block. Each configuration key can only be declared once.");
             }
 
             consume(TokenType.COLON, "Expected ':' after key '" + key + "'");
@@ -309,7 +312,8 @@ public class Parser {
                 if ("database".equals(keyLower)) {
                     String d = valStr.toLowerCase();
                     if (!d.equals("postgres") && !d.equals("postgresql") && !d.equals("mysql") && !d.equals("h2")) {
-                        throw error(keyToken, "Invalid database dialect '" + valStr + "'. Supported database options are: postgres, mysql, h2.");
+                        throw error(keyToken, "Invalid database dialect '" + valStr
+                                + "'. Supported database options are: postgres, mysql, h2.");
                     }
                 } else if ("auth".equals(keyLower)) {
                     String a = valStr.toLowerCase();
@@ -328,12 +332,27 @@ public class Parser {
                 } else if ("storage".equals(keyLower)) {
                     String s = valStr.toLowerCase();
                     if (!s.equals("minio") && !s.equals("s3") && !s.equals("none")) {
-                        throw error(keyToken, "Invalid storage provider '" + valStr + "'. Supported options are: minio, s3.");
+                        throw error(keyToken,
+                                "Invalid storage provider '" + valStr + "'. Supported options are: minio, s3.");
                     }
                 } else if ("swagger".equals(keyLower) || "flyway".equals(keyLower)) {
                     String b = valStr.toLowerCase();
                     if (!b.equals("true") && !b.equals("false")) {
-                        throw error(keyToken, "Property '" + key + "' must be a boolean (true or false), found: '" + valStr + "'");
+                        throw error(keyToken,
+                                "Property '" + key + "' must be a boolean (true or false), found: '" + valStr + "'");
+                    }
+                } else if ("jwtexpiration".equals(keyLower)) {
+                    try {
+                        long exp = Long.parseLong(valStr);
+                        if (exp <= 0) {
+                            throw error(keyToken, "jwtExpiration must be a positive integer in milliseconds, found: " + valStr);
+                        }
+                    } catch (NumberFormatException nfe) {
+                        throw error(keyToken, "jwtExpiration must be an integer, found: '" + valStr + "'");
+                    }
+                } else if ("jwtsecret".equals(keyLower)) {
+                    if (valStr.isEmpty()) {
+                        throw error(keyToken, "jwtSecret cannot be empty");
                     }
                 }
             }
@@ -642,7 +661,8 @@ public class Parser {
             consume(TokenType.RBRACE, "Expected '}' closing crud block");
         }
 
-        CrudConfig crud = new CrudConfig(enabled, paginate, search, filter, sort, requiresAuth, defaultRoles, operationRoles);
+        CrudConfig crud = new CrudConfig(enabled, paginate, search, filter, sort, requiresAuth, defaultRoles,
+                operationRoles);
         crud.setSourceFile(sourceFile);
         crud.setSourceLine(crudTok.getLine());
         return crud;
@@ -856,7 +876,8 @@ public class Parser {
             consume(TokenType.RBRACE, "Expected '}' closing custom endpoint block");
         }
 
-        CustomEndpointDef cep = new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards, actions, requiresAuth,
+        CustomEndpointDef cep = new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards,
+                actions, requiresAuth,
                 userScoped, query, paramTypes, bodyType);
         cep.setSourceFile(sourceFile);
         cep.setSourceLine(methodTok.getLine());

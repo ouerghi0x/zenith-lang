@@ -34,7 +34,8 @@ public class PropertiesGenerator {
             sb.append("    password: ${SPRING_DATASOURCE_PASSWORD:").append(pass).append("}\n");
             sb.append("    driver-class-name: org.postgresql.Driver\n");
         } else if ("mysql".equalsIgnoreCase(db)) {
-            String defaultUrl = "jdbc:mysql://localhost:3306/" + defaultDbName + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+            String defaultUrl = "jdbc:mysql://localhost:3306/" + defaultDbName
+                    + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
             String url = customUrl != null ? customUrl : defaultUrl;
             String user = customUser != null ? customUser : "zenith";
             String pass = customPass != null ? customPass : "zenith_secret";
@@ -51,7 +52,8 @@ public class PropertiesGenerator {
             sb.append("    password: ${SPRING_DATASOURCE_PASSWORD:\"\"}\n");
         }
 
-        if (!"postgres".equalsIgnoreCase(db) && !"postgresql".equalsIgnoreCase(db) && !"mysql".equalsIgnoreCase(db) && !"mariadb".equalsIgnoreCase(db)) {
+        if (!"postgres".equalsIgnoreCase(db) && !"postgresql".equalsIgnoreCase(db) && !"mysql".equalsIgnoreCase(db)
+                && !"mariadb".equalsIgnoreCase(db)) {
             sb.append("  h2:\n");
             sb.append("    console:\n");
             sb.append("      enabled: true\n");
@@ -90,11 +92,10 @@ public class PropertiesGenerator {
             sb.append("  api-docs:\n");
             sb.append("    path: /v3/api-docs\n\n");
         }
-
         if (hasAuth) {
             sb.append("jwt:\n");
-            sb.append("  secret: \"").append(file.getConfig().getJwtSecret()).append("\"\n");
-            sb.append("  expiration: ").append(file.getConfig().getJwtExpirationMs()).append("\n\n");
+            sb.append("  secret: ${JWT_SECRET:\"").append(file.getConfig().getJwtSecret()).append("\"}\n");
+            sb.append("  expiration: ${JWT_EXPIRATION_MS:").append(file.getConfig().getJwtExpirationMs()).append("}\n\n");
         }
 
         if (file.hasStorage()) {
@@ -120,10 +121,12 @@ public class PropertiesGenerator {
                 String kebab = j.getName().replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase();
                 sb.append("  ").append(kebab).append(":\n");
                 sb.append("    enabled: ").append(j.isEnabled()).append("\n");
-                if (j.getCronExpression() != null && !j.getCronExpression().trim().isEmpty() && !j.getCronExpression().equalsIgnoreCase("null")) {
+                if (j.getCronExpression() != null && !j.getCronExpression().trim().isEmpty()
+                        && !j.getCronExpression().equalsIgnoreCase("null")) {
                     sb.append("    cron: \"").append(j.getCronExpression()).append("\"\n");
                 }
-                if (j.getFixedRate() != null && !j.getFixedRate().trim().isEmpty() && !j.getFixedRate().equalsIgnoreCase("null")) {
+                if (j.getFixedRate() != null && !j.getFixedRate().trim().isEmpty()
+                        && !j.getFixedRate().equalsIgnoreCase("null")) {
                     sb.append("    fixed-rate: ").append(j.getFixedRate()).append("\n");
                 }
             }

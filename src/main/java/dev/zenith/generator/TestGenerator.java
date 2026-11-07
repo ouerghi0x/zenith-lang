@@ -10,8 +10,10 @@ import java.util.*;
  * Emits:
  * 1. src/test/resources/application.yml (H2 in-memory test profile)
  * 2. src/test/java/.../ApplicationTests.java (Context loads verification)
- * 3. src/test/java/.../controller/AuthControllerTest.java (Security & JWT tests)
- * 4. src/test/java/.../controller/*ControllerTest.java (MockMvc CRUD & guard tests)
+ * 3. src/test/java/.../controller/AuthControllerTest.java (Security & JWT
+ * tests)
+ * 4. src/test/java/.../controller/*ControllerTest.java (MockMvc CRUD & guard
+ * tests)
  * 5. src/test/java/.../repository/*RepositoryTest.java (Data JPA slice tests)
  */
 public class TestGenerator {
@@ -94,7 +96,8 @@ public class TestGenerator {
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/test/java/" + basePkg.replace('.', '/') + "/" + className + ".java", sb.toString());
+        return new JavaSourceFile("src/test/java/" + basePkg.replace('.', '/') + "/" + className + ".java",
+                sb.toString());
     }
 
     private static JavaSourceFile generateAuthControllerTest(ZenithFile file) {
@@ -121,7 +124,8 @@ public class TestGenerator {
         sb.append("    private MockMvc mockMvc;\n\n");
 
         sb.append("    @Test\n");
-        sb.append("    @DisplayName(\"POST ").append(authBase).append("/login with missing credentials returns 400 Bad Request\")\n");
+        sb.append("    @DisplayName(\"POST ").append(authBase)
+                .append("/login with missing credentials returns 400 Bad Request\")\n");
         sb.append("    void testLogin_MissingCredentials() throws Exception {\n");
         sb.append("        mockMvc.perform(post(\"").append(authBase).append("/login\")\n");
         sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
@@ -130,11 +134,13 @@ public class TestGenerator {
         sb.append("    }\n\n");
 
         sb.append("    @Test\n");
-        sb.append("    @DisplayName(\"POST ").append(authBase).append("/login with invalid credentials returns 401 Unauthorized or 400 Bad Request\")\n");
+        sb.append("    @DisplayName(\"POST ").append(authBase)
+                .append("/login with invalid credentials returns 401 Unauthorized or 400 Bad Request\")\n");
         sb.append("    void testLogin_InvalidCredentials() throws Exception {\n");
         sb.append("        mockMvc.perform(post(\"").append(authBase).append("/login\")\n");
         sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
-        sb.append("                .content(\"{\\\"email\\\":\\\"nonexistent@example.com\\\",\\\"password\\\":\\\"wrongpassword\\\"}\"))\n");
+        sb.append(
+                "                .content(\"{\\\"email\\\":\\\"nonexistent@example.com\\\",\\\"password\\\":\\\"wrongpassword\\\"}\"))\n");
         sb.append("                .andExpect(result -> {\n");
         sb.append("                    int status = result.getResponse().getStatus();\n");
         sb.append("                    org.junit.jupiter.api.Assertions.assertTrue(status == 401 || status == 400);\n");
@@ -142,7 +148,8 @@ public class TestGenerator {
         sb.append("    }\n\n");
 
         sb.append("    @Test\n");
-        sb.append("    @DisplayName(\"POST ").append(authBase).append("/register with empty payload returns 400 Bad Request\")\n");
+        sb.append("    @DisplayName(\"POST ").append(authBase)
+                .append("/register with empty payload returns 400 Bad Request\")\n");
         sb.append("    void testRegister_EmptyBody() throws Exception {\n");
         sb.append("        mockMvc.perform(post(\"").append(authBase).append("/register\")\n");
         sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
@@ -151,7 +158,8 @@ public class TestGenerator {
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/test/java/" + basePkg.replace('.', '/') + "/controller/AuthControllerTest.java", sb.toString());
+        return new JavaSourceFile("src/test/java/" + basePkg.replace('.', '/') + "/controller/AuthControllerTest.java",
+                sb.toString());
     }
 
     private static JavaSourceFile generateControllerTest(ModelDef model, ZenithFile file) {
@@ -169,7 +177,7 @@ public class TestGenerator {
 
         boolean hasAuth = file.hasAuth();
         String adminRole = getPrimaryAdminRole(file);
-        String userRole = getPrimaryUserRole(file);
+        // String userRole = getPrimaryUserRole(file);
 
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePkg).append(".controller;\n\n");
@@ -206,7 +214,8 @@ public class TestGenerator {
             // 1. GET / (List)
             if (listRequiresAuth) {
                 sb.append("    @Test\n");
-                sb.append("    @DisplayName(\"GET ").append(basePath).append(" without token returns 401 Unauthorized\")\n");
+                sb.append("    @DisplayName(\"GET ").append(basePath)
+                        .append(" without token returns 401 Unauthorized\")\n");
                 sb.append("    void testGetAll_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(get(\"").append(basePath).append("\"))\n");
                 sb.append("                .andExpect(status().isUnauthorized());\n");
@@ -217,7 +226,8 @@ public class TestGenerator {
                     String forbiddenRole = allowedRole.equalsIgnoreCase("ADMIN") ? "GUEST" : "UNKNOWN";
                     sb.append("    @Test\n");
                     sb.append("    @WithMockUser(roles = \"").append(forbiddenRole).append("\")\n");
-                    sb.append("    @DisplayName(\"GET ").append(basePath).append(" with forbidden role returns 403 Forbidden\")\n");
+                    sb.append("    @DisplayName(\"GET ").append(basePath)
+                            .append(" with forbidden role returns 403 Forbidden\")\n");
                     sb.append("    void testGetAll_Forbidden() throws Exception {\n");
                     sb.append("        mockMvc.perform(get(\"").append(basePath).append("\"))\n");
                     sb.append("                .andExpect(status().isForbidden());\n");
@@ -225,7 +235,8 @@ public class TestGenerator {
 
                     sb.append("    @Test\n");
                     sb.append("    @WithMockUser(roles = \"").append(allowedRole).append("\")\n");
-                    sb.append("    @DisplayName(\"GET ").append(basePath).append(" with permitted role returns 200 OK\")\n");
+                    sb.append("    @DisplayName(\"GET ").append(basePath)
+                            .append(" with permitted role returns 200 OK\")\n");
                     sb.append("    void testGetAll_Success() throws Exception {\n");
                     sb.append("        mockMvc.perform(get(\"").append(basePath).append("\")\n");
                     sb.append("                .param(\"page\", \"0\").param(\"size\", \"10\"))\n");
@@ -235,7 +246,8 @@ public class TestGenerator {
                 } else {
                     sb.append("    @Test\n");
                     sb.append("    @WithMockUser\n");
-                    sb.append("    @DisplayName(\"GET ").append(basePath).append(" returns 200 OK with PageResponse\")\n");
+                    sb.append("    @DisplayName(\"GET ").append(basePath)
+                            .append(" returns 200 OK with PageResponse\")\n");
                     sb.append("    void testGetAll_Success() throws Exception {\n");
                     sb.append("        mockMvc.perform(get(\"").append(basePath).append("\")\n");
                     sb.append("                .param(\"page\", \"0\").param(\"size\", \"10\"))\n");
@@ -259,9 +271,11 @@ public class TestGenerator {
                     || (!crud.isOperationPublic("getById") && !crud.getRolesForOperation("getById").isEmpty()));
             if (getByIdRequiresAuth) {
                 sb.append("    @Test\n");
-                sb.append("    @DisplayName(\"GET ").append(basePath).append("/{id} without token returns 401 Unauthorized\")\n");
+                sb.append("    @DisplayName(\"GET ").append(basePath)
+                        .append("/{id} without token returns 401 Unauthorized\")\n");
                 sb.append("    void testGetById_Unauthorized() throws Exception {\n");
-                sb.append("        mockMvc.perform(get(\"").append(basePath).append("/").append(nonExistentId).append("\"))\n");
+                sb.append("        mockMvc.perform(get(\"").append(basePath).append("/").append(nonExistentId)
+                        .append("\"))\n");
                 sb.append("                .andExpect(status().isUnauthorized());\n");
                 sb.append("    }\n\n");
             }
@@ -270,9 +284,11 @@ public class TestGenerator {
             if (getByIdRequiresAuth) {
                 sb.append("    @WithMockUser\n");
             }
-            sb.append("    @DisplayName(\"GET ").append(basePath).append("/{id} with non-existent id returns 404 Not Found\")\n");
+            sb.append("    @DisplayName(\"GET ").append(basePath)
+                    .append("/{id} with non-existent id returns 404 Not Found\")\n");
             sb.append("    void testGetById_NotFound() throws Exception {\n");
-            sb.append("        mockMvc.perform(get(\"").append(basePath).append("/").append(nonExistentId).append("\"))\n");
+            sb.append("        mockMvc.perform(get(\"").append(basePath).append("/").append(nonExistentId)
+                    .append("\"))\n");
             sb.append("                .andExpect(status().isNotFound());\n");
             sb.append("    }\n\n");
 
@@ -280,7 +296,8 @@ public class TestGenerator {
             boolean createRequiresAuth = hasAuth && !crud.isOperationPublic("create");
             if (createRequiresAuth) {
                 sb.append("    @Test\n");
-                sb.append("    @DisplayName(\"POST ").append(basePath).append(" without token returns 401 Unauthorized\")\n");
+                sb.append("    @DisplayName(\"POST ").append(basePath)
+                        .append(" without token returns 401 Unauthorized\")\n");
                 sb.append("    void testCreate_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(post(\"").append(basePath).append("\")\n");
                 sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
@@ -293,7 +310,8 @@ public class TestGenerator {
             if (createRequiresAuth) {
                 sb.append("    @WithMockUser(roles = \"").append(adminRole).append("\")\n");
             }
-            sb.append("    @DisplayName(\"POST ").append(basePath).append(" with invalid empty payload returns 400 Bad Request\")\n");
+            sb.append("    @DisplayName(\"POST ").append(basePath)
+                    .append(" with invalid empty payload returns 400 Bad Request\")\n");
             sb.append("    void testCreate_ValidationError() throws Exception {\n");
             sb.append("        mockMvc.perform(post(\"").append(basePath).append("\")\n");
             sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
@@ -305,9 +323,11 @@ public class TestGenerator {
             boolean updateRequiresAuth = hasAuth && !crud.isOperationPublic("update");
             if (updateRequiresAuth) {
                 sb.append("    @Test\n");
-                sb.append("    @DisplayName(\"PUT ").append(basePath).append("/{id} without token returns 401 Unauthorized\")\n");
+                sb.append("    @DisplayName(\"PUT ").append(basePath)
+                        .append("/{id} without token returns 401 Unauthorized\")\n");
                 sb.append("    void testUpdate_Unauthorized() throws Exception {\n");
-                sb.append("        mockMvc.perform(put(\"").append(basePath).append("/").append(nonExistentId).append("\")\n");
+                sb.append("        mockMvc.perform(put(\"").append(basePath).append("/").append(nonExistentId)
+                        .append("\")\n");
                 sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
                 sb.append("                .content(\"{}\"))\n");
                 sb.append("                .andExpect(status().isUnauthorized());\n");
@@ -318,9 +338,11 @@ public class TestGenerator {
             if (updateRequiresAuth) {
                 sb.append("    @WithMockUser(roles = \"").append(adminRole).append("\")\n");
             }
-            sb.append("    @DisplayName(\"PUT ").append(basePath).append("/{id} on non-existent id returns 404 Not Found or 400 Bad Request\")\n");
+            sb.append("    @DisplayName(\"PUT ").append(basePath)
+                    .append("/{id} on non-existent id returns 404 Not Found or 400 Bad Request\")\n");
             sb.append("    void testUpdate_NotFound() throws Exception {\n");
-            sb.append("        mockMvc.perform(put(\"").append(basePath).append("/").append(nonExistentId).append("\")\n");
+            sb.append("        mockMvc.perform(put(\"").append(basePath).append("/").append(nonExistentId)
+                    .append("\")\n");
             sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
             sb.append("                .content(\"{}\"))\n");
             sb.append("                .andExpect(result -> {\n");
@@ -333,9 +355,11 @@ public class TestGenerator {
             boolean deleteRequiresAuth = hasAuth && !crud.isOperationPublic("delete");
             if (deleteRequiresAuth) {
                 sb.append("    @Test\n");
-                sb.append("    @DisplayName(\"DELETE ").append(basePath).append("/{id} without token returns 401 Unauthorized\")\n");
+                sb.append("    @DisplayName(\"DELETE ").append(basePath)
+                        .append("/{id} without token returns 401 Unauthorized\")\n");
                 sb.append("    void testDelete_Unauthorized() throws Exception {\n");
-                sb.append("        mockMvc.perform(delete(\"").append(basePath).append("/").append(nonExistentId).append("\"))\n");
+                sb.append("        mockMvc.perform(delete(\"").append(basePath).append("/").append(nonExistentId)
+                        .append("\"))\n");
                 sb.append("                .andExpect(status().isUnauthorized());\n");
                 sb.append("    }\n\n");
             }
@@ -344,9 +368,11 @@ public class TestGenerator {
             if (deleteRequiresAuth) {
                 sb.append("    @WithMockUser(roles = \"").append(adminRole).append("\")\n");
             }
-            sb.append("    @DisplayName(\"DELETE ").append(basePath).append("/{id} on non-existent id returns 404 Not Found\")\n");
+            sb.append("    @DisplayName(\"DELETE ").append(basePath)
+                    .append("/{id} on non-existent id returns 404 Not Found\")\n");
             sb.append("    void testDelete_NotFound() throws Exception {\n");
-            sb.append("        mockMvc.perform(delete(\"").append(basePath).append("/").append(nonExistentId).append("\"))\n");
+            sb.append("        mockMvc.perform(delete(\"").append(basePath).append("/").append(nonExistentId)
+                    .append("\"))\n");
             sb.append("                .andExpect(status().isNotFound());\n");
             sb.append("    }\n\n");
         }
@@ -376,7 +402,8 @@ public class TestGenerator {
                 sb.append("    @Test\n");
                 sb.append("    @DisplayName(\"").append(custom.getMethod().toUpperCase()).append(" ").append(fullPath)
                         .append(" without token returns 401 Unauthorized\")\n");
-                sb.append("    void test").append(TypeHelper.capitalize(methodName)).append("_Unauthorized() throws Exception {\n");
+                sb.append("    void test").append(TypeHelper.capitalize(methodName))
+                        .append("_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(").append(httpMethod).append("(\"").append(testUrl).append("\")\n");
                 sb.append("                .contentType(MediaType.APPLICATION_JSON))\n");
                 sb.append("                .andExpect(status().isUnauthorized());\n");
@@ -387,10 +414,13 @@ public class TestGenerator {
                     String forbiddenRole = allowedRole.equalsIgnoreCase("ADMIN") ? "GUEST" : "UNKNOWN";
                     sb.append("    @Test\n");
                     sb.append("    @WithMockUser(roles = \"").append(forbiddenRole).append("\")\n");
-                    sb.append("    @DisplayName(\"").append(custom.getMethod().toUpperCase()).append(" ").append(fullPath)
+                    sb.append("    @DisplayName(\"").append(custom.getMethod().toUpperCase()).append(" ")
+                            .append(fullPath)
                             .append(" with forbidden role returns 403 Forbidden\")\n");
-                    sb.append("    void test").append(TypeHelper.capitalize(methodName)).append("_Forbidden() throws Exception {\n");
-                    sb.append("        mockMvc.perform(").append(httpMethod).append("(\"").append(testUrl).append("\")\n");
+                    sb.append("    void test").append(TypeHelper.capitalize(methodName))
+                            .append("_Forbidden() throws Exception {\n");
+                    sb.append("        mockMvc.perform(").append(httpMethod).append("(\"").append(testUrl)
+                            .append("\")\n");
                     sb.append("                .contentType(MediaType.APPLICATION_JSON))\n");
                     sb.append("                .andExpect(status().isForbidden());\n");
                     sb.append("    }\n\n");
@@ -405,7 +435,8 @@ public class TestGenerator {
                 }
                 sb.append("    @DisplayName(\"").append(custom.getMethod().toUpperCase()).append(" ").append(fullPath)
                         .append(" on non-existent entity returns 404 Not Found\")\n");
-                sb.append("    void test").append(TypeHelper.capitalize(methodName)).append("_NotFound() throws Exception {\n");
+                sb.append("    void test").append(TypeHelper.capitalize(methodName))
+                        .append("_NotFound() throws Exception {\n");
                 sb.append("        mockMvc.perform(").append(httpMethod).append("(\"").append(testUrl).append("\")\n");
                 sb.append("                .contentType(MediaType.APPLICATION_JSON))\n");
                 sb.append("                .andExpect(status().isNotFound());\n");
@@ -415,7 +446,8 @@ public class TestGenerator {
 
         sb.append("}\n");
 
-        return new JavaSourceFile("src/test/java/" + basePkg.replace('.', '/') + "/controller/" + testClassName + ".java", sb.toString());
+        return new JavaSourceFile(
+                "src/test/java/" + basePkg.replace('.', '/') + "/controller/" + testClassName + ".java", sb.toString());
     }
 
     private static JavaSourceFile generateRepositoryTest(ModelDef model, ZenithFile file) {
@@ -449,15 +481,15 @@ public class TestGenerator {
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/test/java/" + basePkg.replace('.', '/') + "/repository/" + testClassName + ".java", sb.toString());
+        return new JavaSourceFile(
+                "src/test/java/" + basePkg.replace('.', '/') + "/repository/" + testClassName + ".java", sb.toString());
     }
 
     private static String getPrimaryAdminRole(ZenithFile file) {
         return file.getDefaultAdminRole();
     }
 
-    private static String getPrimaryUserRole(ZenithFile file) {
-        return file.getDefaultRole();
-    }
+    // private static String getPrimaryUserRole(ZenithFile file) {
+    // return file.getDefaultRole();
+    // }
 }
-
