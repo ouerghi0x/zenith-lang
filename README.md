@@ -230,7 +230,7 @@ Launches a dedicated, frameless native desktop application window:
 
 You can download the standalone desktop installer directly:
 
-- **[Download Zenith-Studio-Setup.exe](https://github.com/zenith-lang/zenith/releases/latest/download/Zenith-Studio-Setup.exe)** _(Self-contained NSIS installer, ~82 MB)_
+- **[Download Zenith-Studio-Setup.exe](https://github.com/ouerghi0x/zenith-lang/releases/download/v1.0.0/Zenith-Studio-Setup.exe)** _(Self-contained NSIS installer, ~82 MB)_
 - Includes desktop shortcut, Start Menu integration, embedded offline runtime, and uninstaller.
 
 To build the installer locally from source at any time:
@@ -262,18 +262,18 @@ Run `.\update-extension.bat` from the root directory to package and install the 
 
 Declare application-wide architecture, database dialect, authentication, and external services:
 
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `app` | `String` | `"ZenithApp"` | Application name used in Maven artifact ID, OpenAPI metadata, and Docker naming. |
-| `package` | `String` | `"com.example.app"` | Base Java package for generated controllers, services, repositories, and models. |
-| `basePath` | `String` | `"/api/v1"` | Global REST URL prefix for all generated controllers. |
-| `port` | `Int` | `8080` | Embedded Tomcat server port (`server.port`). |
-| `database` | `Identifier` | `h2` | Target SQL dialect: `postgres`, `mysql`, or `h2`. Selecting `mysql` automatically includes `com.mysql:mysql-connector-j`, MySQLDialect, and MySQL DDL. |
-| `auth` | `Identifier` | `none` | Security mode: `jwt` or `none` (default: `none`). Spring Security 6, JJWT dependencies, JWT filters, and AuthController are strictly included only when `auth: jwt` is explicitly declared. |
-| `swagger` | `Boolean` | `false` | Generates OpenAPI 3.0 / Swagger UI at `/swagger-ui.html`. Disabled by default; explicitly opt-in with `swagger: true`. |
-| `flyway` | `Boolean` | `false` | Generates Flyway database migration scripts (`V1__initial_schema.sql`). Disabled by default; explicitly opt-in with `flyway: true`. |
-| `storage` | `Identifier` | `minio` | Unified object storage provider: `minio` (local S3-compatible dev storage) or `s3` (AWS S3 cloud production). |
-| `storageBucket`| `String` | `"zenith-bucket"`| Default bucket name for media, images, and file uploads. |
+| Property        | Type         | Default             | Description                                                                                                                                                                                 |
+| :-------------- | :----------- | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app`           | `String`     | `"ZenithApp"`       | Application name used in Maven artifact ID, OpenAPI metadata, and Docker naming.                                                                                                            |
+| `package`       | `String`     | `"com.example.app"` | Base Java package for generated controllers, services, repositories, and models.                                                                                                            |
+| `basePath`      | `String`     | `"/api/v1"`         | Global REST URL prefix for all generated controllers.                                                                                                                                       |
+| `port`          | `Int`        | `8080`              | Embedded Tomcat server port (`server.port`).                                                                                                                                                |
+| `database`      | `Identifier` | `h2`                | Target SQL dialect: `postgres`, `mysql`, or `h2`. Selecting `mysql` automatically includes `com.mysql:mysql-connector-j`, MySQLDialect, and MySQL DDL.                                      |
+| `auth`          | `Identifier` | `none`              | Security mode: `jwt` or `none` (default: `none`). Spring Security 6, JJWT dependencies, JWT filters, and AuthController are strictly included only when `auth: jwt` is explicitly declared. |
+| `swagger`       | `Boolean`    | `false`             | Generates OpenAPI 3.0 / Swagger UI at `/swagger-ui.html`. Disabled by default; explicitly opt-in with `swagger: true`.                                                                      |
+| `flyway`        | `Boolean`    | `false`             | Generates Flyway database migration scripts (`V1__initial_schema.sql`). Disabled by default; explicitly opt-in with `flyway: true`.                                                         |
+| `storage`       | `Identifier` | `minio`             | Unified object storage provider: `minio` (local S3-compatible dev storage) or `s3` (AWS S3 cloud production).                                                                               |
+| `storageBucket` | `String`     | `"zenith-bucket"`   | Default bucket name for media, images, and file uploads.                                                                                                                                    |
 
 ```zen
 config {
@@ -447,6 +447,7 @@ post "/{id}/complete" -> Void {
 #### Strict Compile-Time Analysis & Error Prevention
 
 Zenith enforces strict static analysis across all action and job blocks:
+
 - **Zero Silent Failures**: Any unrecognized method, unsupported statement, or misspelled property (e.g. updating a field that does not exist on the target model) immediately triggers a clear, descriptive compilation error.
 - **Valid Java Guarantee**: Unsupported logic is caught during the analysis phase, ensuring the compiler never produces invalid or broken Java output.
 

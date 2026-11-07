@@ -601,7 +601,7 @@ public class ZenithStudioServer {
                     fis.transferTo(os);
                 }
             } else {
-                exchange.getResponseHeaders().set("Location", "https://github.com/zenith-lang/zenith/releases/latest/download/Zenith-Studio-Setup.exe");
+                exchange.getResponseHeaders().set("Location", "https://github.com/ouerghi0x/zenith-lang/releases/download/v1.0.0/Zenith-Studio-Setup.exe");
                 exchange.sendResponseHeaders(302, -1);
                 exchange.close();
             }
