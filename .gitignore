@@ -8,6 +8,7 @@
 desktop/node_modules/
 desktop/dist/
 zenith-bucket/
+zenith-pro/
 # Demo build artifacts & raw frame captures
 demo/build/
 build/
