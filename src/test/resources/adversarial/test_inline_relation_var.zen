@@ -1,0 +1,12 @@
+config {
+    app: "PassInlineRelationTest"
+}
+
+model Category {
+    id: Long @id @auto
+}
+
+model Item {
+    id: Long @id @auto
+    var: Category @relation(type = "manyToOne")
+}

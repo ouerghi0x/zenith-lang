@@ -1,0 +1,14 @@
+config {
+    app: "PassRelationVarTest"
+}
+
+model Category {
+    id: Long @id @auto
+}
+
+model Item {
+    id: Long @id @auto
+    relations {
+        var: Category @manyToOne
+    }
+}

@@ -410,7 +410,7 @@ public class Parser {
                 crudConfig = parseCrudBlock();
             } else if (cur.getType() == TokenType.IDENTIFIER || cur.getType() == TokenType.ACTION
                     || cur.getType() == TokenType.PUBLIC || cur.getType() == TokenType.AUTH
-                    || cur.getType() == TokenType.GUARD) {
+                    || cur.getType() == TokenType.GUARD || cur.getType() == TokenType.VAR) {
                 // Could be a field definition or inline relation
                 FieldDef field = parseField();
                 fields.add(field);
@@ -885,7 +885,20 @@ public class Parser {
     }
 
     private String parseActionStatement() {
-        if (peek().getType() == TokenType.CREATE) {
+        if (peek().getType() == TokenType.VAR) {
+            advance(); // consume 'var'
+            Token varName = consumeFieldName();
+            consume(TokenType.EQUAL, "Expected '=' after variable identifier");
+            String rightExpr;
+            if (peek().getType() == TokenType.CREATE) {
+                rightExpr = parseCreateAction();
+            } else if (peek().getType() == TokenType.UPDATE) {
+                rightExpr = parseUpdateAction();
+            } else {
+                throw error(peek(), "Expected 'create' or 'update' expression after 'var " + varName.getValue() + " ='");
+            }
+            return "var " + varName.getValue() + " = " + rightExpr;
+        } else if (peek().getType() == TokenType.CREATE) {
             return parseCreateAction();
         } else if (peek().getType() == TokenType.UPDATE) {
             return parseUpdateAction();
@@ -900,7 +913,7 @@ public class Parser {
                     if (p.getType() == TokenType.RBRACE || p.getType() == TokenType.COMMA) {
                         break;
                     }
-                    if (stmt.length() > 0 && (p.getType() == TokenType.CREATE || p.getType() == TokenType.UPDATE)) {
+                    if (stmt.length() > 0 && (p.getType() == TokenType.CREATE || p.getType() == TokenType.UPDATE || p.getType() == TokenType.VAR)) {
                         break;
                     }
                     if (stmt.length() > 0 && lastToken != null && p.getLine() > lastToken.getLine()
@@ -1133,7 +1146,8 @@ public class Parser {
         Token t = peek();
         if (t.getType() == TokenType.IDENTIFIER || t.getType() == TokenType.ACTION
                 || t.getType() == TokenType.AUTH || t.getType() == TokenType.PUBLIC
-                || t.getType() == TokenType.CONFIG || t.getType() == TokenType.GUARD) {
+                || t.getType() == TokenType.CONFIG || t.getType() == TokenType.GUARD
+                || t.getType() == TokenType.VAR || t.getType() == TokenType.BODY) {
             return advance();
         }
         throw error(t, "Expected field name, but got '" + t.getValue() + "' (" + t.getType() + ")");

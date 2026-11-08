@@ -1,0 +1,13 @@
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\AdversarialInvalidSyntaxErrorTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\AdversarialLexerVarTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\AdversarialParserCompatibilityTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Challenger1AdversarialStressTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\DebugRunner.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\E2ETestSuiteRunner.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\LexerVarVerification.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\TestHarness.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Tier1FeatureCoverageTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Tier2BoundaryNegativeTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Tier3CombinationsTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Tier4RealWorldScenariosTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\VerifyAuditedParser.java

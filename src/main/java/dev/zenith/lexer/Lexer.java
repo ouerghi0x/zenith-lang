@@ -39,6 +39,7 @@ public class Lexer {
         KEYWORDS.put("false", TokenType.FALSE);
         KEYWORDS.put("create", TokenType.CREATE);
         KEYWORDS.put("update", TokenType.UPDATE);
+        KEYWORDS.put("var", TokenType.VAR);
         KEYWORDS.put("cron", TokenType.CRON);
     }
 

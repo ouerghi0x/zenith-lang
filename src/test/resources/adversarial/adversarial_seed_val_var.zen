@@ -1,0 +1,17 @@
+config {
+    app: "AdversarialSeedValTest"
+}
+
+enum Status {
+    active,
+    pending
+}
+
+model Item {
+    id: Long @id @auto
+    status: Status
+}
+
+seed Item [
+    { status: var }
+]

@@ -1,0 +1,8 @@
+config {
+    app: "TestEnumNameVar"
+}
+
+enum var {
+    FIRST,
+    SECOND
+}

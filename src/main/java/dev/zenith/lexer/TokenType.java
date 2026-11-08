@@ -22,6 +22,7 @@ public enum TokenType {
     // ACTIONS KEYWORDS
     CREATE,
     UPDATE,
+    VAR,
     TRUE,
     FALSE,
     SEED,

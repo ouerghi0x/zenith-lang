@@ -1,0 +1,14 @@
+config {
+    app: "AdversarialEnumTest"
+}
+
+enum Status {
+    active,
+    var,
+    inactive
+}
+
+model Item {
+    id: Long @id @auto
+    status: Status
+}

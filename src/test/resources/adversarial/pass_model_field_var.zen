@@ -1,0 +1,8 @@
+config {
+    app: "PassModelFieldTest"
+}
+
+model Item {
+    id: Long @id @auto
+    var: String
+}

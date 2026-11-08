@@ -54,6 +54,11 @@ public class LogicTranspiler {
         if (stmt == null || stmt.trim().isEmpty()) return "";
         String s = stmt.trim();
 
+        // 0. Handle "var <varName> = create/update ..."
+        if (s.startsWith("var ")) {
+            return transpileVarBindingStatement(s, model, file);
+        }
+
         // 1. Handle "create ModelName { ... }"
         if (s.startsWith("create ")) {
             return transpileCreateStatement(s, model);
@@ -142,7 +147,27 @@ public class LogicTranspiler {
                 + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'notify(to, message)', or 'return ...'.");
     }
 
+    private static String transpileVarBindingStatement(String s, ModelDef model, ZenithFile file) {
+        String rest = s.substring(4).trim(); // skip "var "
+        int eqIdx = rest.indexOf('=');
+        if (eqIdx < 0) return "// " + s;
+        String boundVar = rest.substring(0, eqIdx).trim();
+        String rhs = rest.substring(eqIdx + 1).trim();
+
+        if (rhs.startsWith("create ")) {
+            return transpileCreateStatement(rhs, model, file, boundVar);
+        } else if (rhs.startsWith("update ")) {
+            return transpileUpdateStatement(rhs, model, file, boundVar);
+        }
+
+        return boundVar + " = " + transpileValueExpression(rhs, model) + ";";
+    }
+
     private static String transpileCreateStatement(String s, ModelDef model) {
+        return transpileCreateStatement(s, model, null, null);
+    }
+
+    private static String transpileCreateStatement(String s, ModelDef model, ZenithFile file, String explicitVarName) {
         String rest = s.substring(7).trim();
         int braceIdx = rest.indexOf('{');
         if (braceIdx < 0) return "// " + s;
@@ -152,8 +177,13 @@ public class LogicTranspiler {
             body = body.substring(0, body.length() - 1).trim();
         }
 
-        String varName = Character.toLowerCase(modelName.charAt(0)) + modelName.substring(1);
-        String repoVar = varName + "Repository";
+        ModelDef targetModelDef = file != null ? file.findModel(modelName) : null;
+        if (targetModelDef == null && model != null && model.getName().equalsIgnoreCase(modelName)) {
+            targetModelDef = model;
+        }
+
+        String varName = explicitVarName != null ? explicitVarName : (Character.toLowerCase(modelName.charAt(0)) + modelName.substring(1));
+        String repoVar = Character.toLowerCase(modelName.charAt(0)) + modelName.substring(1) + "Repository";
 
         StringBuilder sb = new StringBuilder();
         sb.append(modelName).append(" ").append(varName).append(" = new ").append(modelName).append("();\n");
@@ -164,13 +194,18 @@ public class LogicTranspiler {
             if (kv.length == 2) {
                 String fieldName = kv[0].trim();
                 String rawVal = kv[1].trim();
-                String transVal = transpileValueExpression(rawVal, model);
+                String transVal = transpileValueExpression(rawVal, model, file);
+                transVal = qualifyEnumValue(fieldName, transVal, targetModelDef, file);
                 String setter = "set" + TypeHelper.capitalize(fieldName);
                 sb.append(varName).append(".").append(setter).append("(").append(transVal).append(");\n");
             }
         }
 
-        sb.append(repoVar).append(".save(").append(varName).append(");");
+        if (explicitVarName != null) {
+            sb.append(varName).append(" = ").append(repoVar).append(".save(").append(varName).append(");");
+        } else {
+            sb.append(repoVar).append(".save(").append(varName).append(");");
+        }
         return sb.toString();
     }
 
@@ -242,6 +277,10 @@ public class LogicTranspiler {
     }
 
     private static String transpileUpdateStatement(String s, ModelDef model, ZenithFile file) {
+        return transpileUpdateStatement(s, model, file, null);
+    }
+
+    private static String transpileUpdateStatement(String s, ModelDef model, ZenithFile file, String explicitVarName) {
         String rest = s.substring(7).trim();
         int braceIdx = rest.indexOf('{');
         if (braceIdx < 0) return "// " + s;
@@ -298,6 +337,35 @@ public class LogicTranspiler {
         }
 
         StringBuilder sb = new StringBuilder();
+        if (explicitVarName != null) {
+            // When bound to a variable, we must resolve to a single entity instance
+            String lookupId = "id";
+            if (whereCond != null) {
+                if (whereCond.contains("==")) {
+                    String[] parts = whereCond.split("==", 2);
+                    lookupId = parts[1].trim();
+                } else if (whereCond.contains("=")) {
+                    String[] parts = whereCond.split("=", 2);
+                    lookupId = parts[1].trim();
+                }
+            }
+            lookupId = transpileValueExpression(lookupId, targetModelDef != null ? targetModelDef : model);
+
+            sb.append(targetModel).append(" ").append(explicitVarName).append(" = ").append(repoVar).append(".findById(").append(lookupId).append(")\n");
+            sb.append("        .orElseThrow(() -> new ResourceNotFoundException(\"").append(targetModel).append(" not found with id: \" + ").append(lookupId).append("));\n");
+            for (String mut : mutations) {
+                String[] kv = mut.split("=", 2);
+                if (kv.length == 2) {
+                    String f = kv[0].trim();
+                    String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model, file);
+                    val = qualifyEnumValue(f, val, targetModelDef, file);
+                    sb.append(explicitVarName).append(".set").append(TypeHelper.capitalize(f)).append("(").append(val).append(");\n");
+                }
+            }
+            sb.append(explicitVarName).append(" = ").append(repoVar).append(".save(").append(explicitVarName).append(");");
+            return sb.toString();
+        }
+
         if (isSingleEntity || (whereCond != null && !whereCond.contains("and") && !whereCond.contains("or") && !whereCond.contains("<") && !whereCond.contains(">") && whereCond.contains("id"))) {
             String lookupId = "id";
             if (whereCond != null) {
@@ -316,7 +384,7 @@ public class LogicTranspiler {
                 String[] kv = mut.split("=", 2);
                 if (kv.length == 2) {
                     String f = kv[0].trim();
-                    String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model);
+                    String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model, file);
                     val = qualifyEnumValue(f, val, targetModelDef, file);
                     sb.append("    target.set").append(TypeHelper.capitalize(f)).append("(").append(val).append(");\n");
                 }
@@ -334,7 +402,7 @@ public class LogicTranspiler {
                 String[] kv = mut.split("=", 2);
                 if (kv.length == 2) {
                     String f = kv[0].trim();
-                    String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model);
+                    String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model, file);
                     val = qualifyEnumValue(f, val, targetModelDef, file);
                     sb.append("        target.set").append(TypeHelper.capitalize(f)).append("(").append(val).append(");\n");
                 }
@@ -497,6 +565,10 @@ public class LogicTranspiler {
     }
 
     public static String transpileValueExpression(String expr, ModelDef model) {
+        return transpileValueExpression(expr, model, null);
+    }
+
+    public static String transpileValueExpression(String expr, ModelDef model, ZenithFile file) {
         if (expr == null || expr.trim().isEmpty()) return "null";
         String s = expr.trim();
 
@@ -539,13 +611,30 @@ public class LogicTranspiler {
         code = normalizeDateOperations(code);
 
         // 5. Transform entity.prop1.prop2 into entity.getProp1().getProp2()
-        Pattern chainedPattern = Pattern.compile("\\bentity(?:\\.[a-zA-Z0-9_]+)+");
+        // and any boundVar.prop1 into boundVar.getProp1()
+        Pattern chainedPattern = Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)(?:\\.[a-zA-Z0-9_]+)+");
         Matcher m = chainedPattern.matcher(code);
         StringBuilder chainSb = new StringBuilder();
         int lastEnd = 0;
         while (m.find()) {
             chainSb.append(code, lastEnd, m.start());
             String match = m.group();
+            String root = match.split("\\.")[0];
+            // Skip java standard packages/classes or declared enums
+            boolean isEnumName = false;
+            if (file != null) {
+                for (var en : file.getEnums()) {
+                    if (en.getName().equalsIgnoreCase(root)) {
+                        isEnumName = true;
+                        break;
+                    }
+                }
+            }
+            if (isEnumName || root.equals("java") || root.equals("org") || root.equals("com") || root.equals("Math") || root.equals("System")) {
+                chainSb.append(match);
+                lastEnd = m.end();
+                continue;
+            }
             int nextCharIdx = m.end();
             while (nextCharIdx < code.length() && Character.isWhitespace(code.charAt(nextCharIdx))) {
                 nextCharIdx++;

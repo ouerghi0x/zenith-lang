@@ -1,0 +1,14 @@
+config {
+    app: "TestRelationAnnoVarArg"
+}
+
+model Category {
+    id: Long @id @auto
+}
+
+model Item {
+    id: Long @id @auto
+    relations {
+        category: Category @relation(var = "test")
+    }
+}

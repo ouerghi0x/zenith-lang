@@ -1,0 +1,8 @@
+config {
+    app: "TestAnnotationNameVar"
+}
+
+model Item {
+    id: Long @id @auto
+    name: String @var(foo = "bar")
+}

@@ -14,10 +14,12 @@ demo/build/
 build/
 zenith.jar
 *.wav
+.agents/
 generated-app
 # Internal tools & temporary scratch scripts
 tools/
 sources.txt
+zenith-bucket/*
 *.log
 /private/
 generated-app/

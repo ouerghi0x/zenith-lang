@@ -1,0 +1,8 @@
+config {
+    app: "AdversarialAnnotationTest"
+}
+
+model Item {
+    id: Long @id @auto
+    name: String @custom(var = "value")
+}

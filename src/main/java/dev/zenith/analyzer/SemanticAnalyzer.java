@@ -199,8 +199,9 @@ public class SemanticAnalyzer {
                     }
                 }
 
+                Map<String, String> actionVariables = new HashMap<>();
                 for (String stmt : endpoint.getActionStatements()) {
-                    validateActionStatement(stmt, model, file, modelNames, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, epLine);
+                    validateActionStatement(stmt, model, file, modelNames, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, epLine, actionVariables);
                 }
             }
 
@@ -278,8 +279,9 @@ public class SemanticAnalyzer {
             if (j.getCronExpression() == null && j.getFixedRate() == null) {
                 throw new AnalysisException("Job '" + j.getName() + "' must specify either 'cron' or 'fixedRate'", j.getSourceFile(), j.getSourceLine(), 1);
             }
+            Map<String, String> jobVariables = new HashMap<>();
             for (String stmt : j.getActionStatements()) {
-                validateActionStatement(stmt, null, file, modelNames, "job '" + j.getName() + "'", j.getSourceFile(), j.getSourceLine());
+                validateActionStatement(stmt, null, file, modelNames, "job '" + j.getName() + "'", j.getSourceFile(), j.getSourceLine(), jobVariables);
             }
         }
 
@@ -343,9 +345,57 @@ public class SemanticAnalyzer {
         }
     }
 
-    private void validateActionStatement(String stmt, ModelDef model, ZenithFile file, Set<String> modelNames, String context, String srcFile, int srcLine) {
+    private static final Set<String> RESERVED_ACTION_VARS = Set.of("entity", "body", "currentUser", "currentUsername", "id", "this", "request", "response");
+
+    private void validateActionStatement(String stmt, ModelDef model, ZenithFile file, Set<String> modelNames, String context, String srcFile, int srcLine, Map<String, String> localVars) {
         if (stmt == null || stmt.trim().isEmpty()) return;
         String s = stmt.trim();
+
+        if (s.startsWith("var ")) {
+            String rest = s.substring(4).trim();
+            int eqIdx = rest.indexOf('=');
+            if (eqIdx < 0) {
+                throw new AnalysisException("Action variable binding in " + context + " must have '=' assignment (e.g. 'var x = create Model { ... }')", srcFile, srcLine, 1);
+            }
+            String varName = rest.substring(0, eqIdx).trim();
+            if (varName.isEmpty()) {
+                throw new AnalysisException("Missing variable name after 'var' in " + context, srcFile, srcLine, 1);
+            }
+            if (RESERVED_ACTION_VARS.contains(varName)) {
+                throw new AnalysisException("Variable name '" + varName + "' in " + context + " collides with a reserved keyword", srcFile, srcLine, 1);
+            }
+            if (localVars.containsKey(varName)) {
+                throw new AnalysisException("Duplicate variable declaration '" + varName + "' in " + context, srcFile, srcLine, 1);
+            }
+            String rightExpr = rest.substring(eqIdx + 1).trim();
+            String targetModel = null;
+            if (rightExpr.startsWith("create ")) {
+                String cRest = rightExpr.substring(7).trim();
+                int brace = cRest.indexOf('{');
+                targetModel = brace > 0 ? cRest.substring(0, brace).trim() : cRest;
+            } else if (rightExpr.startsWith("update ")) {
+                String uRest = rightExpr.substring(7).trim();
+                int brace = uRest.indexOf('{');
+                targetModel = brace > 0 ? uRest.substring(0, brace).trim() : uRest;
+                if (targetModel.contains(" on ")) {
+                    targetModel = targetModel.substring(0, targetModel.indexOf(" on ")).trim();
+                }
+            } else {
+                throw new AnalysisException("Variable binding '" + varName + "' in " + context + " must be initialized with 'create' or 'update' expression", srcFile, srcLine, 1);
+            }
+            if (!modelNames.contains(targetModel)) {
+                throw new AnalysisException("Action '" + (rightExpr.startsWith("create") ? "create" : "update") + "' in " + context + " references unknown model '" + targetModel + "'", srcFile, srcLine, 1);
+            }
+
+            // Check for self-referential initialization in the right-hand expression
+            if (rightExpr.matches(".*\\b" + java.util.regex.Pattern.quote(varName) + "\\b.*")) {
+                throw new AnalysisException("Self-referential or circular reference to variable '" + varName + "' in " + context, srcFile, srcLine, 1);
+            }
+
+            validatePropertyAccesses(rightExpr, localVars, file, context, srcFile, srcLine);
+            localVars.put(varName, targetModel);
+            return;
+        }
 
         if (s.startsWith("create ")) {
             String rest = s.substring(7).trim();
@@ -408,6 +458,7 @@ public class SemanticAnalyzer {
                     throw new AnalysisException("Assignment in " + context + " targets unknown field or relation '" + left + "' on model '" + model.getName() + "'", srcFile, srcLine, 1);
                 }
             }
+            validatePropertyAccesses(parts[1], localVars, file, context, srcFile, srcLine);
             validateExpressionFunctions(parts[1], context, srcFile, srcLine);
             return;
         }
@@ -447,6 +498,58 @@ public class SemanticAnalyzer {
             }
         }
         return null;
+    }
+
+    private void validatePropertyAccesses(String expr, Map<String, String> localVars, ZenithFile file, String context, String srcFile, int srcLine) {
+        if (expr == null || localVars == null || file == null) return;
+        // Strip string literals before analyzing dots
+        String stripped = expr.replaceAll("\"(\\\\.|[^\"])*\"", "\"\"");
+        stripped = stripped.replaceAll("\\s*\\.\\s*", ".");
+        java.util.regex.Pattern dotPattern = java.util.regex.Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z0-9_.]+)\\b");
+        java.util.regex.Matcher m = dotPattern.matcher(stripped);
+        while (m.find()) {
+            String root = m.group(1);
+            if (root.equals("entity") || root.equals("currentUser") || root.equals("body") || root.equals("java") || root.equals("Math") || root.equals("ShipmentStatus")) {
+                continue;
+            }
+            if (file.findEnum(root) != null) {
+                continue;
+            }
+            // Check if root is in localVars
+            if (localVars.containsKey(root)) {
+                String targetModelName = localVars.get(root);
+                ModelDef targetModel = file.findModel(targetModelName);
+                if (targetModel != null) {
+                    String fullProp = m.group(2);
+                    String[] segments = fullProp.split("\\.");
+                    ModelDef currentModel = targetModel;
+                    for (int i = 0; i < segments.length; i++) {
+                        String seg = segments[i];
+                        if (currentModel == null) {
+                            throw new AnalysisException("Cannot navigate property '" + seg + "' on non-model in " + context, srcFile, srcLine, 1);
+                        }
+                        if (seg.equalsIgnoreCase("id") || seg.equalsIgnoreCase("createdAt") || seg.equalsIgnoreCase("updatedAt")) {
+                            currentModel = null;
+                            continue;
+                        }
+                        var f = currentModel.findField(seg);
+                        if (f != null) {
+                            currentModel = null;
+                            continue;
+                        }
+                        var r = currentModel.findRelation(seg);
+                        if (r != null) {
+                            currentModel = file.findModel(r.getTargetModel());
+                            continue;
+                        }
+                        throw new AnalysisException("Property '" + seg + "' does not exist on model '" + currentModel.getName() + "' in " + context, srcFile, srcLine, 1);
+                    }
+                }
+            } else if (!root.matches("^[A-Z].*")) {
+                // Undeclared variable reference
+                throw new AnalysisException("Undefined variable '" + root + "' referenced before declaration in " + context, srcFile, srcLine, 1);
+            }
+        }
     }
 
     private boolean isRelation(List<RelationDef> relations, String name) {

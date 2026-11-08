@@ -148,6 +148,12 @@ public class ServiceGenerator {
         for (CustomEndpointDef custom : model.getCustomEndpoints()) {
             for (String stmt : custom.getActionStatements()) {
                 String t = stmt.trim();
+                if (t.startsWith("var ")) {
+                    int eq = t.indexOf('=');
+                    if (eq > 0) {
+                        t = t.substring(eq + 1).trim();
+                    }
+                }
                 if (t.startsWith("create ")) {
                     String rest = t.substring(7).trim();
                     int space = rest.indexOf(' ');
@@ -522,20 +528,10 @@ public class ServiceGenerator {
                     String explicitReturnStmt = null;
                     if (!custom.getActionStatements().isEmpty()) {
                         boolean needsCurrentUser = false;
-                        List<String> primaryModifications = new ArrayList<>();
-                        List<String> secondaryOperations = new ArrayList<>();
-
                         for (String stmt : custom.getActionStatements()) {
                             if (stmt.contains("currentUser") || stmt.contains("currentUsername")) {
                                 needsCurrentUser = true;
-                            }
-                            String t = stmt.trim();
-                            if (t.startsWith("return ") || t.equals("return")) {
-                                explicitReturnStmt = stmt;
-                            } else if (t.startsWith("create ") || t.startsWith("update ") || t.matches("^notify\\s*\\(.*")) {
-                                secondaryOperations.add(stmt);
-                            } else {
-                                primaryModifications.add(stmt);
+                                break;
                             }
                         }
 
@@ -544,26 +540,30 @@ public class ServiceGenerator {
                               .append("                ? org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()\n")
                               .append("                : \"anonymous\";\n\n");
                         }
-                        for (String stmt : primaryModifications) {
-                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model, file);
-                            if (!javaStmt.isEmpty()) {
-                                for (String line : javaStmt.split("\n")) {
-                                    sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
-                                }
-                            }
-                        }
-                        if (!primaryModifications.isEmpty()) {
-                            sb.append("        entity = repository.save(entity);\n\n");
-                        }
 
-                        for (String stmt : secondaryOperations) {
-                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model, file);
-                            if (!javaStmt.isEmpty()) {
-                                for (String line : javaStmt.split("\n")) {
-                                    sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
+                        boolean modifiedEntity = false;
+                        for (String stmt : custom.getActionStatements()) {
+                            String t = stmt.trim();
+                            if (t.startsWith("return ") || t.equals("return")) {
+                                explicitReturnStmt = stmt;
+                            } else {
+                                boolean isSecondary = t.startsWith("var ") || t.startsWith("create ") || t.startsWith("update ") || t.matches("^notify\\s*\\(.*");
+                                if (!isSecondary) {
+                                    modifiedEntity = true;
                                 }
-                                sb.append("\n");
+                                String javaStmt = LogicTranspiler.transpileStatement(stmt, model, file);
+                                if (!javaStmt.isEmpty()) {
+                                    for (String line : javaStmt.split("\n")) {
+                                        sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
+                                    }
+                                    if (isSecondary) {
+                                        sb.append("\n");
+                                    }
+                                }
                             }
+                        }
+                        if (modifiedEntity) {
+                            sb.append("        entity = repository.save(entity);\n\n");
                         }
 
                         if (explicitReturnStmt != null) {
@@ -605,7 +605,50 @@ public class ServiceGenerator {
                 if (!custom.getDescription().isEmpty()) {
                     sb.append("        // ").append(custom.getDescription().replace("\n", " ")).append("\n");
                 }
-                if (!"void".equals(ret)) {
+
+                // If custom endpoint has action statements, emit them
+                String explicitReturnStmt = null;
+                if (!custom.getActionStatements().isEmpty()) {
+                    boolean needsCurrentUser = false;
+                    for (String stmt : custom.getActionStatements()) {
+                        if (stmt.contains("currentUser") || stmt.contains("currentUsername")) {
+                            needsCurrentUser = true;
+                            break;
+                        }
+                    }
+
+                    if (needsCurrentUser) {
+                        sb.append("        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() != null\n")
+                          .append("                ? org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName()\n")
+                          .append("                : \"anonymous\";\n\n");
+                    }
+
+                    for (String stmt : custom.getActionStatements()) {
+                        String t = stmt.trim();
+                        if (t.startsWith("return ") || t.equals("return")) {
+                            explicitReturnStmt = stmt;
+                        } else {
+                            String javaStmt = LogicTranspiler.transpileStatement(stmt, model, file);
+                            if (!javaStmt.isEmpty()) {
+                                for (String line : javaStmt.split("\n")) {
+                                    sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
+                                }
+                                sb.append("\n");
+                            }
+                        }
+                    }
+
+                    if (explicitReturnStmt != null) {
+                        String javaStmt = LogicTranspiler.transpileStatement(explicitReturnStmt, model, file);
+                        if (!javaStmt.isEmpty()) {
+                            for (String line : javaStmt.split("\n")) {
+                                sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
+                            }
+                        }
+                    }
+                }
+
+                if (explicitReturnStmt == null && !"void".equals(ret)) {
                     boolean isUserScoped = custom.isUserScoped(methodName);
                     RelationDef userRel = null;
                     ModelDef userModel = file.getUserModel();

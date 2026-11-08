@@ -1,0 +1,12 @@
+config {
+    app: "PassSeedKeyTest"
+}
+
+model Item {
+    id: Long @id @auto
+    var: String
+}
+
+seed Item [
+    { var: "test" }
+]

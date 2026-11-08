@@ -1,0 +1,8 @@
+config {
+    app: "AdversarialTypeArgTest"
+}
+
+model Item {
+    id: Long @id @auto
+    code: String(var = 10)
+}

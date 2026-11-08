@@ -1,0 +1,7 @@
+config {
+    app: "TestModelNameVar"
+}
+
+model var {
+    id: Long @id @auto
+}

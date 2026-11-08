@@ -283,9 +283,15 @@ public class TypeHelper {
         }
         String[] parts = cleaned.split("\\s+");
         StringBuilder sb = new StringBuilder();
-        sb.append(parts[0].toLowerCase());
+        // Preserve camelCase from path segments if segment already has internal casing, or lowercase first
+        String first = parts[0];
+        if (first.length() > 1 && Character.isLowerCase(first.charAt(0)) && !first.equals(first.toLowerCase())) {
+            sb.append(first);
+        } else {
+            sb.append(first.toLowerCase());
+        }
         for (int i = 1; i < parts.length; i++) {
-            sb.append(capitalize(parts[i].toLowerCase()));
+            sb.append(capitalize(parts[i]));
         }
         return sb.toString();
     }
