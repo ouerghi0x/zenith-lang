@@ -482,7 +482,7 @@ public class ZenithStudioServer {
 
                 ProcessBuilder pb;
                 if (isWindows) {
-                    pb = new ProcessBuilder("cmd.exe", "/c", "\"" + mavenCmd + "\" spring-boot:run");
+                    pb = new ProcessBuilder("cmd.exe", "/c", mavenCmd + " spring-boot:run");
                 } else {
                     pb = new ProcessBuilder("sh", "-c", mavenCmd + " spring-boot:run");
                 }
