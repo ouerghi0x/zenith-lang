@@ -231,6 +231,21 @@ public class SeedGenerator {
                             sb.append("        }\n");
                         }
                     }
+
+                    // Provide defaults for any unpopulated non-optional fields to prevent NOT NULL database crashes
+                    for (FieldDef f : model.getFields()) {
+                        if (!f.isOptional() && !f.hasAnnotation("id") && !f.hasAnnotation("auto")
+                                && !f.hasAnnotation("autoNow") && !f.hasAnnotation("autoUpdate")
+                                && !setFields.contains(f.getName().toLowerCase())) {
+                            String cap = TypeHelper.capitalize(f.getName());
+                            String javaType = TypeHelper.toSimpleJavaType(f.getType());
+                            if ("String".equals(javaType)) {
+                                sb.append("        if (").append(varName).append(".get").append(cap).append("() == null) {\n");
+                                sb.append("            ").append(varName).append(".set").append(cap).append("(\"default_").append(f.getName()).append("\");\n");
+                                sb.append("        }\n");
+                            }
+                        }
+                    }
                 }
 
                 // If user model has a password field that wasn't in the seed row, provide a default encoded password

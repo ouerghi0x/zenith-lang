@@ -17,7 +17,7 @@ model UserEntity {
     userName : String // min or max ,length inside String not affacting User model ,String? need to make nullable = true,Text not adding @Lob
     password : String @password // here also need to have validation
     createdAt: DateTime @autoNow
-    updatedAt: DateTime @autoUpdate
+    updateddAt: DateTime @autoUpdate 
     relations {
         doctorProfile: DoctorProfile? @relation(oneToOne, mappedBy = "account")
         patientProfile: PatientProfile? @relation(oneToOne, mappedBy = "account")

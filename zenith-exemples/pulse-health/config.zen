@@ -2,7 +2,7 @@
 
 config {
     app : 'PulseHealth'
-    database : h2
+    database : postgres
     package: "com.pulsehealth.app"
     port: 8081
     basePath: "/api/v1"

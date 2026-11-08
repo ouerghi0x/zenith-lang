@@ -81,10 +81,35 @@ public class SemanticAnalyzer {
                 fields.add(0, autoId);
             }
 
-            // Validate @file and @image field types
+            // Validate field types & annotations
             for (FieldDef field : fields) {
+                String tName = field.getType().getName();
+                boolean isPrimitiveOrKnown = isScalarReturnType(tName) 
+                        || enumNames.contains(tName) 
+                        || modelNames.contains(tName)
+                        || dtoNames.contains(tName)
+                        || "text".equalsIgnoreCase(tName)
+                        || "bytearray".equalsIgnoreCase(tName)
+                        || "bytes".equalsIgnoreCase(tName);
+
+                if (!isPrimitiveOrKnown) {
+                    throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
+                            + "' has unknown type '" + tName + "'. Did you mean a built-in type (String, Int, Long, DateTime, UUID, Boolean, Decimal) or an enum?",
+                            model.getSourceFile(), model.getSourceLine(), 1);
+                }
+
+                if (field.hasAnnotation("autoNow") || field.hasAnnotation("autoUpdate")) {
+                    String simpleType = tName.toLowerCase();
+                    if (!"datetime".equals(simpleType) && !"localdatetime".equals(simpleType) 
+                            && !"date".equals(simpleType) && !"localdate".equals(simpleType)) {
+                        String annName = field.hasAnnotation("autoNow") ? "@autoNow" : "@autoUpdate";
+                        throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
+                                + "' annotated with " + annName + " must be of type DateTime (or Date), found '" + tName + "'.",
+                                model.getSourceFile(), model.getSourceLine(), 1);
+                    }
+                }
+
                 if (field.hasAnnotation("file") || field.hasAnnotation("image")) {
-                    String tName = field.getType().getName();
                     if (!"String".equalsIgnoreCase(tName)) {
                         throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
                                 + "' annotated with @" + (field.hasAnnotation("image") ? "image" : "file")
@@ -219,6 +244,27 @@ public class SemanticAnalyzer {
                         }
                         if (r != null && !r.getTargetModel().equalsIgnoreCase(ref.getModelName())) {
                             throw new AnalysisException("Seed reference model '" + ref.getModelName() + "' does not match relation target '" + r.getTargetModel() + "' on field '" + key + "'");
+                        }
+                    }
+                }
+
+                // Check that required (non-optional, non-auto, non-relation) fields are supplied in seed data
+                for (FieldDef f : targetModel.getFields()) {
+                    if (!f.isOptional() && !f.hasAnnotation("id") && !f.hasAnnotation("auto")
+                            && !f.hasAnnotation("autoNow") && !f.hasAnnotation("autoUpdate")
+                            && !f.hasAnnotation("password") && f.getDefaultValue() == null) {
+                        boolean found = false;
+                        for (String k : row.keySet()) {
+                            if (k.equalsIgnoreCase(f.getName())) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            throw new AnalysisException("Seed data for model '" + targetModel.getName()
+                                    + "' is missing required field '" + f.getName() + "' (" + f.getType().getName()
+                                    + "). Non-optional fields without default values must be supplied in seed definitions to prevent database insert crashes.",
+                                    targetModel.getSourceFile(), targetModel.getSourceLine(), 1);
                         }
                     }
                 }

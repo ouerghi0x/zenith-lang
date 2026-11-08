@@ -3136,6 +3136,39 @@ function clearConsoleOutput() {
   fetch('/api/logs/clear', { method: 'POST' }).catch(() => {});
 }
 
+// Reset Dev Database & clean schema caches (ISSUE-004)
+async function resetDevDatabase() {
+  if (!confirm('Are you sure you want to reset the local development database?\n\nThis stops Spring Boot, removes existing cached H2 database tables, and allows you to boot fresh after modifying column types.')) {
+    return;
+  }
+  try {
+    const runBtn = document.getElementById('runBtn');
+    const runBtnText = document.getElementById('runBtnText');
+    const badge = document.getElementById('consoleStatusBadge');
+
+    if (isSpringRunning) {
+      isSpringRunning = false;
+      if (runBtnText) runBtnText.innerText = 'Run';
+      if (runBtn) runBtn.className = 'btn btn-primary';
+    }
+
+    appendConsoleLog('[Zenith Studio] Resetting dev database and cleaning cached schema files...');
+    const res = await fetch('/api/reset-db', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      appendConsoleLog('[Zenith Studio] ✓ Dev database successfully reset (' + data.deletedFiles + ' files removed). You can now click "Run" to initialize fresh tables.');
+      if (badge) {
+        badge.textContent = 'DB Clean';
+        badge.className = 'console-status-badge';
+      }
+    } else {
+      appendConsoleLog('[Zenith Studio] ❌ Failed to reset database: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    appendConsoleLog('[Zenith Studio] ❌ Network error while resetting database: ' + err.message);
+  }
+}
+
 // Toggle Run / Stop Spring Boot Process
 async function toggleRunApp() {
   const runBtn = document.getElementById('runBtn');
@@ -3234,7 +3267,11 @@ function renderConsoleLogs(logs, isRunning) {
       const line = newLines[i];
       const el = document.createElement('div');
       el.className = 'log-line';
-      if (line.includes('ERROR') || line.includes('Exception') || line.includes('FAILURE')) {
+      if (line.includes('[Zenith Diagnostic]')) {
+        el.className += ' error';
+        el.style.fontWeight = 'bold';
+        el.style.color = '#f87171';
+      } else if (line.includes('ERROR') || line.includes('Exception') || line.includes('FAILURE')) {
         el.className += ' error';
       } else if (line.includes('Started ShopSphere') || line.includes('Started ') || line.includes('SUCCESS') || line.includes('Process finished')) {
         el.className += ' success';

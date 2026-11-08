@@ -13,15 +13,18 @@ public class SecurityGenerator {
         List<JavaSourceFile> list = new ArrayList<>();
         String basePkg = file.getConfig().getPackage();
         ModelDef userModel = file.getUserModel();
-        if (userModel == null) return list;
+        if (userModel == null)
+            return list;
 
         String userClassName = userModel.getName();
         String userRepoName = userClassName + "Repository";
 
         // Find email/username field
         FieldDef identityField = userModel.findField("email");
-        if (identityField == null) identityField = userModel.findField("username");
-        if (identityField == null) identityField = userModel.findField("name");
+        if (identityField == null)
+            identityField = userModel.findField("username");
+        if (identityField == null)
+            identityField = userModel.findField("name");
         String identityName = identityField != null ? identityField.getName() : "email";
         String identityCap = TypeHelper.capitalize(identityName);
 
@@ -59,7 +62,8 @@ public class SecurityGenerator {
         list.add(generateJwtService(basePkg, file.getConfig().getJwtSecret(), file.getConfig().getJwtExpirationMs()));
 
         // 3. UserDetailsService
-        list.add(generateUserDetailsService(basePkg, userClassName, userRepoName, identityName, identityCap, passwordCap, roleField, roleCap, defaultRole));
+        list.add(generateUserDetailsService(basePkg, userClassName, userRepoName, identityName, identityCap,
+                passwordCap, roleField, roleCap, defaultRole));
 
         // 4. JwtAuthFilter
         list.add(generateJwtAuthFilter(basePkg));
@@ -68,7 +72,8 @@ public class SecurityGenerator {
         list.add(generateSecurityConfig(basePkg, file));
 
         // 6. AuthController
-        list.add(generateAuthController(basePkg, userModel, identityName, identityCap, passwordCap, roleField, roleCap, file.getConfig().getBasePath(), defaultRole, file));
+        list.add(generateAuthController(basePkg, userModel, identityName, identityCap, passwordCap, roleField, roleCap,
+                file.getConfig().getBasePath(), defaultRole, file));
 
         return list;
     }
@@ -95,7 +100,8 @@ public class SecurityGenerator {
                 "    String email,\n" +
                 "    String role\n" +
                 ") {\n" +
-                "    public static AuthResponse of(String token, " + userIdType + " userId, String email, String role) {\n" +
+                "    public static AuthResponse of(String token, " + userIdType
+                + " userId, String email, String role) {\n" +
                 "        return new AuthResponse(token, \"Bearer\", userId, email, role);\n" +
                 "    }\n" +
                 "}\n";
@@ -147,7 +153,7 @@ public class SecurityGenerator {
         sb.append("            .claims(extraClaims)\n");
         sb.append("            .subject(userDetails.getUsername())\n");
         sb.append("            .issuedAt(new Date(System.currentTimeMillis()))\n");
-        sb.append("            .expiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))\n");
+        sb.append("            .expiration(new Date(System.currentTimeMillis() + expirationMs))\n");
         sb.append("            .signWith(getSigningKey())\n");
         sb.append("            .compact();\n");
         sb.append("    }\n\n");
@@ -170,13 +176,13 @@ public class SecurityGenerator {
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/security/JwtService.java", sb.toString());
+        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/security/JwtService.java",
+                sb.toString());
     }
 
     private static JavaSourceFile generateUserDetailsService(
             String basePkg, String userClass, String userRepo,
-            String idField, String idCap, String passCap, FieldDef roleField, String roleCap, String defaultRole
-    ) {
+            String idField, String idCap, String passCap, FieldDef roleField, String roleCap, String defaultRole) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePkg).append(".security;\n\n");
         sb.append("import ").append(basePkg).append(".entity.").append(userClass).append(";\n");
@@ -196,14 +202,20 @@ public class SecurityGenerator {
 
         sb.append("    @Override\n");
         sb.append("    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {\n");
-        sb.append("        ").append(userClass).append(" user = userRepository.findBy").append(idCap).append("(username)\n");
-        sb.append("            .orElseThrow(() -> new UsernameNotFoundException(\"User not found with identity: \" + username));\n\n");
+        sb.append("        ").append(userClass).append(" user = userRepository.findBy").append(idCap)
+                .append("(username)\n");
+        sb.append(
+                "            .orElseThrow(() -> new UsernameNotFoundException(\"User not found with identity: \" + username));\n\n");
 
         if (roleField != null) {
-            sb.append("        String roleStr = user.get").append(roleCap).append("() != null ? user.get").append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");
-            sb.append("        List<SimpleGrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority(\"ROLE_\" + roleStr));\n");
+            sb.append("        String roleStr = user.get").append(roleCap).append("() != null ? user.get")
+                    .append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");
+            sb.append(
+                    "        List<SimpleGrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority(\"ROLE_\" + roleStr));\n");
         } else {
-            sb.append("        List<SimpleGrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority(\"ROLE_").append(defaultRole).append("\"));\n");
+            sb.append(
+                    "        List<SimpleGrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority(\"ROLE_")
+                    .append(defaultRole).append("\"));\n");
         }
 
         sb.append("        return new org.springframework.security.core.userdetails.User(\n");
@@ -214,7 +226,9 @@ public class SecurityGenerator {
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/security/CustomUserDetailsService.java", sb.toString());
+        return new JavaSourceFile(
+                "src/main/java/" + basePkg.replace('.', '/') + "/security/CustomUserDetailsService.java",
+                sb.toString());
     }
 
     private static JavaSourceFile generateJwtAuthFilter(String basePkg) {
@@ -238,7 +252,8 @@ public class SecurityGenerator {
         sb.append("    private final JwtService jwtService;\n");
         sb.append("    private final CustomUserDetailsService userDetailsService;\n\n");
 
-        sb.append("    public JwtAuthenticationFilter(JwtService jwtService, CustomUserDetailsService userDetailsService) {\n");
+        sb.append(
+                "    public JwtAuthenticationFilter(JwtService jwtService, CustomUserDetailsService userDetailsService) {\n");
         sb.append("        this.jwtService = jwtService;\n");
         sb.append("        this.userDetailsService = userDetailsService;\n");
         sb.append("    }\n\n");
@@ -261,15 +276,18 @@ public class SecurityGenerator {
         sb.append("        jwt = authHeader.substring(7);\n");
         sb.append("        userEmail = jwtService.extractUsername(jwt);\n\n");
 
-        sb.append("        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {\n");
+        sb.append(
+                "        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {\n");
         sb.append("            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);\n");
         sb.append("            if (jwtService.isTokenValid(jwt, userDetails)) {\n");
-        sb.append("                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(\n");
+        sb.append(
+                "                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(\n");
         sb.append("                    userDetails,\n");
         sb.append("                    null,\n");
         sb.append("                    userDetails.getAuthorities()\n");
         sb.append("                );\n");
-        sb.append("                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));\n");
+        sb.append(
+                "                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));\n");
         sb.append("                SecurityContextHolder.getContext().setAuthentication(authToken);\n");
         sb.append("            }\n");
         sb.append("        }\n");
@@ -277,7 +295,8 @@ public class SecurityGenerator {
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/security/JwtAuthenticationFilter.java", sb.toString());
+        return new JavaSourceFile(
+                "src/main/java/" + basePkg.replace('.', '/') + "/security/JwtAuthenticationFilter.java", sb.toString());
     }
 
     private static JavaSourceFile generateSecurityConfig(String basePkg, ZenithFile file) {
@@ -290,7 +309,8 @@ public class SecurityGenerator {
         sb.append("import org.springframework.http.HttpMethod;\n");
         sb.append("import org.springframework.security.authentication.AuthenticationManager;\n");
         sb.append("import org.springframework.security.config.Customizer;\n");
-        sb.append("import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;\n");
+        sb.append(
+                "import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;\n");
         sb.append("import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;\n");
         sb.append("import org.springframework.security.config.annotation.web.builders.HttpSecurity;\n");
         sb.append("import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;\n");
@@ -317,11 +337,14 @@ public class SecurityGenerator {
         sb.append("        http\n");
         sb.append("            .csrf(AbstractHttpConfigurer::disable)\n");
         sb.append("            .cors(Customizer.withDefaults())\n");
-        sb.append("            .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))\n");
-        sb.append("            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n");
+        sb.append(
+                "            .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))\n");
+        sb.append(
+                "            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n");
         sb.append("            .authorizeHttpRequests(auth -> auth\n");
         sb.append("                .requestMatchers(\"").append(basePath).append("/auth/**\").permitAll()\n");
-        sb.append("                .requestMatchers(\"/swagger-ui/**\", \"/v3/api-docs/**\", \"/swagger-ui.html\").permitAll()\n");
+        sb.append(
+                "                .requestMatchers(\"/swagger-ui/**\", \"/v3/api-docs/**\", \"/swagger-ui.html\").permitAll()\n");
         sb.append("                .requestMatchers(\"/h2-console/**\").permitAll()\n");
         sb.append("                .anyRequest().permitAll()\n");
         sb.append("            )\n");
@@ -335,19 +358,20 @@ public class SecurityGenerator {
         sb.append("    }\n\n");
 
         sb.append("    @Bean\n");
-        sb.append("    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {\n");
+        sb.append(
+                "    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {\n");
         sb.append("        return config.getAuthenticationManager();\n");
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/config/SecurityConfig.java", sb.toString());
+        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/config/SecurityConfig.java",
+                sb.toString());
     }
 
     private static JavaSourceFile generateAuthController(
             String basePkg, ModelDef userModel,
             String idField, String idCap, String passCap, FieldDef roleField, String roleCap, String basePath,
-            String defaultRole, ZenithFile file
-    ) {
+            String defaultRole, ZenithFile file) {
         String userClass = userModel.getName();
         String userRepo = userClass + "Repository";
         String mapperName = userClass + "Mapper";
@@ -412,43 +436,53 @@ public class SecurityGenerator {
         sb.append("        );\n");
         sb.append("        UserDetails userDetails = userDetailsService.loadUserByUsername(request.email());\n");
         sb.append("        String token = jwtService.generateToken(userDetails);\n");
-        sb.append("        ").append(userClass).append(" entity = userRepository.findBy").append(idCap).append("(request.email()).orElseThrow();\n");
+        sb.append("        ").append(userClass).append(" entity = userRepository.findBy").append(idCap)
+                .append("(request.email()).orElseThrow();\n");
         if (roleField != null) {
-            sb.append("        String role = entity.get").append(roleCap).append("() != null ? entity.get").append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");
+            sb.append("        String role = entity.get").append(roleCap).append("() != null ? entity.get")
+                    .append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");
         } else {
             sb.append("        String role = \"").append(defaultRole).append("\";\n");
         }
-        sb.append("        return ResponseEntity.ok(AuthResponse.of(token, entity.getId(), entity.get").append(idCap).append("(), role));\n");
+        sb.append("        return ResponseEntity.ok(AuthResponse.of(token, entity.getId(), entity.get").append(idCap)
+                .append("(), role));\n");
         sb.append("    }\n\n");
 
         // Register endpoint
         sb.append("    @PostMapping(\"/register\")\n");
         sb.append("    @Operation(summary = \"Register new user account\")\n");
-        sb.append("    public ResponseEntity<AuthResponse> register(@Valid @RequestBody Create").append(userClass).append("Request request) {\n");
+        sb.append("    public ResponseEntity<AuthResponse> register(@Valid @RequestBody Create").append(userClass)
+                .append("Request request) {\n");
         sb.append("        ").append(userClass).append(" entity = mapper.toEntity(request);\n");
         sb.append("        entity.set").append(passCap).append("(passwordEncoder.encode(request.password()));\n");
         if (roleField != null) {
             boolean isEnum = file.findEnum(roleField.getType().getName()) != null;
             sb.append("        if (entity.get").append(roleCap).append("() == null) {\n");
             if (isEnum) {
-                sb.append("            entity.set").append(roleCap).append("(").append(roleField.getType().getName()).append(".").append(defaultRole).append(");\n");
+                sb.append("            entity.set").append(roleCap).append("(").append(roleField.getType().getName())
+                        .append(".").append(defaultRole).append(");\n");
             } else {
                 sb.append("            entity.set").append(roleCap).append("(\"").append(defaultRole).append("\");\n");
             }
             sb.append("        }\n");
         }
         sb.append("        ").append(userClass).append(" saved = userRepository.save(entity);\n");
-        sb.append("        UserDetails userDetails = userDetailsService.loadUserByUsername(saved.get").append(idCap).append("());\n");
+        sb.append("        UserDetails userDetails = userDetailsService.loadUserByUsername(saved.get").append(idCap)
+                .append("());\n");
         sb.append("        String token = jwtService.generateToken(userDetails);\n");
         if (roleField != null) {
-            sb.append("        String role = saved.get").append(roleCap).append("() != null ? saved.get").append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");
+            sb.append("        String role = saved.get").append(roleCap).append("() != null ? saved.get")
+                    .append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");
         } else {
             sb.append("        String role = \"").append(defaultRole).append("\";\n");
         }
-        sb.append("        return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(token, saved.getId(), saved.get").append(idCap).append("(), role));\n");
+        sb.append(
+                "        return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(token, saved.getId(), saved.get")
+                .append(idCap).append("(), role));\n");
         sb.append("    }\n");
         sb.append("}\n");
 
-        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/controller/AuthController.java", sb.toString());
+        return new JavaSourceFile("src/main/java/" + basePkg.replace('.', '/') + "/controller/AuthController.java",
+                sb.toString());
     }
 }

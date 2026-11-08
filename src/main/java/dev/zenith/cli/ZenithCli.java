@@ -60,7 +60,8 @@ public class ZenithCli {
                 case "version":
                 case "--version":
                 case "-v":
-                    System.out.println("Zenith DSL v1.0.0 (Java 17 / Spring Boot 3 target)");
+                    String edition = dev.zenith.extension.ExtensionManager.getInstance().getEditionName();
+                    System.out.println("Zenith DSL v1.0.0 [" + edition + "] (Java 17 / Spring Boot 3 target)");
                     break;
                 case "help":
                 case "--help":

@@ -25,6 +25,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -56,9 +57,11 @@ public class ZenithStudioServer {
 
         // Routes
         server.createContext("/", new StaticFileHandler());
+        server.createContext("/api/edition", new EditionHandler());
         server.createContext("/api/compile", new CompileHandler());
         server.createContext("/api/run", new RunHandler());
         server.createContext("/api/stop", new StopHandler());
+        server.createContext("/api/reset-db", new ResetDbHandler());
         server.createContext("/api/logs", new LogsHandler());
         server.createContext("/api/logs/clear", new ClearLogsHandler());
         server.createContext("/api/export", new ExportHandler());
@@ -67,9 +70,19 @@ public class ZenithStudioServer {
 
         server.start();
 
+        // Optional Pro extension hooks
+        if (dev.zenith.extension.ExtensionManager.getInstance().isProAvailable()) {
+            dev.zenith.extension.ExtensionManager.getInstance().getProExtension().registerStudioRoutes(server);
+        }
+
+        String editionBadge = dev.zenith.extension.ExtensionManager.getInstance().isProLicensed()
+                ? " [PRO ENTERPRISE - "
+                        + dev.zenith.extension.ExtensionManager.getInstance().getProExtension().getLicenseHolder() + "]"
+                : " [COMMUNITY EDITION]";
+
         System.out.println("\n  =======================================================");
-        System.out.println("   ⚡ ZENITH STUDIO PRO IS LIVE AT: http://localhost:" + port);
-        System.out.println("   Enterprise Visual Architecture & Full-Stack Engine [PRO]");
+        System.out.println("   ZENITH STUDIO IS LIVE AT: http://localhost:" + port + editionBadge);
+        System.out.println("   Enterprise Visual Architecture & Full-Stack Engine");
         System.out.println("   Press Ctrl+C to stop the Studio.");
         System.out.println("  =======================================================\n");
 
@@ -405,9 +418,11 @@ public class ZenithStudioServer {
             processLogs.add("[Zenith Studio] Generating project files into target/studio-run...");
 
             try {
-                // Terminate any leftover Spring Boot instance on configured port before launching
+                // Terminate any leftover Spring Boot instance on configured port before
+                // launching
                 int appPort = (latestCompiledFile != null && latestCompiledFile.getConfig() != null)
-                        ? latestCompiledFile.getConfig().getPort() : 8080;
+                        ? latestCompiledFile.getConfig().getPort()
+                        : 8080;
                 killProcessOnPort(appPort);
                 if (appPort != 8080) {
                     killProcessOnPort(8080);
@@ -481,8 +496,33 @@ public class ZenithStudioServer {
                     try (BufferedReader reader = new BufferedReader(
                             new InputStreamReader(runningSpringProcess.getInputStream()))) {
                         String line;
+                        boolean schemaErrorDetected = false;
                         while ((line = reader.readLine()) != null) {
                             processLogs.add(line);
+
+                            // Intercept Hibernate / Flyway / JDBC constraint schema mismatch errors
+                            // (ISSUE-004)
+                            if (!schemaErrorDetected && (line.contains("SchemaManagementException")
+                                    || line.contains("wrong column type encountered")
+                                    || line.contains("FlywayValidateException")
+                                    || line.contains("Migration checksum mismatch")
+                                    || line.contains("JdbcSQLIntegrityConstraintViolationException")
+                                    || line.contains("ConstraintViolationException")
+                                    || line.contains("NULL not allowed for column")
+                                    || line.contains("non permis pour la colonne"))) {
+                                schemaErrorDetected = true;
+                                processLogs.add("");
+                                processLogs.add(
+                                        "[Zenith Diagnostic] ⚠️ DATABASE INTEGRITY / SCHEMA MISMATCH DETECTED (ISSUE-004)");
+                                processLogs.add(
+                                        "[Zenith Diagnostic] A model field was changed or a required column was not populated in seeds/schema.");
+                                processLogs.add(
+                                        "[Zenith Diagnostic] Database failed on constraint or column type validation.");
+                                processLogs.add(
+                                        "[Zenith Diagnostic] Quick Fix: Click \"Reset Dev DB\" in the Studio toolbar or use 'mvn clean' to recreate fresh tables.");
+                                processLogs.add("");
+                            }
+
                             if (processLogs.size() > 1000) {
                                 processLogs.remove(0);
                             }
@@ -519,7 +559,8 @@ public class ZenithStudioServer {
                 processLogs.add("[Zenith Studio] Spring Boot application stopped.");
             }
             int appPort = (latestCompiledFile != null && latestCompiledFile.getConfig() != null)
-                    ? latestCompiledFile.getConfig().getPort() : 8080;
+                    ? latestCompiledFile.getConfig().getPort()
+                    : 8080;
             killProcessOnPort(appPort);
             if (appPort != 8080) {
                 killProcessOnPort(8080);
@@ -550,6 +591,86 @@ public class ZenithStudioServer {
         public void handle(HttpExchange exchange) throws IOException {
             processLogs.clear();
             sendResponse(exchange, 200, "application/json", "{\"success\": true}");
+        }
+    }
+
+    // Edition Status (Community vs PRO)
+    private class EditionHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            Map<String, Object> status = dev.zenith.extension.ExtensionManager.getInstance().getEditionStatus();
+            StringBuilder sb = new StringBuilder("{");
+            sb.append("\"isPro\": ").append(status.get("isPro")).append(",");
+            sb.append("\"edition\": \"").append(escape(String.valueOf(status.get("edition")))).append("\",");
+            sb.append("\"editionName\": \"").append(escape(String.valueOf(status.get("editionName")))).append("\",");
+            sb.append("\"licenseHolder\": ")
+                    .append(status.get("licenseHolder") != null
+                            ? "\"" + escape(String.valueOf(status.get("licenseHolder"))) + "\""
+                            : "null")
+                    .append(",");
+            sb.append("\"licenseExpiry\": ")
+                    .append(status.get("licenseExpiry") != null
+                            ? "\"" + escape(String.valueOf(status.get("licenseExpiry"))) + "\""
+                            : "null");
+            sb.append("}");
+            sendResponse(exchange, 200, "application/json", sb.toString());
+        }
+    }
+
+    // Reset Dev Database (ISSUE-004)
+    private class ResetDbHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                // 1. Stop any currently running Spring Boot process
+                if (runningSpringProcess != null) {
+                    runningSpringProcess.destroyForcibly();
+                    runningSpringProcess = null;
+                }
+                int appPort = (latestCompiledFile != null && latestCompiledFile.getConfig() != null)
+                        ? latestCompiledFile.getConfig().getPort()
+                        : 8080;
+                killProcessOnPort(appPort);
+                if (appPort != 8080) {
+                    killProcessOnPort(8080);
+                }
+
+                // 2. Clean target/studio-run generated classes and local embedded database
+                // files
+                Path runDir = Paths.get("target/studio-run");
+                int deletedCount = 0;
+                if (Files.exists(runDir)) {
+                    try (var stream = Files.walk(runDir)) {
+                        List<Path> toDelete = stream
+                                .filter(p -> {
+                                    String fn = p.getFileName().toString().toLowerCase();
+                                    return fn.endsWith(".mv.db") || fn.endsWith(".trace.db")
+                                            || fn.endsWith(".h2.db") || fn.endsWith(".db")
+                                            || p.startsWith(runDir.resolve("target"))
+                                            || p.startsWith(runDir.resolve("src"));
+                                })
+                                .sorted(Comparator.reverseOrder())
+                                .collect(Collectors.toList());
+
+                        for (Path p : toDelete) {
+                            try {
+                                Files.deleteIfExists(p);
+                                deletedCount++;
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    }
+                }
+
+                processLogs.add("[Zenith Studio] 🧹 Dev database & build caches cleaned successfully (" + deletedCount
+                        + " files removed).");
+                processLogs.add("[Zenith Studio] You can now safely click 'Run' to boot with fresh database tables.");
+                sendResponse(exchange, 200, "application/json",
+                        "{\"success\": true, \"deletedFiles\": " + deletedCount + "}");
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "application/json",
+                        "{\"success\": false, \"error\": \"" + escape(e.getMessage()) + "\"}");
+            }
         }
     }
 
@@ -592,16 +713,18 @@ public class ZenithStudioServer {
             Path exePath = Paths.get("desktop/dist/Zenith-Studio-Setup.exe");
             if (Files.exists(exePath)) {
                 exchange.getResponseHeaders().set("Content-Type", "application/vnd.microsoft.portable-executable");
-                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"Zenith-Studio-Setup.exe\"");
+                exchange.getResponseHeaders().set("Content-Disposition",
+                        "attachment; filename=\"Zenith-Studio-Setup.exe\"");
                 exchange.getResponseHeaders().set("Cache-Control", "no-cache");
                 long size = Files.size(exePath);
                 exchange.sendResponseHeaders(200, size);
                 try (InputStream fis = Files.newInputStream(exePath);
-                     OutputStream os = exchange.getResponseBody()) {
+                        OutputStream os = exchange.getResponseBody()) {
                     fis.transferTo(os);
                 }
             } else {
-                exchange.getResponseHeaders().set("Location", "https://github.com/ouerghi0x/zenith-lang/releases/download/v1.0.0/Zenith-Studio-Setup.exe");
+                exchange.getResponseHeaders().set("Location",
+                        "https://github.com/ouerghi0x/zenith-lang/releases/download/v1.0.0/Zenith-Studio-Setup.exe");
                 exchange.sendResponseHeaders(302, -1);
                 exchange.close();
             }
