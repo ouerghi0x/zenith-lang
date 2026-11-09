@@ -202,6 +202,8 @@ public class ZenithStudioServer {
                 json.append("    \"port\": ").append(analyzed.getConfig().getPort()).append(",\n");
                 json.append("    \"hasAuth\": ").append(analyzed.hasAuth()).append(",\n");
                 json.append("    \"hasStorage\": ").append(analyzed.hasStorage()).append(",\n");
+                json.append("    \"hasRateLimiting\": ").append(analyzed.hasRateLimiting()).append(",\n");
+                json.append("    \"rateLimit\": \"").append(escape(analyzed.getConfig().getRawRateLimit() != null ? analyzed.getConfig().getRawRateLimit() : "")).append("\",\n");
                 json.append("    \"auth\": \"").append(escape(analyzed.getConfig().getString("auth", "none")))
                         .append("\"\n");
                 json.append("  },\n");
@@ -255,6 +257,7 @@ public class ZenithStudioServer {
 
                     // Custom endpoints
                     json.append("      \"hasCrud\": ").append(m.getCrudConfig() != null).append(",\n");
+                    json.append("      \"crudRateLimit\": \"").append(escape(m.getCrudConfig() != null && m.getCrudConfig().hasRateLimit() ? m.getCrudConfig().getRateLimit().toDslString() : "")).append("\",\n");
                     json.append("      \"customEndpoints\": [\n");
                     for (int c = 0; c < m.getCustomEndpoints().size(); c++) {
                         var cep = m.getCustomEndpoints().get(c);
@@ -265,6 +268,8 @@ public class ZenithStudioServer {
                         json.append("          \"path\": \"").append(escape(cep.getPath())).append("\",\n");
                         json.append("          \"bodyType\": \"")
                                 .append(escape(cep.getBodyType() != null ? cep.getBodyType() : "")).append("\",\n");
+                        json.append("          \"rateLimit\": \"")
+                                .append(escape(cep.hasRateLimit() ? cep.getRateLimit().toDslString() : "")).append("\",\n");
                         json.append("          \"description\": \"").append(escape(cep.getDescription()))
                                 .append("\"\n");
                         json.append("        }");

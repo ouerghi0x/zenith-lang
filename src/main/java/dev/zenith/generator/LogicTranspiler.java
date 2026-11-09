@@ -74,6 +74,11 @@ public class LogicTranspiler {
             return transpileNotifyStatement(s, model);
         }
 
+        // 3.5. Handle "send MailName(...)"
+        if (s.startsWith("send ") || s.matches("^send\\s+[A-Za-z0-9_]+\\s*\\(.*")) {
+            return transpileSendStatement(s, model, file);
+        }
+
         // 4. Handle "return DTO { ... }" or "return expr;"
         if (s.startsWith("return ") || s.equals("return")) {
             return transpileReturnStatement(s, model, file);
@@ -438,6 +443,57 @@ public class LogicTranspiler {
             }
         }
         return value;
+    }
+
+    private static String transpileSendStatement(String s, ModelDef model, ZenithFile file) {
+        // e.g. send OrderConfirmation(order = entity, customer = entity.customer)
+        int parenOpen = s.indexOf('(');
+        int parenClose = s.lastIndexOf(')');
+        if (parenOpen < 0 || parenClose < parenOpen) {
+            return "// malformed send statement: " + s;
+        }
+        String mailName = s.substring(4, parenOpen).trim();
+        String argsBlock = s.substring(parenOpen + 1, parenClose).trim();
+
+        dev.zenith.ast.MailDef mailDef = file != null ? file.findMail(mailName) : null;
+        Map<String, String> argMap = new LinkedHashMap<>();
+        if (!argsBlock.isEmpty()) {
+            String[] parts = argsBlock.split(",");
+            for (String part : parts) {
+                String p = part.trim();
+                if (p.isEmpty()) continue;
+                String[] kv = p.split("=", 2);
+                if (kv.length == 2) {
+                    argMap.put(kv[0].trim().toLowerCase(), kv[1].trim());
+                } else {
+                    argMap.put(kv[0].trim().toLowerCase(), kv[0].trim());
+                }
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("emailService.send").append(mailName).append("(");
+        if (mailDef != null) {
+            int idx = 0;
+            for (var param : mailDef.getParameters()) {
+                if (idx > 0) sb.append(", ");
+                String rawArg = argMap.get(param.getName().toLowerCase());
+                if (rawArg == null) rawArg = param.getName();
+                String transpiledArg = transpileValueExpression(rawArg, model, file);
+                sb.append(transpiledArg);
+                idx++;
+            }
+        } else {
+            // Fallback if mailDef not resolved in isolated unit test
+            int idx = 0;
+            for (Map.Entry<String, String> entry : argMap.entrySet()) {
+                if (idx > 0) sb.append(", ");
+                sb.append(transpileValueExpression(entry.getValue(), model, file));
+                idx++;
+            }
+        }
+        sb.append(");");
+        return sb.toString();
     }
 
     public static String normalizeDateOperations(String code) {

@@ -64,6 +64,16 @@ public class JobGenerator {
             }
         }
 
+        boolean usesEmail = false;
+        if (file.hasMails()) {
+            for (String stmt : job.getActionStatements()) {
+                if (stmt.trim().startsWith("send ") || stmt.trim().matches("^send\\s+[A-Za-z0-9_]+\\s*\\(.*")) {
+                    usesEmail = true;
+                    break;
+                }
+            }
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePkg).append(".job;\n\n");
 
@@ -72,6 +82,9 @@ public class JobGenerator {
             sb.append("import ").append(basePkg).append(".model.*;\n");
         }
         sb.append("import ").append(basePkg).append(".repository.*;\n");
+        if (usesEmail) {
+            sb.append("import ").append(basePkg).append(".service.EmailService;\n");
+        }
         sb.append("import org.slf4j.Logger;\n");
         sb.append("import org.slf4j.LoggerFactory;\n");
         sb.append("import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;\n");
@@ -99,7 +112,10 @@ public class JobGenerator {
             String repoField = Character.toLowerCase(mName.charAt(0)) + mName.substring(1) + "Repository";
             sb.append("    private final ").append(repoType).append(" ").append(repoField).append(";\n");
         }
-        if (!neededModels.isEmpty()) {
+        if (usesEmail) {
+            sb.append("    private final EmailService emailService;\n");
+        }
+        if (!neededModels.isEmpty() || usesEmail) {
             sb.append("\n");
             sb.append("    public ").append(jobClassName).append("(");
             int idx = 0;
@@ -110,10 +126,17 @@ public class JobGenerator {
                 sb.append(repoType).append(" ").append(repoField);
                 idx++;
             }
+            if (usesEmail) {
+                if (idx > 0) sb.append(", ");
+                sb.append("EmailService emailService");
+            }
             sb.append(") {\n");
             for (String mName : neededModels) {
                 String repoField = Character.toLowerCase(mName.charAt(0)) + mName.substring(1) + "Repository";
                 sb.append("        this.").append(repoField).append(" = ").append(repoField).append(";\n");
+            }
+            if (usesEmail) {
+                sb.append("        this.emailService = emailService;\n");
             }
             sb.append("    }\n\n");
         }

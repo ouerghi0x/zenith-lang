@@ -165,20 +165,20 @@ public class ControllerGenerator {
             sb.append("    @Operation(summary = \"").append(summary.replace("\"", "\\\"")).append("\")\n");
 
             if (hasAuth) {
-                List<String> guardRoles = new ArrayList<>();
+                List<String> targetRoles = new ArrayList<>(custom.getRoles());
                 for (GuardDef g : custom.getGuards()) {
                     for (String r : g.extractRoles()) {
-                        if (!guardRoles.contains(r)) {
-                            guardRoles.add(r);
+                        if (!targetRoles.contains(r)) {
+                            targetRoles.add(r);
                         }
                     }
                 }
 
-                if (!guardRoles.isEmpty()) {
-                    if (guardRoles.size() == 1) {
-                        sb.append("    @PreAuthorize(\"hasRole('").append(guardRoles.get(0)).append("')\")\n");
+                if (!targetRoles.isEmpty()) {
+                    if (targetRoles.size() == 1) {
+                        sb.append("    @PreAuthorize(\"hasRole('").append(targetRoles.get(0)).append("')\")\n");
                     } else {
-                        String joined = guardRoles.stream().map(r -> "'" + r + "'").collect(Collectors.joining(", "));
+                        String joined = targetRoles.stream().map(r -> "'" + r + "'").collect(Collectors.joining(", "));
                         sb.append("    @PreAuthorize(\"hasAnyRole(").append(joined).append(")\")\n");
                     }
                 } else if (Boolean.FALSE.equals(custom.getRequiresAuth())) {

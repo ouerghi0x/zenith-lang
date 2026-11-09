@@ -12,7 +12,7 @@ public class SemanticAnalyzer {
             "positive", "positiveOrZero", "negative", "negativeOrZero",
             "min", "max", "length", "pattern", "size",
             "autoNow", "autoUpdate",
-            "text", "file", "image", "relation",
+            "text", "file", "image", "relation", "rateLimit",
             "softDelete", "audited", "encrypted", "tenant", "owner"
     );
 
@@ -234,6 +234,24 @@ public class SemanticAnalyzer {
                 for (String stmt : endpoint.getActionStatements()) {
                     validateActionStatement(stmt, model, file, modelNames, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, epLine, actionVariables);
                 }
+
+                if (endpoint.hasRateLimit()) {
+                    RateLimitSpec rls = endpoint.getRateLimit();
+                    if (rls.getCapacity() <= 0) {
+                        throw new AnalysisException("Rate limit capacity must be greater than zero on endpoint '"
+                                + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, epLine, 1);
+                    }
+                }
+            }
+
+            if (model.getCrudConfig() != null && model.getCrudConfig().hasRateLimit()) {
+                RateLimitSpec rls = model.getCrudConfig().getRateLimit();
+                String crudFile = model.getCrudConfig().getSourceFile() != null ? model.getCrudConfig().getSourceFile() : model.getSourceFile();
+                int crudLine = model.getCrudConfig().getSourceLine() > 0 ? model.getCrudConfig().getSourceLine() : model.getSourceLine();
+                if (rls.getCapacity() <= 0) {
+                    throw new AnalysisException("Rate limit capacity must be greater than zero on crud block for model '"
+                            + model.getName() + "'", crudFile, crudLine, 1);
+                }
             }
 
             ModelDef validatedModel = new ModelDef(model.getName(), fields, model.getRelations(), model.getCrudConfig(),
@@ -321,8 +339,11 @@ public class SemanticAnalyzer {
         // Validate all role references in crud configs and endpoint guards
         validateRoleReferences(file, validatedModels);
 
+        // Validate Mail definitions & send statements
+        validateMailDefinitions(file, modelNames);
+
         return new ZenithFile(file.getConfig(), file.getEnums(), validatedModels, file.getDtos(), file.getSeeds(),
-                file.getJobs(), file.getImports(), file.hasExplicitConfig());
+                file.getJobs(), file.getMails(), file.getImports(), file.hasExplicitConfig());
     }
 
     private void validateRoleReferences(ZenithFile file, List<ModelDef> models) {
@@ -348,6 +369,10 @@ public class SemanticAnalyzer {
             for (CustomEndpointDef endpoint : model.getCustomEndpoints()) {
                 String epFile = endpoint.getSourceFile() != null ? endpoint.getSourceFile() : model.getSourceFile();
                 int epLine = endpoint.getSourceLine() > 0 ? endpoint.getSourceLine() : model.getSourceLine();
+
+                for (String role : endpoint.getRoles()) {
+                    validateSingleRole(role, definedRoles, epFile, epLine, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "' on model '" + model.getName() + "'");
+                }
 
                 for (GuardDef guard : endpoint.getGuards()) {
                     for (String role : guard.extractRoles()) {
@@ -477,6 +502,11 @@ public class SemanticAnalyzer {
             return;
         }
 
+        if (s.startsWith("send ") || s.matches("^send\\s+[A-Za-z0-9_]+\\s*\\(.*")) {
+            validateSendActionStatement(s, file, context, srcFile, srcLine);
+            return;
+        }
+
         if (s.contains("=") && !s.contains("==") && !s.contains("!=") && !s.contains("<=") && !s.contains(">=")) {
             String[] parts = s.split("=", 2);
             String left = parts[0].trim().replaceAll("\\s+", "");
@@ -497,7 +527,7 @@ public class SemanticAnalyzer {
         }
 
         throw new AnalysisException("Unsupported action statement in " + context + ": '" + s + "'. "
-                + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'notify(to, message)', or 'return ...'.", srcFile, srcLine, 1);
+                + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'send MailName(...)', 'notify(to, message)', or 'return ...'.", srcFile, srcLine, 1);
     }
 
     private void validateExpressionFunctions(String expr, String context, String srcFile, int srcLine) {
@@ -778,6 +808,92 @@ public class SemanticAnalyzer {
             }
         }
         return false;
+    }
+
+    private void validateMailDefinitions(ZenithFile file, Set<String> modelNames) {
+        Set<String> mailNames = new HashSet<>();
+        for (MailDef mail : file.getMails()) {
+            if (!mailNames.add(mail.getName().toLowerCase())) {
+                throw new AnalysisException("Duplicate mail definition '" + mail.getName() + "'",
+                        mail.getSourceFile(), mail.getSourceLine(), 1);
+            }
+
+            if (mail.getParameters().isEmpty()) {
+                throw new AnalysisException("Mail contract '" + mail.getName() + "' must declare at least one parameter.",
+                        mail.getSourceFile(), mail.getSourceLine(), 1);
+            }
+
+            // Check duplicate parameters & valid types
+            Set<String> paramNames = new HashSet<>();
+            for (FieldDef param : mail.getParameters()) {
+                if (!paramNames.add(param.getName().toLowerCase())) {
+                    throw new AnalysisException("Duplicate parameter '" + param.getName() + "' in mail '" + mail.getName() + "'",
+                            mail.getSourceFile(), mail.getSourceLine(), 1);
+                }
+                String tName = param.getType().getName();
+                boolean isKnown = isScalarReturnType(tName)
+                        || containsIgnoreCase(modelNames, tName)
+                        || containsIgnoreCase(file.getAllDefinedRoles(), tName)
+                        || file.findEnum(tName) != null
+                        || file.findDto(tName) != null;
+                if (!isKnown) {
+                    throw new AnalysisException("Unknown type '" + tName + "' for parameter '" + param.getName()
+                            + "' in mail '" + mail.getName() + "'", mail.getSourceFile(), mail.getSourceLine(), 1);
+                }
+            }
+
+            // Validate 'to' expression
+            if (mail.getToExpression() == null || mail.getToExpression().trim().isEmpty()) {
+                throw new AnalysisException("Mail contract '" + mail.getName() + "' must define a non-empty recipient 'to:' expression.",
+                        mail.getSourceFile(), mail.getSourceLine(), 1);
+            }
+
+            // Validate 'subject' expression
+            if (mail.getSubjectExpression() == null || mail.getSubjectExpression().trim().isEmpty()) {
+                throw new AnalysisException("Mail contract '" + mail.getName() + "' must define a non-empty 'subject:' expression.",
+                        mail.getSourceFile(), mail.getSourceLine(), 1);
+            }
+        }
+    }
+
+    private void validateSendActionStatement(String stmt, ZenithFile file, String context, String srcFile, int srcLine) {
+        String s = stmt.trim();
+        // format: send MailName(param1 = value1, param2 = value2)
+        int parenOpen = s.indexOf('(');
+        int parenClose = s.lastIndexOf(')');
+        if (parenOpen < 0 || parenClose < parenOpen) {
+            throw new AnalysisException("Malformed 'send' statement in " + context + ": expected 'send MailName(arg = val, ...)'", srcFile, srcLine, 1);
+        }
+        String mailName = s.substring(4, parenOpen).trim();
+        MailDef mailDef = file.findMail(mailName);
+        if (mailDef == null) {
+            throw new AnalysisException("Referenced mail contract '" + mailName + "' does not exist in " + context, srcFile, srcLine, 1);
+        }
+
+        String argsBlock = s.substring(parenOpen + 1, parenClose).trim();
+        Map<String, String> passedArgs = new HashMap<>();
+        if (!argsBlock.isEmpty()) {
+            String[] parts = argsBlock.split(",");
+            for (String part : parts) {
+                String p = part.trim();
+                if (p.isEmpty()) continue;
+                String[] kv = p.split("=", 2);
+                if (kv.length == 2) {
+                    passedArgs.put(kv[0].trim().toLowerCase(), kv[1].trim());
+                } else {
+                    // Positional or shorthand: use name as key and value
+                    passedArgs.put(kv[0].trim().toLowerCase(), kv[0].trim());
+                }
+            }
+        }
+
+        // Verify that all required parameters of the target MailDef are provided
+        for (FieldDef param : mailDef.getParameters()) {
+            if (!passedArgs.containsKey(param.getName().toLowerCase())) {
+                throw new AnalysisException("Missing required argument '" + param.getName() + "' in 'send "
+                        + mailName + "(...)' call in " + context, srcFile, srcLine, 1);
+            }
+        }
     }
 
     private boolean isScalarReturnType(String typeName) {

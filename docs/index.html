@@ -77,16 +77,17 @@
           <li><a href="#imports" class="sidebar-link">11. Modular File Imports</a></li>
           <li><a href="#storage" class="sidebar-link">12. Object Storage (S3/MinIO)</a></li>
           <li><a href="#jobs" class="sidebar-link">13. Scheduled Workers (Cron)</a></li>
+          <li><a href="#mail" class="sidebar-link">14. Transactional Emails (mail/send)</a></li>
         </ul>
       </div>
 
       <div class="sidebar-category">
         <div class="category-title">Testing & Delivery</div>
         <ul class="sidebar-nav">
-          <li><a href="#sdk" class="sidebar-link">14. Full-Stack TypeScript SDK</a></li>
-          <li><a href="#testing" class="sidebar-link">15. Automated Test Generation</a></li>
-          <li><a href="#docker" class="sidebar-link">16. Docker Containerization</a></li>
-          <li><a href="#showcase" class="sidebar-link">17. Complete Reference Project</a></li>
+          <li><a href="#sdk" class="sidebar-link">15. Full-Stack TypeScript SDK</a></li>
+          <li><a href="#testing" class="sidebar-link">16. Automated Test Generation</a></li>
+          <li><a href="#docker" class="sidebar-link">17. Docker Containerization</a></li>
+          <li><a href="#showcase" class="sidebar-link">18. Complete Reference Project</a></li>
         </ul>
       </div>
     </aside>
@@ -313,6 +314,24 @@ zenith studio schema.zen --desktop</code></pre>
               <td><code>true</code></td>
               <td>Enables SpringDoc OpenAPI 3 UI on <code>/swagger-ui.html</code>.</td>
             </tr>
+            <tr>
+              <td><code>rateLimit</code></td>
+              <td>String (Optional)</td>
+              <td><code>none</code></td>
+              <td>Global fallback token-bucket rate limit (e.g. <code>"500/minute"</code>, <code>"100/second"</code>, <code>"5000/hour"</code>). Automatically configures the Bucket4j <code>RateLimitingFilter</code> across all routes and returns HTTP 429 when exhausted.</td>
+            </tr>
+            <tr>
+              <td><code>mail</code></td>
+              <td><code>smtp</code> | <code>sendgrid</code> | <code>ses</code> | <code>console</code></td>
+              <td><code>console</code></td>
+              <td>Transactional email delivery provider backend. In local development (<code>console</code>), dispatched emails log complete headers, recipients, and rendered HTML bodies to stdout without requiring real SMTP credentials.</td>
+            </tr>
+            <tr>
+              <td><code>mailFrom</code></td>
+              <td>String</td>
+              <td><code>"noreply@example.com"</code></td>
+              <td>Default sender email address for all transactional email dispatches. Supports <code>${SPRING_MAIL_FROM:...}</code> env override.</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -336,6 +355,7 @@ zenith studio schema.zen --desktop</code></pre>
     <span class="syn-prop">storage</span>: <span class="syn-str">minio</span>
     <span class="syn-prop">flyway</span>: <span class="syn-kw">true</span>
     <span class="syn-prop">swagger</span>: <span class="syn-kw">true</span>
+    <span class="syn-prop">rateLimit</span>: <span class="syn-str">"500/minute"</span>  <span class="syn-com">// Global baseline token-bucket rate limit (HTTP 429 on exhaustion)</span>
 }</code></pre>
       </div>
 
@@ -473,6 +493,11 @@ zenith studio schema.zen --desktop</code></pre>
               <td>Declares a unique single-column or composite index (<code>CREATE UNIQUE INDEX</code> &amp; <code>@Index(unique = true)</code>).</td>
             </tr>
             <tr>
+              <td><code>@rateLimit</code></td>
+              <td><code>requests, per</code> or <code>"cap/unit"</code></td>
+              <td>Enforces token-bucket rate limiting via Bucket4j (e.g. <code>@rateLimit("10/minute")</code>, <code>@rateLimit(requests = 5, per = "1m")</code>). Emits RFC headers and HTTP 429 when throttled.</td>
+            </tr>
+            <tr>
               <td><code>@email</code></td>
               <td>—</td>
               <td>Enforces valid email format with Jakarta <code>@Email</code>.</td>
@@ -558,6 +583,47 @@ zenith studio schema.zen --desktop</code></pre>
         <p>
           Always declare model-level composite indexes (<code>@index([...])</code> and <code>@uniqueIndex([...])</code>) <strong>after your <code>relations { ... }</code> block</strong> (and before <code>endpoints { ... }</code>). Because composite indexes often include foreign-key relations like <code>customer</code> (which resolves to <code>customer_id</code>), placing them below <code>relations</code> ensures all referenced relations are declared first and clearly separates model-level indexes from inline field decorators.
         </p>
+      </div>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">rate_limiting.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">config</span> {
+    <span class="syn-prop">rateLimit</span>: <span class="syn-str">"500/minute"</span>               <span class="syn-com">// Global baseline rate limit</span>
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">Checkout</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">amount</span>: <span class="syn-type">Decimal</span>(<span class="syn-num">12</span>, <span class="syn-num">2</span>)
+
+    <span class="syn-kw">endpoints</span> {
+        <span class="syn-com">// 1. Decorator syntax on custom route</span>
+        <span class="syn-ann">@rateLimit</span>(<span class="syn-prop">requests</span> = <span class="syn-num">5</span>, <span class="syn-prop">per</span> = <span class="syn-str">"1m"</span>)
+        <span class="syn-kw">post</span> <span class="syn-str">"/charge"</span> -&gt; <span class="syn-type">OrderResponse</span> {
+            <span class="syn-prop">action</span>: { }
+        }
+
+        <span class="syn-com">// 2. Shorthand capacity/timeUnit syntax</span>
+        <span class="syn-ann">@rateLimit</span>(<span class="syn-str">"10/minute"</span>)
+        <span class="syn-kw">post</span> <span class="syn-str">"/instant-pay"</span> -&gt; <span class="syn-type">Void</span> {
+            <span class="syn-prop">action</span>: { }
+        }
+
+        <span class="syn-com">// 3. Route body property</span>
+        <span class="syn-kw">post</span> <span class="syn-str">"/verify-card"</span> -&gt; <span class="syn-type">Void</span> {
+            <span class="syn-prop">rateLimit</span>: <span class="syn-str">"3/second"</span>
+            <span class="syn-prop">action</span>: { }
+        }
+
+        <span class="syn-com">// 4. CRUD-wide rate limit</span>
+        <span class="syn-kw">crud</span> {
+            <span class="syn-prop">rateLimit</span>: <span class="syn-str">"100/minute"</span>
+            <span class="syn-prop">list</span>: [<span class="syn-str">"public"</span>]
+        }
+    }
+}</code></pre>
       </div>
 
       <!-- 4. Enums -->
@@ -672,6 +738,7 @@ zenith studio schema.zen --desktop</code></pre>
             <span class="syn-prop">search</span>: [title, sku]               <span class="syn-com">// Case-insensitive ?search= query</span>
             <span class="syn-prop">filter</span>: [status]                   <span class="syn-com">// Exact match query ?status=ACTIVE</span>
             <span class="syn-prop">sort</span>: [price, createdAt]           <span class="syn-com">// Sorting ?sort=price,desc</span>
+            <span class="syn-prop">rateLimit</span>: <span class="syn-str">"100/minute"</span>            <span class="syn-com">// Token-bucket rate limiting</span>
             <span class="syn-prop">auth</span>: <span class="syn-kw">true</span>                         <span class="syn-com">// Requires valid JWT token</span>
             <span class="syn-prop">roles</span>: {
                 <span class="syn-prop">create</span>: [<span class="syn-prop">ADMIN</span>, <span class="syn-prop">STAFF</span>],       <span class="syn-com">// Emits @PreAuthorize("hasAnyRole('ADMIN','STAFF')")</span>
@@ -714,11 +781,12 @@ zenith studio schema.zen --desktop</code></pre>
     <span class="syn-prop">status</span>: <span class="syn-type">OrderStatus</span> = <span class="syn-prop">PENDING</span>
 
     <span class="syn-kw">endpoints</span> {
-        <span class="syn-com">// Custom POST endpoint accepting typed body and returning summary DTO</span>
-        <span class="syn-kw">post</span> <span class="syn-str">"/checkout"</span> (<span class="syn-prop">body</span>: <span class="syn-type">CheckoutRequest</span>) -&gt; <span class="syn-type">OrderSummaryResponse</span> {
-            <span class="syn-prop">auth</span>: <span class="syn-kw">true</span>
-            <span class="syn-prop">action</span>: {
-                <span class="syn-com">// Execute domain mutation logic</span>
+        // Custom POST endpoint with rate limiting & typed request body
+        @rateLimit(requests = 5, per = "1m")
+        post "/checkout" (body: CheckoutRequest) -> OrderSummaryResponse {
+            auth: true
+            action: {
+                // Execute domain mutation logic
             }
         }
 
@@ -932,8 +1000,128 @@ zenith studio schema.zen --desktop</code></pre>
 }</code></pre>
       </div>
 
-      <!-- 14. TypeScript SDK -->
-      <h2 class="section-heading" id="sdk">14. Full-Stack TypeScript Client SDK</h2>
+      <!-- 14. Mail -->
+      <h2 class="section-heading" id="mail">14. Transactional Emails (mail &amp; send)</h2>
+      <p>
+        The <code>mail ContractName(params...) { ... }</code> construct declares typed, asynchronous email contracts at the top level. Trigger them declaratively inside custom endpoint action blocks or scheduled jobs using the <code>send</code> statement.
+      </p>
+
+      <h3 style="font-size: 16px; margin: 20px 0 10px 0; color: #f8fafc;">Keywords, Directives &amp; Properties Reference</h3>
+      <p style="font-size: 14px; margin-bottom: 12px; color: var(--text-secondary);">
+        Detailed breakdown of all email-related keywords, parameters, and properties supported in Zenith:
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Keyword / Property</th>
+              <th>Scope</th>
+              <th>Type / Value</th>
+              <th>Purpose &amp; Behavior</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>mail</code></td>
+              <td>Top-level declaration</td>
+              <td><code>mail Name(param: Type, ...)</code></td>
+              <td>Declares a typed transactional email contract. Emits a dedicated method on the asynchronous Spring <code>EmailService</code> interface and implementation.</td>
+            </tr>
+            <tr>
+              <td><code>to</code></td>
+              <td>Inside <code>mail { ... }</code></td>
+              <td>String / Property Expression</td>
+              <td><strong>Required.</strong> Resolves the recipient email address. Supports parameter references and navigation (e.g., <code>customer.email</code>, <code>user.email</code>, or <code>recipient</code>).</td>
+            </tr>
+            <tr>
+              <td><code>subject</code></td>
+              <td>Inside <code>mail { ... }</code></td>
+              <td>String / Expression</td>
+              <td><strong>Required.</strong> The subject line of the email. Supports string concatenation with dynamic parameter attributes (e.g. <code>"Order #" + order.orderNumber + " Confirmed"</code>).</td>
+            </tr>
+            <tr>
+              <td><code>template</code></td>
+              <td>Inside <code>mail { ... }</code></td>
+              <td>String Path</td>
+              <td>Relative path to the Thymeleaf HTML template file under <code>src/main/resources/templates/</code> (e.g. <code>"emails/order-confirmation.html"</code>). If absent, Zenith auto-scaffolds a responsive starter HTML template with parameter bindings.</td>
+            </tr>
+            <tr>
+              <td><code>from</code></td>
+              <td>Inside <code>mail { ... }</code></td>
+              <td>String (Optional)</td>
+              <td>Overrides the sender address for this specific email contract (e.g. <code>"security@company.com"</code>). If omitted, falls back to the global <code>mailFrom</code> setting.</td>
+            </tr>
+            <tr>
+              <td><code>send</code></td>
+              <td>Inside <code>action { ... }</code></td>
+              <td><code>send MailName(arg = val, ...)</code></td>
+              <td>Dispatches the declared email contract asynchronously (via Spring <code>@Async</code>). Named arguments must match the parameter signature of the target contract. Does not block the HTTP request or database transaction.</td>
+            </tr>
+            <tr>
+              <td><code>config.mail</code></td>
+              <td>Inside <code>config { ... }</code></td>
+              <td><code>smtp</code> | <code>sendgrid</code> | <code>ses</code> | <code>console</code></td>
+              <td>Configures the email delivery backend. In <code>console</code> mode (default for dev), dispatched emails print formatted preview headers and rendered HTML to standard out without external SMTP credentials.</td>
+            </tr>
+            <tr>
+              <td><code>config.mailFrom</code></td>
+              <td>Inside <code>config { ... }</code></td>
+              <td>String Email Address</td>
+              <td>Default global sender address (e.g. <code>"noreply@example.com"</code>). Bound to <code>${SPRING_MAIL_FROM}</code> in <code>application.yml</code> for production environment overrides.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">mail_example.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">config</span> {
+    <span class="syn-prop">app</span>: <span class="syn-str">"NexusStore"</span>
+    <span class="syn-prop">mail</span>: <span class="syn-str">smtp</span>
+    <span class="syn-prop">mailFrom</span>: <span class="syn-str">"support@nexusstore.io"</span>
+}
+
+<span class="syn-com">// 1. Declare typed email contract</span>
+<span class="syn-kw">mail</span> <span class="syn-type">OrderConfirmation</span>(order: <span class="syn-type">Order</span>, customer: <span class="syn-type">Customer</span>) {
+    <span class="syn-prop">to</span>: customer.email
+    <span class="syn-prop">subject</span>: <span class="syn-str">"Order #"</span> + order.orderNumber + <span class="syn-str">" Confirmed"</span>
+    <span class="syn-prop">template</span>: <span class="syn-str">"emails/order-confirmation.html"</span>
+    <span class="syn-prop">from</span>: <span class="syn-str">"orders@nexusstore.io"</span>  <span class="syn-com">// Optional override</span>
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">Order</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">orderNumber</span>: <span class="syn-type">String</span> <span class="syn-ann">@unique</span>
+
+    <span class="syn-kw">relations</span> {
+        customer: <span class="syn-type">Customer</span> <span class="syn-ann">@relation</span>(manyToOne)
+    }
+
+    <span class="syn-kw">endpoints</span> {
+        <span class="syn-kw">post</span> <span class="syn-str">"/checkout"</span> -&gt; <span class="syn-type">OrderResponse</span> {
+            <span class="syn-prop">action</span>: {
+                status = OrderStatus.CONFIRMED
+                <span class="syn-com">// 2. Trigger asynchronous email dispatch</span>
+                <span class="syn-kw">send</span> <span class="syn-type">OrderConfirmation</span>(order = entity, customer = entity.customer)
+            }
+        }
+    }
+}</code></pre>
+      </div>
+
+      <div class="tip-card">
+        <div class="tip-title">⚡ Asynchronous Non-Blocking Delivery &amp; Thymeleaf Templates</div>
+        <p>
+          Zenith automatically injects <code>spring-boot-starter-mail</code> and <code>spring-boot-starter-thymeleaf</code> into <code>pom.xml</code>, writes an <code>@Async @Service EmailService.java</code> class, and auto-generates responsive starter HTML templates under <code>src/main/resources/templates/emails/</code>. In <code>console</code> mode, dispatched emails print structured previews to logs for instant verification without external SMTP overhead.
+        </p>
+      </div>
+
+      <!-- 15. TypeScript SDK -->
+      <h2 class="section-heading" id="sdk">15. Full-Stack TypeScript Client SDK</h2>
       <p>
         Zenith generates a zero-dependency TypeScript client SDK in <code>sdk/typescript/</code> containing strongly-typed models, fetch API clients with JWT bearer injection, and React Query caching hooks.
       </p>
@@ -967,8 +1155,8 @@ zenith studio schema.zen --desktop</code></pre>
 }</code></pre>
       </div>
 
-      <!-- 15. Testing -->
-      <h2 class="section-heading" id="testing">15. Automated Test Generation</h2>
+      <!-- 16. Testing -->
+      <h2 class="section-heading" id="testing">16. Automated Test Generation</h2>
       <p>
         Zenith synthesizes complete JUnit 5, Spring Boot Test, and MockMvc test suites under <code>src/test/</code>. Tests run against an isolated in-memory H2 profile (<code>application.yml</code>) so <code>mvn test</code> passes anywhere without requiring external databases or Docker.
       </p>
@@ -1020,8 +1208,8 @@ zenith studio schema.zen --desktop</code></pre>
         <pre class="code-content"><code>mvn test</code></pre>
       </div>
 
-      <!-- 16. Docker -->
-      <h2 class="section-heading" id="docker">16. Docker Containerization</h2>
+      <!-- 17. Docker -->
+      <h2 class="section-heading" id="docker">17. Docker Containerization</h2>
       <p>
         Zenith generates a multi-stage <code>Dockerfile</code> (Maven 3.9 builder + Eclipse Temurin 17 JRE Alpine runtime with unprivileged user) and a pre-configured <code>docker-compose.yml</code> pairing the API with PostgreSQL healthchecks and persistent storage volumes.
       </p>
@@ -1034,8 +1222,8 @@ zenith studio schema.zen --desktop</code></pre>
         <pre class="code-content"><code>docker compose up --build</code></pre>
       </div>
 
-      <!-- 17. Showcase -->
-      <h2 class="section-heading" id="showcase">17. Complete Reference Project</h2>
+      <!-- 18. Showcase -->
+      <h2 class="section-heading" id="showcase">18. Complete Reference Project</h2>
       <p>
         The canonical reference project <strong>NexusCommerce</strong> illustrates how all Zenith features integrate cleanly. Inspect the complete codebase in <code>zenith-exemples/nexus-commerce/</code> or test it live in Zenith Studio.
       </p>

@@ -247,6 +247,7 @@
                 <span class="http-badge" id="runnerMethod">GET</span>
                 <input type="text" id="runnerUrl" class="runner-input" />
                 <button class="btn btn-primary btn-sm" onclick="sendApiRequest()">Send ⚡</button>
+                <button class="btn btn-warning btn-sm" id="btnBurstTest" onclick="sendBurstApiRequests(10)" title="Rapidly send burst requests to test rate limiting & quota">Burst Test ⚡ (x10)</button>
               </div>
 
               <!-- Path Variables Dynamic Bar -->
@@ -273,6 +274,7 @@
                   <div class="runner-subheading">
                     Response &middot; <span id="runnerResponseStatus" class="response-status-badge">-</span>
                     <span id="runnerResponseTime" class="response-time-badge"></span>
+                    <span id="runnerRateLimitBadge" class="rate-limit-badge" style="display:none; margin-left: 8px; font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);"></span>
                   </div>
                   <button class="btn btn-secondary btn-xs" onclick="copyResponseBody()">Copy Response</button>
                 </div>
@@ -548,6 +550,24 @@
                 <td><code>"zenith-bucket"</code></td>
                 <td>Default bucket name for media, images, and file uploads.</td>
               </tr>
+              <tr>
+                <td><code>rateLimit</code></td>
+                <td><code>String</code></td>
+                <td><code>none</code></td>
+                <td>Global fallback token-bucket rate limit (e.g. <code>"100/minute"</code>, <code>"500/hour"</code>). Automatically configures Bucket4j filter and returns HTTP 429 when exhausted.</td>
+              </tr>
+              <tr>
+                <td><code>mail</code></td>
+                <td><code>Identifier</code></td>
+                <td><code>console</code></td>
+                <td>Transactional mail provider: <code>smtp</code>, <code>sendgrid</code>, <code>ses</code>, or <code>console</code> (logs preview to stdout).</td>
+              </tr>
+              <tr>
+                <td><code>mailFrom</code></td>
+                <td><code>String</code></td>
+                <td><code>"noreply@example.com"</code></td>
+                <td>Default sender email address for all transactional email contracts. Override via <code>${SPRING_MAIL_FROM:...}</code>.</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -564,6 +584,7 @@
     flyway: true             // true | false (default: false; opt-in Flyway DDL migrations)
     storage: minio           // minio (local dev) | s3 (AWS cloud)
     storageBucket: "taskpulse-uploads"
+    rateLimit: "500/minute"  // optional global fallback token-bucket rate limit
 }</code></pre>
 
         <!-- 2. Data Types -->
@@ -781,6 +802,11 @@
                 <td>Designates the user role attribute for Spring Security role-based access control (RBAC). The field's default value (e.g. <code>role: Role = CUSTOMER @role</code>) consistently sets the project-wide default role across entities, registration, <code>CustomUserDetailsService</code>, and automated tests.</td>
               </tr>
               <tr>
+                <td><code>@rateLimit</code></td>
+                <td>Endpoint or Route</td>
+                <td>Enforces token-bucket rate limiting via Bucket4j (e.g. <code>@rateLimit("10/minute")</code> or <code>@rateLimit(requests = 50, per = "1m")</code>). Emits standard RFC response headers (<code>X-Rate-Limit-Remaining</code>, <code>Retry-After</code>) and HTTP 429 when throttled.</td>
+              </tr>
+              <tr>
                 <td><code>@relation(...)</code></td>
                 <td>Relation field</td>
                 <td>Declares JPA relationship mappings (<code>oneToMany</code>, <code>manyToOne</code>, <code>oneToOne</code>).</td>
@@ -832,6 +858,41 @@
         <div style="margin: 10px 0 14px; padding: 10px 14px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-left: 3px solid #38bdf8; border-radius: 6px; font-size: 12px; color: #e2e8f0;">
           <strong style="color: #38bdf8;">💡 Placement Tip &amp; Best Practice:</strong> Place model-level composite indexes (<code>@index([...])</code> and <code>@uniqueIndex([...])</code>) <strong>below the <code>relations { ... }</code> block</strong> (or right before <code>endpoints { ... }</code>). Because composite indexes frequently reference foreign-key relations (such as <code>customer</code> in <code>@index([customer, status])</code>), declaring them after <code>relations</code> keeps your schema logical and avoids any ambiguity with inline field decorators on the preceding field line.
         </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Declarative API Rate Limiting (<code>@rateLimit</code> &amp; Token Bucket)</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">Shield transactional endpoints from automated brute-force attacks and volumetric denial of service. Zenith emits a high-performance <code>RateLimitingFilter</code> powered by <strong>Bucket4j</strong>, enforcing token-bucket capacity per authenticated user ID or client IP address:</p>
+        <pre class="guide-code"><code>model Checkout {
+    id: UUID @id @auto
+    amount: Decimal(12, 2)
+
+    endpoints {
+        // Option 1: Decorator syntax on custom routes
+        @rateLimit(requests = 5, per = "1m")
+        post "/pay" -> OrderResponse {
+            action: {
+                // Payment processing logic
+            }
+        }
+
+        // Option 2: Shorthand string syntax
+        @rateLimit("10/minute")
+        post "/one-click" -> Void {
+            action: { }
+        }
+
+        // Option 3: Route body property
+        post "/verify" -> Void {
+            rateLimit: "3/second"
+            action: { }
+        }
+
+        // Option 4: Model-wide CRUD throttling
+        crud {
+            rateLimit: "60/minute"
+            list: public
+        }
+    }
+}</code></pre>
 
         <!-- 4. Enums & Security -->
         <h3 class="guide-section-title" id="ref-enums">4. Enums &amp; Role-Based Security <span class="guide-badge">security</span></h3>
@@ -992,6 +1053,18 @@ model Task {
                 <td><code>guard: role == ADMIN, "Admin only"</code><br/><code>guard: status == PAID, "Must be paid"</code></td>
                 <td>Combines <code>@PreAuthorize("hasRole('ADMIN')")</code> with 400 Bad Request validation</td>
                 <td>Enforces user role first, then verifies domain business conditions.</td>
+              </tr>
+              <tr>
+                <td>Rate-Limited Endpoint</td>
+                <td><code>@rateLimit("10/minute")</code> or <code>rateLimit: "5/second"</code></td>
+                <td>OncePerRequestFilter with Bucket4j token bucket</td>
+                <td>Protects against brute force and DDoS. Returns HTTP 429 and <code>Retry-After</code> when limit exceeded.</td>
+              </tr>
+              <tr>
+                <td>Rate-Limited CRUD Block</td>
+                <td><code>crud { rateLimit: "100/minute" }</code></td>
+                <td>Bucket4j rate-limiting applied across all CRUD routes for this model</td>
+                <td>Prevents resource scraping and mass enumeration on list/search endpoints.</td>
               </tr>
               <tr>
                 <td>User-Scoped Endpoint</td>
@@ -1745,8 +1818,91 @@ public class ArchiveOldTasksJob {
           <li><strong>Transactional Batch Persistence</strong>: Executes all field mutations on matched entities and saves each back to the database within a transactional boundary (<code>@Transactional</code>).</li>
         </ul>
 
-        <!-- 14. Automated Unit & Integration Tests Generation -->
-        <h3 class="guide-section-title" id="ref-tests">14. Automated Unit &amp; Integration Tests Generation <span class="guide-badge">tests</span></h3>
+        <!-- 14. Transactional Emails (mail & send) -->
+        <h3 class="guide-section-title" id="ref-mail">14. Transactional Emails (mail &amp; send) <span class="guide-badge">mail</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Declare typed email contracts at the top level and trigger them asynchronously via <code>send</code> inside custom endpoints or scheduled jobs:</p>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Keyword / Property</th>
+                <th>Scope</th>
+                <th>Type / Value</th>
+                <th>Purpose &amp; Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>mail</code></td>
+                <td>Top-level</td>
+                <td><code>mail Name(param: Type, ...)</code></td>
+                <td>Declares a typed email contract. Emits an asynchronous method on the Spring <code>EmailService</code>.</td>
+              </tr>
+              <tr>
+                <td><code>to</code></td>
+                <td>Inside <code>mail { ... }</code></td>
+                <td>String / Property Path</td>
+                <td><strong>Required.</strong> Recipient email address resolution (e.g. <code>customer.email</code> or <code>user.email</code>).</td>
+              </tr>
+              <tr>
+                <td><code>subject</code></td>
+                <td>Inside <code>mail { ... }</code></td>
+                <td>String / Expression</td>
+                <td><strong>Required.</strong> Email subject line with string concatenation support (e.g. <code>"Order #" + order.orderNumber</code>).</td>
+              </tr>
+              <tr>
+                <td><code>template</code></td>
+                <td>Inside <code>mail { ... }</code></td>
+                <td>String Path</td>
+                <td>Relative path to Thymeleaf HTML template under <code>src/main/resources/templates/</code>. Auto-scaffolds if absent.</td>
+              </tr>
+              <tr>
+                <td><code>from</code></td>
+                <td>Inside <code>mail { ... }</code></td>
+                <td>String (Optional)</td>
+                <td>Optional sender email address override for this specific email contract.</td>
+              </tr>
+              <tr>
+                <td><code>send</code></td>
+                <td>Inside <code>action { ... }</code></td>
+                <td><code>send MailName(arg = val, ...)</code></td>
+                <td>Triggers non-blocking asynchronous email dispatch (Spring <code>@Async</code>) without degrading API response times.</td>
+              </tr>
+              <tr>
+                <td><code>config.mail</code></td>
+                <td>Inside <code>config { ... }</code></td>
+                <td><code>smtp</code> | <code>sendgrid</code> | <code>ses</code> | <code>console</code></td>
+                <td>Configures delivery provider. In <code>console</code> mode, prints full headers and rendered HTML preview to stdout.</td>
+              </tr>
+              <tr>
+                <td><code>config.mailFrom</code></td>
+                <td>Inside <code>config { ... }</code></td>
+                <td>String Email Address</td>
+                <td>Default sender email address across the entire application (bound to <code>${SPRING_MAIL_FROM}</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre class="guide-code"><code>mail OrderConfirmation(order: Order, customer: Customer) {
+    to: customer.email
+    subject: "Order #" + order.orderNumber + " Confirmed"
+    template: "emails/order-confirmation.html"
+    from: "orders@shopsphere.io" // optional override
+}
+
+model Order {
+    endpoints {
+        post "/checkout" -> OrderResponse {
+            action: {
+                status = OrderStatus.CONFIRMED
+                send OrderConfirmation(order = entity, customer = entity.customer)
+            }
+        }
+    }
+}</code></pre>
+
+        <!-- 15. Automated Unit & Integration Tests Generation -->
+        <h3 class="guide-section-title" id="ref-tests">15. Automated Unit &amp; Integration Tests Generation <span class="guide-badge">tests</span></h3>
         <p style="font-size: 12px; margin-bottom: 8px;">Zenith synthesizes complete <strong>JUnit 5</strong>, <strong>Spring Boot Test</strong>, and <strong>MockMvc</strong> test suites directly from your schema AST, providing 80%+ test coverage from day one without writing manual boilerplate.</p>
 
         <div class="table-container">

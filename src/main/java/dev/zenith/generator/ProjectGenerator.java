@@ -37,9 +37,19 @@ public class ProjectGenerator {
             files.addAll(SecurityGenerator.generate(file));
         }
 
+        // 4.2. API Rate Limiting (Bucket4j)
+        if (file.hasRateLimiting()) {
+            files.addAll(RateLimitGenerator.generate(file));
+        }
+
         // 4.5. Object Storage & Media Management (MinIO / AWS S3)
         if (file.hasStorage()) {
             files.addAll(StorageGenerator.generate(file));
+        }
+
+        // 4.8. Transactional Email Service (JavaMailSender / Thymeleaf)
+        if (file.hasMails()) {
+            files.addAll(EmailGenerator.generate(file));
         }
 
         // 5. Enums

@@ -192,6 +192,22 @@ public class ServiceGenerator {
             sb.append("import org.springframework.web.multipart.MultipartFile;\n");
         }
 
+        boolean usesEmail = false;
+        if (file.hasMails()) {
+            for (CustomEndpointDef custom : model.getCustomEndpoints()) {
+                for (String stmt : custom.getActionStatements()) {
+                    if (stmt.trim().startsWith("send ") || stmt.trim().matches("^send\\s+[A-Za-z0-9_]+\\s*\\(.*")) {
+                        usesEmail = true;
+                        break;
+                    }
+                }
+                if (usesEmail) break;
+            }
+        }
+        if (usesEmail) {
+            sb.append("import ").append(basePkg).append(".service.EmailService;\n");
+        }
+
         sb.append("import org.springframework.stereotype.Service;\n");
         sb.append("import org.springframework.transaction.annotation.Transactional;\n");
         sb.append("import org.springframework.data.domain.Page;\n");
@@ -223,6 +239,9 @@ public class ServiceGenerator {
         if (hasStorageFields) {
             sb.append("    private final StorageService storageService;\n");
         }
+        if (usesEmail) {
+            sb.append("    private final EmailService emailService;\n");
+        }
         sb.append("\n");
 
         // Constructor injection
@@ -242,6 +261,9 @@ public class ServiceGenerator {
         if (hasStorageFields) {
             sb.append(",\n        StorageService storageService");
         }
+        if (usesEmail) {
+            sb.append(",\n        EmailService emailService");
+        }
         sb.append("\n    ) {\n");
         sb.append("        this.repository = repository;\n");
         sb.append("        this.mapper = mapper;\n");
@@ -257,6 +279,9 @@ public class ServiceGenerator {
         }
         if (hasStorageFields) {
             sb.append("        this.storageService = storageService;\n");
+        }
+        if (usesEmail) {
+            sb.append("        this.emailService = emailService;\n");
         }
         sb.append("    }\n\n");
 

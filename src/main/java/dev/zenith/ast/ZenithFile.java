@@ -13,19 +13,26 @@ public class ZenithFile {
     private final List<DtoDef> dtos;
     private final List<SeedDef> seeds;
     private final List<JobDef> jobs;
+    private final List<MailDef> mails;
     private final List<ImportDef> imports;
     private final boolean explicitConfig;
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
-            List<SeedDef> seeds, List<JobDef> jobs, List<ImportDef> imports, boolean explicitConfig) {
+            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<ImportDef> imports, boolean explicitConfig) {
         this.config = config != null ? config : AppConfig.defaults();
         this.enums = enums != null ? enums : new ArrayList<>();
         this.models = models != null ? models : new ArrayList<>();
         this.dtos = dtos != null ? dtos : new ArrayList<>();
         this.seeds = seeds != null ? seeds : new ArrayList<>();
         this.jobs = jobs != null ? jobs : new ArrayList<>();
+        this.mails = mails != null ? mails : new ArrayList<>();
         this.imports = imports != null ? imports : new ArrayList<>();
         this.explicitConfig = explicitConfig;
+    }
+
+    public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
+            List<SeedDef> seeds, List<JobDef> jobs, List<ImportDef> imports, boolean explicitConfig) {
+        this(config, enums, models, dtos, seeds, jobs, Collections.emptyList(), imports, explicitConfig);
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
@@ -69,6 +76,22 @@ public class ZenithFile {
 
     public boolean hasJobs() {
         return jobs != null && !jobs.isEmpty();
+    }
+
+    public List<MailDef> getMails() {
+        return Collections.unmodifiableList(mails);
+    }
+
+    public boolean hasMails() {
+        return (mails != null && !mails.isEmpty()) || (config != null && config.hasMail());
+    }
+
+    public MailDef findMail(String name) {
+        if (name == null) return null;
+        for (MailDef m : mails) {
+            if (m.getName().equalsIgnoreCase(name)) return m;
+        }
+        return null;
     }
 
     public List<SeedDef> getSeeds() {
@@ -145,6 +168,23 @@ public class ZenithFile {
         for (ModelDef m : models) {
             for (FieldDef f : m.getFields()) {
                 if (f.hasAnnotation("file") || f.hasAnnotation("image")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean hasRateLimiting() {
+        if (config != null && config.hasRateLimit()) {
+            return true;
+        }
+        for (ModelDef m : models) {
+            if (m.getCrudConfig() != null && m.getCrudConfig().hasRateLimit()) {
+                return true;
+            }
+            for (CustomEndpointDef cep : m.getCustomEndpoints()) {
+                if (cep.hasRateLimit()) {
                     return true;
                 }
             }

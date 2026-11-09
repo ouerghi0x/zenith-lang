@@ -304,6 +304,9 @@ public class SecurityGenerator {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePkg).append(".config;\n\n");
         sb.append("import ").append(basePkg).append(".security.JwtAuthenticationFilter;\n");
+        if (file.hasRateLimiting()) {
+            sb.append("import ").append(basePkg).append(".security.RateLimitingFilter;\n");
+        }
         sb.append("import org.springframework.context.annotation.Bean;\n");
         sb.append("import org.springframework.context.annotation.Configuration;\n");
         sb.append("import org.springframework.http.HttpMethod;\n");
@@ -327,10 +330,19 @@ public class SecurityGenerator {
         sb.append("@EnableMethodSecurity\n");
         sb.append("public class SecurityConfig {\n\n");
 
-        sb.append("    private final JwtAuthenticationFilter jwtAuthFilter;\n\n");
-        sb.append("    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter) {\n");
-        sb.append("        this.jwtAuthFilter = jwtAuthFilter;\n");
-        sb.append("    }\n\n");
+        sb.append("    private final JwtAuthenticationFilter jwtAuthFilter;\n");
+        if (file.hasRateLimiting()) {
+            sb.append("    private final RateLimitingFilter rateLimitingFilter;\n\n");
+            sb.append("    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter, RateLimitingFilter rateLimitingFilter) {\n");
+            sb.append("        this.jwtAuthFilter = jwtAuthFilter;\n");
+            sb.append("        this.rateLimitingFilter = rateLimitingFilter;\n");
+            sb.append("    }\n\n");
+        } else {
+            sb.append("\n");
+            sb.append("    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter) {\n");
+            sb.append("        this.jwtAuthFilter = jwtAuthFilter;\n");
+            sb.append("    }\n\n");
+        }
 
         sb.append("    @Bean\n");
         sb.append("    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {\n");
@@ -348,6 +360,9 @@ public class SecurityGenerator {
         sb.append("                .requestMatchers(\"/h2-console/**\").permitAll()\n");
         sb.append("                .anyRequest().permitAll()\n");
         sb.append("            )\n");
+        if (file.hasRateLimiting()) {
+            sb.append("            .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)\n");
+        }
         sb.append("            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);\n\n");
         sb.append("        return http.build();\n");
         sb.append("    }\n\n");

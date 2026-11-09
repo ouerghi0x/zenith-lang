@@ -3,7 +3,10 @@ C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Adversarial
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\AdversarialParserCompatibilityTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Challenger1AdversarialStressTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\E2ETestSuiteRunner.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature10UnifiedRbacTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature13RateLimitingTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature2DatabaseIndexesTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature5TransactionalEmailTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\LexerVarVerification.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\TestHarness.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Tier1FeatureCoverageTest.java

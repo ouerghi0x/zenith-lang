@@ -73,11 +73,13 @@ public class PomGenerator {
             }
         }
 
-        if (file.hasAuth()) {
+        if (file.hasAuth() || file.hasRateLimiting()) {
             sb.append("        <dependency>\n");
             sb.append("            <groupId>org.springframework.boot</groupId>\n");
             sb.append("            <artifactId>spring-boot-starter-security</artifactId>\n");
             sb.append("        </dependency>\n");
+        }
+        if (file.hasAuth()) {
             sb.append("        <dependency>\n");
             sb.append("            <groupId>io.jsonwebtoken</groupId>\n");
             sb.append("            <artifactId>jjwt-api</artifactId>\n");
@@ -102,6 +104,25 @@ public class PomGenerator {
             sb.append("            <groupId>software.amazon.awssdk</groupId>\n");
             sb.append("            <artifactId>s3</artifactId>\n");
             sb.append("            <version>2.25.27</version>\n");
+            sb.append("        </dependency>\n");
+        }
+
+        if (file.hasRateLimiting()) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>com.bucket4j</groupId>\n");
+            sb.append("            <artifactId>bucket4j-core</artifactId>\n");
+            sb.append("            <version>8.10.1</version>\n");
+            sb.append("        </dependency>\n");
+        }
+
+        if (file.hasMails()) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>org.springframework.boot</groupId>\n");
+            sb.append("            <artifactId>spring-boot-starter-mail</artifactId>\n");
+            sb.append("        </dependency>\n");
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>org.springframework.boot</groupId>\n");
+            sb.append("            <artifactId>spring-boot-starter-thymeleaf</artifactId>\n");
             sb.append("        </dependency>\n");
         }
 

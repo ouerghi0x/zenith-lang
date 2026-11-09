@@ -12,11 +12,13 @@ public class CustomEndpointDef {
     private final String description;
     private final List<GuardDef> guards;
     private final List<String> actionStatements;
+    private final List<String> roles; // canonical role access control
     private final Boolean requiresAuth; // null = default, true = authenticated, false = public
     private final Boolean userScoped; // null = auto-detect, true = filter by current user
     private final String query; // optional custom query / filter mapping like "orderNumber == trackingNumber"
     private final Map<String, String> paramTypes; // optional explicit parameter types: e.g. {"id": "UUID"}
     private final String bodyType; // optional body
+    private RateLimitSpec rateLimit; // optional endpoint rate limiting
     private String sourceFile;
     private int sourceLine;
 
@@ -46,18 +48,33 @@ public class CustomEndpointDef {
 
     public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
             List<String> actionStatements, Boolean requiresAuth, Boolean userScoped, String query,
-            Map<String, String> paramTypes, String bodyType) {
+            Map<String, String> paramTypes, String bodyType, RateLimitSpec rateLimit, List<String> roles) {
         this.method = method != null ? method.toUpperCase() : "GET";
         this.path = path != null ? path : "/";
         this.returnType = returnType != null ? returnType : "Void";
         this.description = description != null ? description : "";
         this.guards = guards != null ? guards : new ArrayList<>();
         this.actionStatements = actionStatements != null ? actionStatements : new ArrayList<>();
-        this.requiresAuth = requiresAuth;
+        this.roles = roles != null ? new ArrayList<>(roles) : new ArrayList<>();
+        // If roles is explicitly set, requiresAuth is implicitly true unless specified otherwise
+        this.requiresAuth = (requiresAuth != null) ? requiresAuth : (!this.roles.isEmpty() ? Boolean.TRUE : null);
         this.userScoped = userScoped;
         this.query = query;
         this.paramTypes = paramTypes != null ? paramTypes : new java.util.LinkedHashMap<>();
         this.bodyType = bodyType != null ? bodyType : "";
+        this.rateLimit = rateLimit;
+    }
+
+    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
+            List<String> actionStatements, Boolean requiresAuth, Boolean userScoped, String query,
+            Map<String, String> paramTypes, String bodyType, RateLimitSpec rateLimit) {
+        this(method, path, returnType, description, guards, actionStatements, requiresAuth, userScoped, query, paramTypes, bodyType, rateLimit, Collections.emptyList());
+    }
+
+    public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
+            List<String> actionStatements, Boolean requiresAuth, Boolean userScoped, String query,
+            Map<String, String> paramTypes, String bodyType) {
+        this(method, path, returnType, description, guards, actionStatements, requiresAuth, userScoped, query, paramTypes, bodyType, null);
     }
 
     public CustomEndpointDef(String method, String path, String returnType, String description, List<GuardDef> guards,
@@ -101,6 +118,14 @@ public class CustomEndpointDef {
         return description;
     }
 
+    public List<String> getRoles() {
+        return Collections.unmodifiableList(roles);
+    }
+
+    public boolean hasRoles() {
+        return !roles.isEmpty();
+    }
+
     public List<GuardDef> getGuards() {
         return Collections.unmodifiableList(guards);
     }
@@ -142,5 +167,17 @@ public class CustomEndpointDef {
 
     public boolean hasLogic() {
         return !guards.isEmpty() || !actionStatements.isEmpty();
+    }
+
+    public RateLimitSpec getRateLimit() {
+        return rateLimit;
+    }
+
+    public void setRateLimit(RateLimitSpec rateLimit) {
+        this.rateLimit = rateLimit;
+    }
+
+    public boolean hasRateLimit() {
+        return rateLimit != null;
     }
 }

@@ -2256,38 +2256,39 @@ function renderApiExplorer(models, config) {
     const modelSample = generateSamplePayload(m);
 
     // Standard CRUD Routes
+    const modelRateLimit = m.crudRateLimit || (config && config.rateLimit) || '';
     if (hasCrud) {
       routes.push({
         method: 'GET',
         pathDisplay: `/${slug}`,
         fullUrl: `${basePath}/${slug}`,
-        desc: 'List & Search'
+        desc: 'List & Search' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : '')
       });
       routes.push({
         method: 'POST',
         pathDisplay: `/${slug}`,
         fullUrl: `${basePath}/${slug}`,
-        desc: 'Create new',
+        desc: 'Create new' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : ''),
         sampleBody: modelSample
       });
       routes.push({
         method: 'GET',
         pathDisplay: `/${slug}/{id}`,
         fullUrl: `${basePath}/${slug}/{id}`,
-        desc: 'Find by ID'
+        desc: 'Find by ID' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : '')
       });
       routes.push({
         method: 'PUT',
         pathDisplay: `/${slug}/{id}`,
         fullUrl: `${basePath}/${slug}/{id}`,
-        desc: 'Update',
+        desc: 'Update' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : ''),
         sampleBody: modelSample
       });
       routes.push({
         method: 'DELETE',
         pathDisplay: `/${slug}/{id}`,
         fullUrl: `${basePath}/${slug}/{id}`,
-        desc: 'Delete'
+        desc: 'Delete' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : '')
       });
     }
 
@@ -2329,11 +2330,12 @@ function renderApiExplorer(models, config) {
         customSample = generateDtoSamplePayload(cep.bodyType) || modelSample;
       }
       const fullPath = `/${slug}${cep.path.startsWith('/') ? cep.path : '/' + cep.path}`;
+      const cepRateLimit = cep.rateLimit || modelRateLimit;
       routes.push({
         method: cep.method.toUpperCase(),
         pathDisplay: fullPath,
         fullUrl: `${basePath}${fullPath}`,
-        desc: cep.description || (cep.bodyType ? `body: ${cep.bodyType}` : 'Action'),
+        desc: (cep.description || (cep.bodyType ? `body: ${cep.bodyType}` : 'Action')) + (cepRateLimit ? ` ⚡ [${cepRateLimit}]` : ''),
         sampleBody: customSample
       });
     });
@@ -2679,12 +2681,36 @@ async function sendApiRequest() {
     const duration = Math.round(performance.now() - startTime);
 
     const statusText = `${res.status} ${res.statusText}`;
-    const statusColor = res.ok ? '#10b981' : (res.status < 500 ? '#f59e0b' : '#f43f5e');
+    const statusColor = res.ok ? '#10b981' : (res.status === 429 ? '#f43f5e' : (res.status < 500 ? '#f59e0b' : '#f43f5e'));
     const durationText = `⏱ ${duration}ms`;
 
     statusSpan.innerText = statusText;
     statusSpan.style.color = statusColor;
     timeSpan.innerText = durationText;
+
+    // Inspect rate limiting headers
+    const rlLimit = res.headers.get('x-rate-limit-limit') || res.headers.get('x-ratelimit-limit');
+    const rlRemaining = res.headers.get('x-rate-limit-remaining') || res.headers.get('x-ratelimit-remaining');
+    const retryAfter = res.headers.get('retry-after');
+    const rlBadge = document.getElementById('runnerRateLimitBadge');
+    if (rlBadge) {
+      if (rlLimit !== null || rlRemaining !== null || retryAfter !== null) {
+        rlBadge.style.display = 'inline-block';
+        if (res.status === 429) {
+          rlBadge.style.background = 'rgba(244, 63, 94, 0.15)';
+          rlBadge.style.color = '#f43f5e';
+          rlBadge.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+          rlBadge.innerText = `⛔ Throttled (Retry-After: ${retryAfter || '1'}s)`;
+        } else {
+          rlBadge.style.background = 'rgba(56, 189, 248, 0.15)';
+          rlBadge.style.color = '#38bdf8';
+          rlBadge.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+          rlBadge.innerText = `Quota: ${rlRemaining !== null ? rlRemaining : '?'}/${rlLimit !== null ? rlLimit : '?'}`;
+        }
+      } else {
+        rlBadge.style.display = 'none';
+      }
+    }
 
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
@@ -2753,6 +2779,98 @@ function quickLoginDemo() {
     el.value = token;
     try { localStorage.setItem('zenith_auth_token', token); } catch (_) {}
   }
+}
+
+// Burst / Rate Limit Tester
+async function sendBurstApiRequests(count = 10) {
+  const method = document.getElementById('runnerMethod').innerText;
+  const url = document.getElementById('runnerUrl').value;
+  const bodyText = document.getElementById('runnerRequestBody').value;
+  const token = document.getElementById('runnerAuthToken').value.trim();
+
+  const resBox = document.getElementById('runnerResponseBody');
+  const statusSpan = document.getElementById('runnerResponseStatus');
+  const timeSpan = document.getElementById('runnerResponseTime');
+  const rlBadge = document.getElementById('runnerRateLimitBadge');
+
+  resBox.innerText = `Firing burst test of ${count} requests to evaluate rate limits...\n`;
+  timeSpan.innerText = '⚡ Burst in progress...';
+  if (rlBadge) rlBadge.style.display = 'none';
+
+  const startTime = performance.now();
+  const results = [];
+  let throttledCount = 0;
+  let successCount = 0;
+  let lastRateLimitHeader = null;
+
+  for (let i = 1; i <= count; i++) {
+    const reqStart = performance.now();
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      }
+      const opts = { method, headers };
+      if (method !== 'GET' && method !== 'HEAD' && bodyText.trim()) {
+        opts.body = bodyText;
+      }
+      const res = await fetch(url, opts);
+      const reqDuration = Math.round(performance.now() - reqStart);
+      const remaining = res.headers.get('x-rate-limit-remaining') || res.headers.get('x-ratelimit-remaining');
+      const limit = res.headers.get('x-rate-limit-limit') || res.headers.get('x-ratelimit-limit');
+      const retryAfter = res.headers.get('retry-after');
+
+      if (remaining !== null || limit !== null) {
+        lastRateLimitHeader = { remaining, limit, retryAfter };
+      }
+
+      if (res.status === 429) {
+        throttledCount++;
+        results.push(`[#${i}] 🛑 429 Too Many Requests (${reqDuration}ms) -> Retry-After: ${retryAfter || '1'}s | Remaining: 0`);
+      } else {
+        successCount++;
+        results.push(`[#${i}] ✅ ${res.status} ${res.statusText} (${reqDuration}ms) -> Quota remaining: ${remaining !== null ? remaining : 'N/A'}`);
+      }
+    } catch (err) {
+      results.push(`[#${i}] ⚠️ Network Error: ${err.message}`);
+    }
+  }
+
+  const totalDuration = Math.round(performance.now() - startTime);
+  timeSpan.innerText = `⏱ ${totalDuration}ms (${count} reqs)`;
+
+  if (throttledCount > 0) {
+    statusSpan.innerText = `Rate Limited (${throttledCount}/${count} throttled)`;
+    statusSpan.style.color = '#f43f5e';
+    if (rlBadge) {
+      rlBadge.style.display = 'inline-block';
+      rlBadge.style.background = 'rgba(244, 63, 94, 0.15)';
+      rlBadge.style.color = '#f43f5e';
+      rlBadge.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+      rlBadge.innerText = `Throttling Active (429 Hit: ${throttledCount} times)`;
+    }
+  } else {
+    statusSpan.innerText = `All ${count} Passed (200 OK)`;
+    statusSpan.style.color = '#10b981';
+    if (rlBadge && lastRateLimitHeader) {
+      rlBadge.style.display = 'inline-block';
+      rlBadge.style.background = 'rgba(56, 189, 248, 0.15)';
+      rlBadge.style.color = '#38bdf8';
+      rlBadge.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+      rlBadge.innerText = `Remaining Quota: ${lastRateLimitHeader.remaining}/${lastRateLimitHeader.limit}`;
+    }
+  }
+
+  resBox.innerText = `=== ⚡ Rate Limiting Burst Summary ===\n`
+    + `Total Requests Sent: ${count}\n`
+    + `Accepted Requests:   ${successCount}\n`
+    + `Rate-Limited (429):  ${throttledCount}\n`
+    + `Total Burst Time:    ${totalDuration}ms\n\n`
+    + `--- Per-Request Trace ---\n`
+    + results.join('\n');
 }
 
 let currentActiveJavaFilePath = null;

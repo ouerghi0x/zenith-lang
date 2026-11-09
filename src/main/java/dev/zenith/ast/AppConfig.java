@@ -183,6 +183,38 @@ public class AppConfig {
         return getString("storageBucket", "zenith-bucket");
     }
 
+    public String getRawRateLimit() {
+        Object val = properties.get("rateLimit");
+        if (val == null) val = properties.get("ratelimit");
+        return val != null ? val.toString().trim() : null;
+    }
+
+    public RateLimitSpec getRateLimit() {
+        String raw = getRawRateLimit();
+        if (raw == null || raw.isEmpty()) return null;
+        return RateLimitSpec.parse(raw);
+    }
+
+    public boolean hasRateLimit() {
+        return getRawRateLimit() != null && !getRawRateLimit().isEmpty();
+    }
+
+    public String getMailProvider() {
+        String p = getString("mail", null);
+        if (p == null) p = getString("mailProvider", "console");
+        return p != null ? p.toLowerCase() : "console";
+    }
+
+    public String getMailFrom() {
+        String from = getString("mailFrom", null);
+        if (from == null) from = getString("mail_from", "noreply@example.com");
+        return from;
+    }
+
+    public boolean hasMail() {
+        return properties.containsKey("mail") || properties.containsKey("mailProvider") || properties.containsKey("mailFrom");
+    }
+
     public Map<String, Object> getProperties() {
         return properties;
     }

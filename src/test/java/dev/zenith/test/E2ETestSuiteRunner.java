@@ -38,6 +38,18 @@ public class E2ETestSuiteRunner {
             runFeature2(selectedTier);
             return;
         }
+        if (selectedFeature == 5) {
+            runFeature5(selectedTier);
+            return;
+        }
+        if (selectedFeature == 10) {
+            runFeature10(selectedTier);
+            return;
+        }
+        if (selectedFeature == 13) {
+            runFeature13(selectedTier);
+            return;
+        }
 
         System.out.println(BOLD + CYAN + "================================================================================" + RESET);
         System.out.println(BOLD + CYAN + "    Zenith Feature #1: Action Variable Binding (var x = create / update)         " + RESET);
@@ -92,6 +104,87 @@ public class E2ETestSuiteRunner {
         for (int t = 1; t <= 4; t++) {
             if (selectedTier == -1 || selectedTier == t) {
                 runTier(t, titles[t - 1], Feature2DatabaseIndexesTest.class, results, "^T" + t + "_.*");
+            }
+        }
+        printSummary(results, System.currentTimeMillis() - start);
+        boolean allPassed = results.stream().allMatch(r -> r.passed);
+        if (!allPassed) {
+            System.err.println(RED + "\n[FAILURE] Some test cases did not pass. Check diagnostics above." + RESET);
+            System.exit(1);
+        }
+        System.out.println(GREEN + "\n[SUCCESS] All " + results.size() + " test cases passed cleanly!" + RESET);
+        System.exit(0);
+    }
+
+    /** Feature #5 (Transactional Email Service): all tiers live in Feature5TransactionalEmailTest. */
+    private static void runFeature5(int selectedTier) {
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        System.out.println(BOLD + CYAN + "    Zenith Feature #5: Transactional Email Service (mail / send)               " + RESET);
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        long start = System.currentTimeMillis();
+        List<TestHarness.TestResult> results = new ArrayList<>();
+        String[] titles = {
+                "Tier 1: DSL Parsing & AST Modeling",
+                "Tier 2: Semantic Validation & Boundaries",
+                "Tier 3: Asynchronous Spring Mail & Thymeleaf Generator",
+                "Tier 4: Service & Action Block Integration" };
+        for (int t = 1; t <= 4; t++) {
+            if (selectedTier == -1 || selectedTier == t) {
+                runTier(t, titles[t - 1], Feature5TransactionalEmailTest.class, results, "^T" + t + "_.*");
+            }
+        }
+        printSummary(results, System.currentTimeMillis() - start);
+        boolean allPassed = results.stream().allMatch(r -> r.passed);
+        if (!allPassed) {
+            System.err.println(RED + "\n[FAILURE] Some test cases did not pass. Check diagnostics above." + RESET);
+            System.exit(1);
+        }
+        System.out.println(GREEN + "\n[SUCCESS] All " + results.size() + " test cases passed cleanly!" + RESET);
+        System.exit(0);
+    }
+
+    /** Feature #10 / ISSUE-010 (Unified API Role Access Control): all tiers live in Feature10UnifiedRbacTest. */
+    private static void runFeature10(int selectedTier) {
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        System.out.println(BOLD + CYAN + "    Zenith Feature #10: Unified Role-Based Access Control (roles / auth)       " + RESET);
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        long start = System.currentTimeMillis();
+        List<TestHarness.TestResult> results = new ArrayList<>();
+        String[] titles = {
+                "Tier 1: DSL Parsing & AST Modeling",
+                "Tier 2: Semantic Validation & Boundaries",
+                "Tier 3: Spring Security Controller Code Generation",
+                "Tier 4: Cross-Feature Integration with CRUD & Guards" };
+        for (int t = 1; t <= 4; t++) {
+            if (selectedTier == -1 || selectedTier == t) {
+                runTier(t, titles[t - 1], Feature10UnifiedRbacTest.class, results, "^T" + t + "_.*");
+            }
+        }
+        printSummary(results, System.currentTimeMillis() - start);
+        boolean allPassed = results.stream().allMatch(r -> r.passed);
+        if (!allPassed) {
+            System.err.println(RED + "\n[FAILURE] Some test cases did not pass. Check diagnostics above." + RESET);
+            System.exit(1);
+        }
+        System.out.println(GREEN + "\n[SUCCESS] All " + results.size() + " test cases passed cleanly!" + RESET);
+        System.exit(0);
+    }
+
+    /** Feature #13 (API Rate Limiting): all tiers live in Feature13RateLimitingTest. */
+    private static void runFeature13(int selectedTier) {
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        System.out.println(BOLD + CYAN + "    Zenith Feature #13: API Rate Limiting (@rateLimit / Bucket4j)              " + RESET);
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        long start = System.currentTimeMillis();
+        List<TestHarness.TestResult> results = new ArrayList<>();
+        String[] titles = {
+                "Tier 1: DSL Parsing & AST Modeling",
+                "Tier 2: Semantic Validation & Boundaries",
+                "Tier 3: Spring Boot & Bucket4j Generator",
+                "Tier 4: Spring Security Chain & Filter Integration" };
+        for (int t = 1; t <= 4; t++) {
+            if (selectedTier == -1 || selectedTier == t) {
+                runTier(t, titles[t - 1], Feature13RateLimitingTest.class, results, "^T" + t + "_.*");
             }
         }
         printSummary(results, System.currentTimeMillis() - start);

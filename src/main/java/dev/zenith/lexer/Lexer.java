@@ -41,6 +41,8 @@ public class Lexer {
         KEYWORDS.put("update", TokenType.UPDATE);
         KEYWORDS.put("var", TokenType.VAR);
         KEYWORDS.put("cron", TokenType.CRON);
+        KEYWORDS.put("mail", TokenType.MAIL);
+        KEYWORDS.put("send", TokenType.SEND);
     }
 
     public Lexer(String source) {

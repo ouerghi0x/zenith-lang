@@ -348,7 +348,53 @@ model Order {
 
 > **💡 Placement Tip**: Place model-level composite indexes (`@index([...])` / `@uniqueIndex([...])`) **below the `relations { ... }` block** (and above `endpoints { ... }`). Because composite indexes often reference foreign-key relations (such as `customer` -> `customer_id`), declaring them after `relations` keeps all referenced columns defined above the index and separates model-level indexes from inline field decorators.
 
-### 4. API Security & Role-Based Access Control (RBAC)
+### 4. Declarative API Rate Limiting (`@rateLimit` & Token Bucket)
+
+Protect public registration, login, checkout, and webhook endpoints against automated abuse, brute-force attacks, and resource exhaustion. Zenith generates a Spring Security filter powered by the **Bucket4j** token bucket algorithm, emitting standard RFC rate-limiting headers: `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining`, `X-Rate-Limit-Reset`, and `Retry-After` with **HTTP 429 Too Many Requests**.
+
+- **Endpoint-Level Limits**: Decorate any route with `@rateLimit("10/minute")`, `@rateLimit(requests = 50, per = "1m")`, or in the route body with `rateLimit: "5/second"`.
+- **Model CRUD Limits**: Throttle an entire CRUD resource with `crud { rateLimit: "100/minute" }`.
+- **Global Fallback Limit**: Set a default baseline in `config { rateLimit: "500/minute" }`.
+- **Client Identity Strategy**: Authenticated users are keyed by username/ID (`user:<id>`); anonymous traffic is keyed by IP address with automatic reverse proxy header extraction (`X-Forwarded-For`, `X-Real-IP`).
+- **Interactive Burst Testing**: Zenith Studio's API Tester includes a **Burst Test ⚡ (x10)** tool that sends rapid requests in sequence to visualize real-time throttling, header responses, and quota exhaustion.
+
+```zen
+config {
+    app: "ShopSphere"
+    package: "com.shopsphere.backend"
+    rateLimit: "500/minute"               // Global default fallback
+}
+
+model Order {
+    id: UUID @id @auto
+    totalAmount: Decimal(12, 2)
+    status: OrderStatus = PENDING
+
+    endpoints {
+        crud {
+            rateLimit: "100/minute"      // Rate limit standard CRUD routes
+        }
+
+        // Decorator syntax on custom endpoints
+        @rateLimit(requests = 5, per = "1m")
+        post "/checkout" -> OrderResponse {
+            action: {
+                status = OrderStatus.PAID
+            }
+        }
+
+        // Inline route body syntax
+        post "/{id}/pay" -> Void {
+            rateLimit: "10/minute"
+            action: {
+                status = OrderStatus.PAID
+            }
+        }
+    }
+}
+```
+
+### 5. API Security & Role-Based Access Control (RBAC)
 
 Zenith integrates with Spring Security 6 to generate method-level `@PreAuthorize` security checks across standard CRUD and custom endpoints.
 
@@ -430,7 +476,7 @@ get "/my-products" -> List<ProductResponse> {
 }
 ```
 
-### 5. Declarative Logic & Domain Actions
+### 6. Declarative Logic & Domain Actions
 
 Zenith supports complete domain business logic: bind multi-entity operations to local variables (`var x = create / update`), instantiate secondary entities, update related models, record audit trails, notify owners, perform date calculations, and resolve authenticated users:
 
@@ -702,7 +748,54 @@ The Zenith transpiler automatically converts high-level temporal functions and b
 - **Null-Safe Temporal Operators**: Complete comparison operators (`<`, `<=`, `>`, `>=`, `==`, `!=`) compile into null-safe `.isBefore(...)`, `(!.isAfter(...))`, `.isAfter(...)`, `(!.isBefore(...))`, and `.isEqual(...)` method calls.
 - **Automatic Date Imports**: `java.time.LocalDateTime` and `java.time.LocalDate` are automatically imported in all affected controllers, services, repositories, and jobs.
 
-### 11. Automated Unit & Integration Tests Generation
+### 11. Transactional Email Service (`mail`, `send`)
+
+Declare typed transactional email contracts at the top level and trigger them asynchronously (`@Async`) from custom endpoint `action` blocks or scheduled `job` workers using the `send` statement:
+
+```zen
+config {
+    app: "ShopSphere"
+    package: "com.shopsphere"
+    mail: smtp                         // Options: smtp | sendgrid | ses | console
+    mailFrom: "orders@shopsphere.io"
+}
+
+// 1. Declare typed email contract
+mail OrderConfirmation(order: Order, customer: Customer) {
+    to: customer.email
+    subject: "Order #" + order.orderNumber + " Confirmed"
+    template: "emails/order-confirmation.html"
+    from: "orders@shopsphere.io"       // Optional sender override
+}
+
+model Order {
+    id: UUID @id @auto
+    orderNumber: String @unique
+    totalAmount: Decimal
+
+    relations {
+        customer: Customer @relation(manyToOne)
+    }
+
+    endpoints {
+        post "/checkout" -> OrderResponse {
+            auth: true
+            action: {
+                status = OrderStatus.CONFIRMED
+                // 2. Dispatch email asynchronously
+                send OrderConfirmation(order = entity, customer = entity.customer)
+            }
+        }
+    }
+}
+```
+
+- **Asynchronous Execution (`@Async`)**: Email dispatch never blocks the HTTP request thread or degrades API response times.
+- **Thymeleaf Template Engine**: Automatically generates starter responsive HTML email templates under `src/main/resources/templates/emails/` with expression placeholders bound to contract parameters (`th:text="${order.orderNumber}"`).
+- **Local Console Mode (`mail: console`)**: In local development, dispatched emails are logged directly to the console with complete headers, recipient address, and formatted HTML preview without requiring remote SMTP server credentials.
+- **Enterprise Spring Boot Setup**: Automatically configures `spring-boot-starter-mail`, `spring-boot-starter-thymeleaf`, `EmailService.java`, and `application.yml` mail properties bound to environment variables.
+
+### 12. Automated Unit & Integration Tests Generation
 
 Zenith completely eliminates manual test boilerplate by synthesizing complete **JUnit 5**, **Spring Boot Test**, and **MockMvc** test suites directly from your schema AST:
 

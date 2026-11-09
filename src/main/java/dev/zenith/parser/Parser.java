@@ -13,7 +13,7 @@ public class Parser {
 
     private static final Set<String> ALLOWED_CONFIG_KEYS = Set.of(
             "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket",
-            "usermodel", "jwtsecret", "jwtexpiration"
+            "usermodel", "jwtsecret", "jwtexpiration", "ratelimit", "mail", "mailprovider", "mailfrom"
     );
 
     public Parser(List<Token> tokens) {
@@ -33,6 +33,7 @@ public class Parser {
         List<SeedDef> seeds = new ArrayList<>();
         List<ImportDef> imports = new ArrayList<>();
         List<JobDef> jobs = new ArrayList<>();
+        List<MailDef> mails = new ArrayList<>();
         while (!isAtEnd()) {
             Token tok = peek();
             if (tok.getType() == TokenType.CONFIG) {
@@ -52,12 +53,13 @@ public class Parser {
                 dtos.add(parseDto());
             } else if (tok.getType() == TokenType.SEED) {
                 seeds.add(parseSeed());
-
             } else if (tok.getType() == TokenType.JOB) {
                 jobs.add(parseJob());
+            } else if (tok.getType() == TokenType.MAIL) {
+                mails.add(parseMail());
             } else {
                 throw error(tok,
-                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', or 'job' but found '"
+                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', 'job', or 'mail' but found '"
                                 + tok.getValue()
                                 + "'");
             }
@@ -68,7 +70,7 @@ public class Parser {
             config = AppConfig.defaults();
         }
 
-        return new ZenithFile(config, enums, models, dtos, seeds, jobs, imports, explicitConfig);
+        return new ZenithFile(config, enums, models, dtos, seeds, jobs, mails, imports, explicitConfig);
     }
 
     private JobDef parseJob() {
@@ -91,7 +93,7 @@ public class Parser {
                 cron = consume(TokenType.STRING_LITERAL, "Expected cron expression string").getValue();
             } else if (key.getType() == TokenType.ACTION) {
                 advance();
-                consume(TokenType.COLON, "Expected ':' after 'action'");
+                match(TokenType.COLON); // optional ':'
                 consume(TokenType.LBRACE, "Expected '{' to start action block");
                 while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
                     String a = parseActionStatement();
@@ -165,6 +167,66 @@ public class Parser {
         job.setSourceFile(sourceFile);
         job.setSourceLine(nameTok.getLine());
         return job;
+    }
+
+    private MailDef parseMail() {
+        Token mailTok = consume(TokenType.MAIL, "Expected 'mail'");
+        Token nameTok = consume(TokenType.IDENTIFIER, "Expected mail contract name after 'mail'");
+        List<FieldDef> parameters = new ArrayList<>();
+        if (match(TokenType.LPAREN)) {
+            while (!isAtEnd() && peek().getType() != TokenType.RBRACE && peek().getType() != TokenType.RPAREN) {
+                Token pName = consume(TokenType.IDENTIFIER, "Expected parameter name in mail contract");
+                consume(TokenType.COLON, "Expected ':' after parameter name");
+                TypeRef pType = parseTypeRef();
+                parameters.add(new FieldDef(pName.getValue(), pType, false, Collections.emptyList(), null));
+                match(TokenType.COMMA);
+            }
+            consume(TokenType.RPAREN, "Expected ')' closing mail parameters");
+        }
+
+        consume(TokenType.LBRACE, "Expected '{' to start mail block");
+        String toExpr = "";
+        String subjectExpr = "";
+        String templatePath = "";
+        String fromOverride = null;
+
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+            Token keyTok = consume(TokenType.IDENTIFIER, "Expected mail property ('to', 'subject', 'template', 'from')");
+            consume(TokenType.COLON, "Expected ':' after mail property");
+            String k = keyTok.getValue().toLowerCase();
+            int line = keyTok.getLine();
+            if ("to".equals(k)) {
+                StringBuilder sb = new StringBuilder();
+                while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == line) {
+                    sb.append(advance().getValue());
+                }
+                toExpr = sb.toString().trim();
+            } else if ("subject".equals(k)) {
+                StringBuilder sb = new StringBuilder();
+                while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == line) {
+                    Token t = advance();
+                    if (t.getType() == TokenType.STRING_LITERAL) {
+                        sb.append("\"").append(t.getValue()).append("\"");
+                    } else {
+                        sb.append(t.getValue());
+                    }
+                }
+                subjectExpr = sb.toString().trim();
+            } else if ("template".equals(k)) {
+                templatePath = consume(TokenType.STRING_LITERAL, "Expected template file path string").getValue();
+            } else if ("from".equals(k)) {
+                fromOverride = consume(TokenType.STRING_LITERAL, "Expected sender email string").getValue();
+            } else {
+                parseLiteralOrIdentifier();
+            }
+            match(TokenType.COMMA);
+        }
+        consume(TokenType.RBRACE, "Expected '}' closing mail block");
+
+        MailDef mailDef = new MailDef(nameTok.getValue(), parameters, toExpr, subjectExpr, templatePath, fromOverride);
+        mailDef.setSourceFile(sourceFile);
+        mailDef.setSourceLine(mailTok.getLine());
+        return mailDef;
     }
 
     private ImportDef parseImport() {
@@ -295,7 +357,7 @@ public class Parser {
 
             if (!ALLOWED_CONFIG_KEYS.contains(keyLower)) {
                 throw error(keyToken, "Invalid configuration key '" + key + "'. Supported configuration keys are: "
-                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration.");
+                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration, rateLimit, mail, mailProvider, mailFrom.");
             }
 
             boolean isDuplicate = props.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(key));
@@ -358,6 +420,17 @@ public class Parser {
                 } else if ("jwtsecret".equals(keyLower)) {
                     if (valStr.isEmpty()) {
                         throw error(keyToken, "jwtSecret cannot be empty");
+                    }
+                } else if ("ratelimit".equals(keyLower)) {
+                    try {
+                        RateLimitSpec.parse(valStr);
+                    } catch (IllegalArgumentException iae) {
+                        throw error(keyToken, iae.getMessage());
+                    }
+                } else if ("mail".equals(keyLower) || "mailprovider".equals(keyLower)) {
+                    String p = valStr.toLowerCase();
+                    if (!p.equals("smtp") && !p.equals("sendgrid") && !p.equals("ses") && !p.equals("console")) {
+                        throw error(keyToken, "Invalid mail provider '" + valStr + "'. Supported options: smtp, sendgrid, ses, console.");
                     }
                 }
             }
@@ -679,10 +752,25 @@ public class Parser {
         CrudConfig crudConfig = null;
         while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
             Token cur = peek();
+            RateLimitSpec endpointDecoratorLimit = null;
+            if (cur.getType() == TokenType.AT && peekNext().getType() == TokenType.IDENTIFIER
+                    && ("ratelimit".equalsIgnoreCase(peekNext().getValue()) || "rate_limit".equalsIgnoreCase(peekNext().getValue()))) {
+                AnnotationDef ann = parseAnnotation();
+                endpointDecoratorLimit = parseRateLimitAnnotation(ann);
+                cur = peek();
+            }
+
             if (cur.getType() == TokenType.CRUD) {
                 crudConfig = parseCrudBlock();
+                if (endpointDecoratorLimit != null && crudConfig != null && crudConfig.getRateLimit() == null) {
+                    crudConfig.setRateLimit(endpointDecoratorLimit);
+                }
             } else if (isHttpMethod(cur.getType())) {
-                customEndpoints.add(parseCustomEndpoint());
+                CustomEndpointDef cep = parseCustomEndpoint();
+                if (endpointDecoratorLimit != null && cep.getRateLimit() == null) {
+                    cep.setRateLimit(endpointDecoratorLimit);
+                }
+                customEndpoints.add(cep);
             } else {
                 throw error(cur,
                         "Expected HTTP method ('get', 'post', 'put', 'delete', 'patch') or 'crud' in endpoints");
@@ -703,6 +791,7 @@ public class Parser {
         Boolean requiresAuth = null;
         List<String> defaultRoles = new ArrayList<>();
         Map<String, List<String>> operationRoles = new LinkedHashMap<>();
+        RateLimitSpec rateLimit = null;
 
         if (match(TokenType.LBRACE)) {
             while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
@@ -758,6 +847,13 @@ public class Parser {
                     operationRoles.put("update", parseRoleListOrSingle());
                 } else if ("delete".equals(k)) {
                     operationRoles.put("delete", parseRoleListOrSingle());
+                } else if ("ratelimit".equals(k)) {
+                    String specStr = parseRateLimitString(key);
+                    try {
+                        rateLimit = RateLimitSpec.parse(specStr);
+                    } catch (IllegalArgumentException iae) {
+                        throw error(key, iae.getMessage());
+                    }
                 } else {
                     parseLiteralOrIdentifier(); // skip unknown
                 }
@@ -768,10 +864,60 @@ public class Parser {
         }
 
         CrudConfig crud = new CrudConfig(enabled, paginate, search, filter, sort, requiresAuth, defaultRoles,
-                operationRoles);
+                operationRoles, rateLimit);
         crud.setSourceFile(sourceFile);
         crud.setSourceLine(crudTok.getLine());
         return crud;
+    }
+
+    private String parseRateLimitString(Token keyToken) {
+        if (peek().getType() == TokenType.STRING_LITERAL) {
+            return advance().getValue();
+        }
+        // Handle unquoted e.g. 10/minute or 5 / second
+        int keyLine = keyToken.getLine();
+        StringBuilder sb = new StringBuilder();
+        while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == keyLine) {
+            sb.append(advance().getValue());
+        }
+        return sb.toString().trim();
+    }
+
+    private RateLimitSpec parseRateLimitAnnotation(AnnotationDef ann) {
+        // Formats:
+        // @rateLimit("10/minute") or @rateLimit(requests = 10, per = "1m") or @rateLimit(10, "1m")
+        Map<String, Object> args = ann.getArguments();
+        if (args.isEmpty()) {
+            throw new ParseException("@rateLimit decorator requires arguments, e.g. @rateLimit(\"10/minute\") or @rateLimit(10, \"1m\")",
+                    ann.getSourceLine(), 1, sourceFile);
+        }
+        if (args.containsKey("0") && args.get("0") instanceof String && ((String) args.get("0")).contains("/")) {
+            return RateLimitSpec.parse(args.get("0").toString());
+        }
+        Object reqObj = args.get("requests") != null ? args.get("requests")
+                : (args.get("capacity") != null ? args.get("capacity") : args.get("0"));
+        Object perObj = args.get("per") != null ? args.get("per")
+                : (args.get("duration") != null ? args.get("duration") : args.get("1"));
+        if (reqObj != null && perObj != null) {
+            int cap;
+            try {
+                cap = Integer.parseInt(reqObj.toString().trim());
+            } catch (NumberFormatException nfe) {
+                throw new ParseException("Rate limit requests/capacity must be an integer, found: '" + reqObj + "'",
+                        ann.getSourceLine(), 1, sourceFile);
+            }
+            if (cap <= 0) {
+                throw new ParseException("Rate limit requests/capacity must be greater than zero, found: " + cap,
+                        ann.getSourceLine(), 1, sourceFile);
+            }
+            String pStr = perObj.toString().trim().replace("\"", "").replace("'", "");
+            return RateLimitSpec.of(cap, pStr);
+        }
+        if (args.containsKey("0")) {
+            return RateLimitSpec.parse(args.get("0").toString());
+        }
+        throw new ParseException("Invalid @rateLimit declaration. Expected format: @rateLimit(\"10/minute\") or @rateLimit(requests = 10, per = \"1m\")",
+                ann.getSourceLine(), 1, sourceFile);
     }
 
     private List<String> parseRoleListOrSingle() {
@@ -857,9 +1003,11 @@ public class Parser {
         Boolean requiresAuth = null;
         Boolean userScoped = null;
         String query = null;
+        RateLimitSpec rateLimit = null;
         Map<String, String> paramTypes = new LinkedHashMap<>();
         List<GuardDef> guards = new ArrayList<>();
         List<String> actions = new ArrayList<>();
+        List<String> roles = new ArrayList<>();
 
         if (match(TokenType.LBRACE)) {
             while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
@@ -898,7 +1046,7 @@ public class Parser {
                     guards.add(new GuardDef(expr.toString().trim(), errMessage));
                 } else if (key.getType() == TokenType.ACTION) {
                     advance(); // action
-                    consume(TokenType.COLON, "Expected ':' after 'action'");
+                    match(TokenType.COLON); // ':' is optional: 'action {' or 'action: {'
                     consume(TokenType.LBRACE, "Expected '{' to start action block");
                     while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
                         String a = parseActionStatement();
@@ -922,6 +1070,7 @@ public class Parser {
                     } else if ("auth".equalsIgnoreCase(k)) {
                         if (peek().getType() == TokenType.LBRACKET) {
                             List<String> rList = parseRoleListOrSingle();
+                            roles.addAll(rList);
                             String joined = String.join(", ", rList);
                             guards.add(new GuardDef("role in [" + joined + "]",
                                     "Access denied: required role in [" + joined + "]"));
@@ -933,6 +1082,15 @@ public class Parser {
                         requiresAuth = !parseBoolean();
                     } else if ("role".equalsIgnoreCase(k) || "roles".equalsIgnoreCase(k)) {
                         List<String> rList = parseRoleListOrSingle();
+                        for (String rItem : rList) {
+                            if ("public".equalsIgnoreCase(rItem)) {
+                                throw error(idTok, "Invalid role 'public' in endpoint 'roles'. For unauthenticated public access, use 'auth: false'.");
+                            }
+                            if ("authenticated".equalsIgnoreCase(rItem) || "auth".equalsIgnoreCase(rItem)) {
+                                throw error(idTok, "Invalid role '" + rItem + "' in endpoint 'roles'. To require an authenticated user, use 'auth: true'.");
+                            }
+                        }
+                        roles.addAll(rList);
                         String joined = String.join(", ", rList);
                         guards.add(new GuardDef("role in [" + joined + "]",
                                 "Access denied: required role in [" + joined + "]"));
@@ -971,6 +1129,13 @@ public class Parser {
                             qSb.append(advance().getValue()).append(" ");
                         }
                         query = qSb.toString().trim();
+                    } else if ("ratelimit".equalsIgnoreCase(k)) {
+                        String specStr = parseRateLimitString(idTok);
+                        try {
+                            rateLimit = RateLimitSpec.parse(specStr);
+                        } catch (IllegalArgumentException iae) {
+                            throw error(idTok, iae.getMessage());
+                        }
                     } else {
                         parseLiteralOrIdentifier();
                     }
@@ -984,7 +1149,7 @@ public class Parser {
 
         CustomEndpointDef cep = new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards,
                 actions, requiresAuth,
-                userScoped, query, paramTypes, bodyType);
+                userScoped, query, paramTypes, bodyType, rateLimit, roles);
         cep.setSourceFile(sourceFile);
         cep.setSourceLine(methodTok.getLine());
         return cep;
@@ -1231,7 +1396,8 @@ public class Parser {
             advance();
             return false;
         } else if (tok.getType() == TokenType.IDENTIFIER || tok.getType() == TokenType.AUTH
-                || tok.getType() == TokenType.PUBLIC || tok.getType() == TokenType.CRUD) {
+                || tok.getType() == TokenType.PUBLIC || tok.getType() == TokenType.CRUD
+                || tok.getType() == TokenType.MAIL || tok.getType() == TokenType.SEND) {
             advance();
             return tok.getValue();
         } else if (tok.getType() == TokenType.LBRACKET) {
@@ -1262,7 +1428,7 @@ public class Parser {
     private Token consumeKeyName() {
         Token t = peek();
         if (t.getType() == TokenType.IDENTIFIER || t.getType() == TokenType.AUTH || t.getType() == TokenType.PUBLIC
-                || t.getType() == TokenType.CRUD) {
+                || t.getType() == TokenType.CRUD || t.getType() == TokenType.MAIL || t.getType() == TokenType.SEND) {
             return advance();
         }
         throw error(t, "Expected key name, but got '" + t.getValue() + "' (" + t.getType() + ")");

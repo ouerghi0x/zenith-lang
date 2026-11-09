@@ -15,6 +15,7 @@ public class CrudConfig {
     private final Boolean requiresAuth; // null = default convention, true = authenticated, false = public
     private final List<String> defaultRoles; // default roles for all operations in this crud block
     private final Map<String, List<String>> operationRoles; // granular roles e.g. "delete" -> ["ADMIN"], "getAll" -> ["public"]
+    private RateLimitSpec rateLimit; // optional rate limit for crud routes
     private String sourceFile;
     private int sourceLine;
 
@@ -36,7 +37,7 @@ public class CrudConfig {
 
     public CrudConfig(boolean enabled, boolean paginate, List<String> searchFields, List<String> filterFields,
                       List<String> sortFields, Boolean requiresAuth, List<String> defaultRoles,
-                      Map<String, List<String>> operationRoles) {
+                      Map<String, List<String>> operationRoles, RateLimitSpec rateLimit) {
         this.enabled = enabled;
         this.paginate = paginate;
         this.searchFields = searchFields != null ? searchFields : new ArrayList<>();
@@ -45,6 +46,13 @@ public class CrudConfig {
         this.requiresAuth = requiresAuth;
         this.defaultRoles = defaultRoles != null ? defaultRoles : new ArrayList<>();
         this.operationRoles = operationRoles != null ? operationRoles : new LinkedHashMap<>();
+        this.rateLimit = rateLimit;
+    }
+
+    public CrudConfig(boolean enabled, boolean paginate, List<String> searchFields, List<String> filterFields,
+                      List<String> sortFields, Boolean requiresAuth, List<String> defaultRoles,
+                      Map<String, List<String>> operationRoles) {
+        this(enabled, paginate, searchFields, filterFields, sortFields, requiresAuth, defaultRoles, operationRoles, null);
     }
 
     public CrudConfig(boolean enabled, boolean paginate, List<String> searchFields, List<String> filterFields, List<String> sortFields, Boolean requiresAuth) {
@@ -109,5 +117,17 @@ public class CrudConfig {
             return true;
         }
         return false;
+    }
+
+    public RateLimitSpec getRateLimit() {
+        return rateLimit;
+    }
+
+    public void setRateLimit(RateLimitSpec rateLimit) {
+        this.rateLimit = rateLimit;
+    }
+
+    public boolean hasRateLimit() {
+        return rateLimit != null;
     }
 }

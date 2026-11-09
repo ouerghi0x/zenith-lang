@@ -61,5 +61,5 @@ public enum TokenType {
     STAR, // *
 
     // Special
-    EOF, BODY, JOB, CRON
+    EOF, BODY, JOB, CRON, MAIL, SEND
 }

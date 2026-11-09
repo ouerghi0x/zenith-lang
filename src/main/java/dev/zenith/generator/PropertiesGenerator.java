@@ -132,6 +132,27 @@ public class PropertiesGenerator {
             }
         }
 
+        if (file.hasMails()) {
+            String provider = file.getConfig().getMailProvider();
+            String mailFrom = file.getConfig().getMailFrom();
+            sb.append("\nspring:\n");
+            sb.append("  mail:\n");
+            sb.append("    host: ${SPRING_MAIL_HOST:localhost}\n");
+            sb.append("    port: ${SPRING_MAIL_PORT:587}\n");
+            sb.append("    username: ${SPRING_MAIL_USERNAME:}\n");
+            sb.append("    password: ${SPRING_MAIL_PASSWORD:}\n");
+            sb.append("    from: ${SPRING_MAIL_FROM:").append(mailFrom).append("}\n");
+            sb.append("    properties:\n");
+            sb.append("      mail:\n");
+            sb.append("        smtp:\n");
+            sb.append("          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}\n");
+            sb.append("          starttls:\n");
+            sb.append("            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}\n");
+            sb.append("zenith:\n");
+            sb.append("  mail:\n");
+            sb.append("    provider: ${ZENITH_MAIL_PROVIDER:").append(provider).append("}\n");
+        }
+
         return new JavaSourceFile("src/main/resources/application.yml", sb.toString());
     }
 }
