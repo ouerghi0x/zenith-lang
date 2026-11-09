@@ -175,12 +175,12 @@ public class ZenithStudioServer {
 
                 ZenithFile ast;
                 if (activeFilePath.equals(schemaPath.toAbsolutePath().normalize())) {
-                    ast = resolver.resolveSource(source, baseDir);
+                    ast = resolver.resolveSource(source, activeFilePath);
                 } else {
                     if (Files.exists(schemaPath)) {
                         ast = resolver.resolve(schemaPath);
                     } else {
-                        ast = resolver.resolveSource(source, baseDir);
+                        ast = resolver.resolveSource(source, activeFilePath);
                     }
                 }
 

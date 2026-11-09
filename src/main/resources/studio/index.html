@@ -515,14 +515,14 @@
               <tr>
                 <td><code>jwtSecret</code></td>
                 <td><code>String</code></td>
-                <td><code>"404E63...Y70"</code></td>
-                <td>Custom HMAC-SHA256 signing secret (min 32 chars / 256 bits). Injected via <code>@Value("${jwt.secret}")</code> with runtime override via <code>${JWT_SECRET:...}</code>.</td>
+                <td>Auto-derived (256-bit)</td>
+                <td><strong>Optional.</strong> Omit entirely for automatic SHA-256 256-bit key derivation from your app name, pass a clean passphrase (e.g. <code>"shopsphere-secret"</code>, auto-stretched to 256 bits), or pass a full 64-char hex key. Runtime override via <code>${JWT_SECRET:...}</code>.</td>
               </tr>
               <tr>
                 <td><code>jwtExpiration</code></td>
-                <td><code>Long</code></td>
-                <td><code>86400000</code></td>
-                <td>JWT token validity in milliseconds (default: 24h). Injected via <code>@Value("${jwt.expiration}")</code> with runtime override via <code>${JWT_EXPIRATION_MS:...}</code>.</td>
+                <td><code>Duration</code> | <code>Long</code></td>
+                <td><code>24h</code> (<code>86400000</code>)</td>
+                <td><strong>Optional.</strong> Supports human-readable durations (<code>30s</code>, <code>15m</code>, <code>24h</code>, <code>7d</code>) or raw milliseconds (<code>86400000</code>). Runtime override via <code>${JWT_EXPIRATION_MS:...}</code>.</td>
               </tr>
               <tr>
                 <td><code>swagger</code></td>
@@ -726,6 +726,16 @@
                 <td>Adds unique constraint in database and generates <code>findBy&lt;Field&gt;</code> in repository.</td>
               </tr>
               <tr>
+                <td><code>@index</code></td>
+                <td>Field or Model</td>
+                <td>Creates a secondary B-tree database index on a single field (<code>email: String @index</code>) or composite model fields (<code>@index([customer, status], name = "idx_custom")</code>). Emits both Flyway SQL <code>CREATE INDEX</code> DDL and JPA <code>@Table(indexes = { @Index(...) })</code>.</td>
+              </tr>
+              <tr>
+                <td><code>@uniqueIndex</code></td>
+                <td>Field or Model</td>
+                <td>Creates a unique secondary or composite index (<code>@uniqueIndex([orderNumber, customer])</code>). Emits <code>CREATE UNIQUE INDEX</code> in Flyway DDL and <code>@Index(..., unique = true)</code> in JPA.</td>
+              </tr>
+              <tr>
                 <td><code>@password</code></td>
                 <td><code>String</code></td>
                 <td>Automatically enforces <code>@NotBlank</code> and <code>@Size(min = 8, max = 100)</code> on the <code>Create&lt;Model&gt;Request</code> DTO, hashes with BCrypt on registration/seeding, and masks from API responses (<code>@JsonIgnore</code>).</td>
@@ -787,6 +797,40 @@
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Single-Column &amp; Composite Database Indexes (<code>@index</code>, <code>@uniqueIndex</code>)</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">Eliminate full table scans on high-cardinality filter columns, foreign keys, and multi-column lookups. Zenith supports inline single-column indexes and model-level composite indexes, compiling them into both Flyway DDL and JPA <code>@Table(indexes = ...)</code> annotations with automatic 63-character identifier truncation and reserved SQL keyword quoting:</p>
+        <pre class="guide-code"><code>model Order {
+    id: UUID @id @auto
+    orderNumber: String(length = 32) @unique
+    status: OrderStatus = PENDING @index             // 1. Inline single-column index
+    totalAmount: Decimal(precision = 12, scale = 2)
+    createdAt: DateTime @autoNow
+
+    relations {
+        customer: Customer @relation(manyToOne)
+    }
+
+    // 2. Model-level composite index (resolves relation 'customer' -> 'customer_id')
+    @index([customer, status])
+
+    // 3. Composite index with explicit custom name
+    @index([status, createdAt], name = "idx_orders_status_timeline")
+
+    // 4. Composite unique index across multiple columns
+    @uniqueIndex([orderNumber, customer])
+}
+
+// Emitted JPA Entity Annotation:
+// @Table(name = "orders", indexes = {
+//     @Index(name = "idx_orders_status", columnList = "status"),
+//     @Index(name = "idx_orders_customer_id_status", columnList = "customer_id, status"),
+//     @Index(name = "idx_orders_status_timeline", columnList = "status, created_at"),
+//     @Index(name = "uidx_orders_order_number_customer_id", columnList = "order_number, customer_id", unique = true)
+// })</code></pre>
+        <div style="margin: 10px 0 14px; padding: 10px 14px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-left: 3px solid #38bdf8; border-radius: 6px; font-size: 12px; color: #e2e8f0;">
+          <strong style="color: #38bdf8;">💡 Placement Tip &amp; Best Practice:</strong> Place model-level composite indexes (<code>@index([...])</code> and <code>@uniqueIndex([...])</code>) <strong>below the <code>relations { ... }</code> block</strong> (or right before <code>endpoints { ... }</code>). Because composite indexes frequently reference foreign-key relations (such as <code>customer</code> in <code>@index([customer, status])</code>), declaring them after <code>relations</code> keeps your schema logical and avoids any ambiguity with inline field decorators on the preceding field line.
         </div>
 
         <!-- 4. Enums & Security -->
@@ -1076,6 +1120,11 @@ model Task {
             </thead>
             <tbody>
               <tr>
+                <td>Action Variable Binding</td>
+                <td><code>var item = create Item { ... }</code><br><code>var target = update Model { ... }</code></td>
+                <td>Binds persisted entity returned from <code>repository.save()</code> to a typed local variable in Java, enabling multi-entity chaining, ID capture, and transactional property propagation.</td>
+              </tr>
+              <tr>
                 <td>Primary Entity Mutation</td>
                 <td><code>status = TaskStatus.DONE</code></td>
                 <td><code>entity.setStatus(TaskStatus.DONE);</code> followed by <code>repository.save(entity);</code></td>
@@ -1108,6 +1157,33 @@ model Task {
             </tbody>
           </table>
         </div>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Action Variable Binding (Multi-Entity Chaining)</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">Capture database-generated IDs, timestamps, and relations by binding <code>create</code> or <code>update</code> expressions to locally scoped variables with <code>var</code>:</p>
+        <pre class="guide-code"><code>// Example: Checkout workflow capturing generated invoice and shipment
+post "/checkout" -> OrderSummaryResponse {
+    auth: true
+    action: {
+        // 1. Create invoice and bind to variable 'inv'
+        var inv = create Invoice {
+            orderNumber = "ORD-" + randomUUID(),
+            totalAmount = body.totalAmount,
+            status = InvoiceStatus.PAID
+        }
+
+        // 2. Reference inv.id and inv.totalAmount in subsequent creation
+        var ship = create Shipment {
+            invoiceId = inv.id,
+            trackingNumber = "TRK-" + randomUUID(),
+            status = ShipmentStatus.PENDING
+        }
+
+        // 3. Update primary entity with invoice & shipment metadata
+        status = OrderStatus.FULFILLED
+        invoiceNumber = inv.orderNumber
+        trackingId = ship.id
+    }
+}</code></pre>
 
         <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">How to Use <code>update</code> for Secondary Entities</h4>
         <p style="font-size: 12px; margin-bottom: 8px;">When executing an action on a primary model (e.g. completing a <code>Task</code> or fulfilling an <code>Order</code>), you frequently need to mutate a secondary model (e.g. updating parent <code>Project</code> counters, decrementing <code>Product</code> inventory, or adjusting account balances). The <code>update Model { ... }</code> block handles this declaratively with automatic repository injection and null-safe persistence:</p>

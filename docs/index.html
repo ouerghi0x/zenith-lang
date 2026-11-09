@@ -285,15 +285,15 @@ zenith studio schema.zen --desktop</code></pre>
             </tr>
             <tr>
               <td><code>jwtSecret</code></td>
-              <td>String</td>
-              <td>Auto default</td>
-              <td>Custom HMAC-SHA256 secret (min 32 chars). Supports <code>${JWT_SECRET:...}</code> env var override.</td>
+              <td>String (Optional)</td>
+              <td>Auto-derived (256-bit)</td>
+              <td>Omit for automatic 256-bit key derivation, pass a short passphrase (e.g. <code>"my-secret"</code>, auto-stretched via SHA-256), or provide an explicit 64-char hex key. Supports <code>${JWT_SECRET:...}</code> env override.</td>
             </tr>
             <tr>
               <td><code>jwtExpiration</code></td>
-              <td>Long</td>
-              <td><code>86400000</code></td>
-              <td>Token TTL in milliseconds (default: 24h). Supports <code>${JWT_EXPIRATION_MS:...}</code> env var override.</td>
+              <td>Duration | Long (Optional)</td>
+              <td><code>24h</code> (<code>86400000</code>)</td>
+              <td>Token TTL using duration units (<code>30s</code>, <code>15m</code>, <code>24h</code>, <code>7d</code>) or raw milliseconds. Supports <code>${JWT_EXPIRATION_MS:...}</code> env override.</td>
             </tr>
             <tr>
               <td><code>storage</code></td>
@@ -329,8 +329,10 @@ zenith studio schema.zen --desktop</code></pre>
     <span class="syn-prop">port</span>: <span class="syn-num">8080</span>
     <span class="syn-prop">database</span>: <span class="syn-str">postgres</span>
     <span class="syn-prop">auth</span>: <span class="syn-str">jwt</span>
-    <span class="syn-prop">jwtSecret</span>: <span class="syn-str">"404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"</span>
-    <span class="syn-prop">jwtExpiration</span>: <span class="syn-num">86400000</span>
+    <span class="syn-com">// Option 2 (Clean): Use a simple passphrase + duration unit (or omit both for auto 256-bit key &amp; 24h default)</span>
+    <span class="syn-prop">jwtSecret</span>: <span class="syn-str">"nexus-commerce-secret"</span>
+    <span class="syn-prop">jwtExpiration</span>: <span class="syn-num">24h</span>
+    <span class="syn-com">// Option 1 (Explicit): Full 64-char hex secret + raw milliseconds is also supported</span>
     <span class="syn-prop">storage</span>: <span class="syn-str">minio</span>
     <span class="syn-prop">flyway</span>: <span class="syn-kw">true</span>
     <span class="syn-prop">swagger</span>: <span class="syn-kw">true</span>
@@ -461,6 +463,16 @@ zenith studio schema.zen --desktop</code></pre>
               <td>Adds unique database constraint and derived query <code>findBy[Field]</code>.</td>
             </tr>
             <tr>
+              <td><code>@index</code></td>
+              <td><code>[fields], name, unique</code></td>
+              <td>Declares single-column (field-level) or composite (model-level) database index in Flyway SQL and JPA <code>@Table(indexes = ...)</code>.</td>
+            </tr>
+            <tr>
+              <td><code>@uniqueIndex</code></td>
+              <td><code>[fields], name</code></td>
+              <td>Declares a unique single-column or composite index (<code>CREATE UNIQUE INDEX</code> &amp; <code>@Index(unique = true)</code>).</td>
+            </tr>
+            <tr>
               <td><code>@email</code></td>
               <td>—</td>
               <td>Enforces valid email format with Jakarta <code>@Email</code>.</td>
@@ -512,6 +524,40 @@ zenith studio schema.zen --desktop</code></pre>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">database_indexes.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">model</span> <span class="syn-type">Order</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">orderNumber</span>: <span class="syn-type">String</span>(<span class="syn-prop">length</span> = <span class="syn-num">32</span>) <span class="syn-ann">@unique</span>
+    <span class="syn-prop">status</span>: <span class="syn-type">OrderStatus</span> = PENDING <span class="syn-ann">@index</span>          <span class="syn-com">// 1. Inline single-column index</span>
+    <span class="syn-prop">totalAmount</span>: <span class="syn-type">Decimal</span>(<span class="syn-prop">precision</span> = <span class="syn-num">12</span>, <span class="syn-prop">scale</span> = <span class="syn-num">2</span>)
+    <span class="syn-prop">createdAt</span>: <span class="syn-type">DateTime</span> <span class="syn-ann">@autoNow</span>
+
+    <span class="syn-kw">relations</span> {
+        <span class="syn-prop">customer</span>: <span class="syn-type">Customer</span> <span class="syn-ann">@relation</span>(manyToOne)
+    }
+
+    <span class="syn-com">// 2. Composite index on foreign key + status</span>
+    <span class="syn-ann">@index</span>([customer, status])
+
+    <span class="syn-com">// 3. Composite index with explicit custom name</span>
+    <span class="syn-ann">@index</span>([status, createdAt], <span class="syn-prop">name</span> = <span class="syn-str">"idx_orders_status_timeline"</span>)
+
+    <span class="syn-com">// 4. Composite unique index</span>
+    <span class="syn-ann">@uniqueIndex</span>([orderNumber, customer])
+}</code></pre>
+      </div>
+
+      <div class="tip-card">
+        <div class="tip-title">💡 Placement Tip: Put Composite Indexes Below <code>relations { ... }</code></div>
+        <p>
+          Always declare model-level composite indexes (<code>@index([...])</code> and <code>@uniqueIndex([...])</code>) <strong>after your <code>relations { ... }</code> block</strong> (and before <code>endpoints { ... }</code>). Because composite indexes often include foreign-key relations like <code>customer</code> (which resolves to <code>customer_id</code>), placing them below <code>relations</code> ensures all referenced relations are declared first and clearly separates model-level indexes from inline field decorators.
+        </p>
       </div>
 
       <!-- 4. Enums -->
@@ -691,7 +737,7 @@ zenith studio schema.zen --desktop</code></pre>
       <!-- 8. Actions -->
       <h2 class="section-heading" id="actions">8. Domain Actions &amp; Guards</h2>
       <p>
-        The <code>action: { ... }</code> block handles multi-entity mutations, automated audit logging, customer notifications, and conditional guards directly in your schema.
+        The <code>action: { ... }</code> block handles multi-entity mutations, automated audit logging, customer notifications, conditional guards, and <strong>Action Variable Binding</strong> (capturing database-generated IDs, timestamps, and relations with <code>var</code>) directly in your schema.
       </p>
 
       <div class="code-block-wrap">
@@ -709,16 +755,24 @@ zenith studio schema.zen --desktop</code></pre>
         <span class="syn-com">// 2. State mutation on primary entity</span>
         status = OrderStatus.PAID
 
-        <span class="syn-com">// 3. Instantiate secondary audit log entity</span>
-        <span class="syn-syn-fn">create</span> <span class="syn-type">AuditLog</span> {
+        <span class="syn-com">// 3. Action Variable Binding: create and capture invoice</span>
+        <span class="syn-kw">var</span> invoice = <span class="syn-syn-fn">create</span> <span class="syn-type">Invoice</span> {
+            <span class="syn-prop">orderNumber</span> = entity.orderNumber,
+            <span class="syn-prop">amount</span> = entity.totalAmount,
+            <span class="syn-prop">status</span> = InvoiceStatus.PAID
+        }
+
+        <span class="syn-com">// 4. Instantiate secondary audit log entity referencing bound variable</span>
+        <span class="syn-kw">var</span> audit = <span class="syn-syn-fn">create</span> <span class="syn-type">AuditLog</span> {
             <span class="syn-prop">action</span> = <span class="syn-str">"ORDER_PAYMENT_PROCESSED"</span>,
+            <span class="syn-prop">invoiceId</span> = invoice.id,
             <span class="syn-prop">details</span> = <span class="syn-str">"Order "</span> + entity.orderNumber + <span class="syn-str">" marked PAID by "</span> + currentUser.email
         }
 
-        <span class="syn-com">// 4. Dispatch notification to customer</span>
+        <span class="syn-com">// 5. Dispatch notification to customer</span>
         <span class="syn-syn-fn">notify</span>(entity.customer.email, <span class="syn-str">"Your payment for order "</span> + entity.orderNumber + <span class="syn-str">" succeeded!"</span>)
 
-        <span class="syn-com">// 5. Return explicit DTO</span>
+        <span class="syn-com">// 6. Return explicit DTO</span>
         <span class="syn-kw">return</span> <span class="syn-type">OrderSummaryResponse</span> {
             <span class="syn-prop">orderNumber</span> = entity.orderNumber,
             <span class="syn-prop">totalAmount</span> = entity.totalAmount,
@@ -727,6 +781,13 @@ zenith studio schema.zen --desktop</code></pre>
         }
     }
 }</code></pre>
+      </div>
+
+      <div class="tip-card">
+        <div class="tip-title">⚡ Action Variable Binding (<code>var x = create / update</code>)</div>
+        <p>
+          Zenith compiles <code>var &lt;name&gt; = create &lt;Model&gt; { ... }</code> and <code>var &lt;name&gt; = update &lt;Model&gt; { ... }</code> into strongly-typed local variable assignments in Java. The returned entity from <code>repository.save()</code> is captured, enabling you to access database-generated primary keys (<code>id</code>), timestamps (<code>createdAt</code>), and relationship fields in downstream statements within the same atomic <code>@Transactional</code> boundary.
+        </p>
       </div>
 
       <!-- 9. DTO -->

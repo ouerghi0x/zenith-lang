@@ -10,15 +10,55 @@ public class ModelDef {
     private final List<RelationDef> relations;
     private final CrudConfig crudConfig;
     private final List<CustomEndpointDef> customEndpoints;
+    private final List<IndexDef> indexes;
     private String sourceFile;
     private int sourceLine;
 
     public ModelDef(String name, List<FieldDef> fields, List<RelationDef> relations, CrudConfig crudConfig, List<CustomEndpointDef> customEndpoints) {
+        this(name, fields, relations, crudConfig, customEndpoints, null);
+    }
+
+    public ModelDef(String name, List<FieldDef> fields, List<RelationDef> relations, CrudConfig crudConfig,
+            List<CustomEndpointDef> customEndpoints, List<IndexDef> indexes) {
         this.name = name;
         this.fields = fields != null ? fields : new ArrayList<>();
         this.relations = relations != null ? relations : new ArrayList<>();
         this.crudConfig = crudConfig;
         this.customEndpoints = customEndpoints != null ? customEndpoints : new ArrayList<>();
+        this.indexes = indexes != null ? indexes : new ArrayList<>();
+    }
+
+    /** Model-level index declarations only (e.g. {@code @index([a, b])}). */
+    public List<IndexDef> getIndexes() {
+        return Collections.unmodifiableList(indexes);
+    }
+
+    /**
+     * All declared secondary indexes: inline field decorators ({@code @index}, {@code @uniqueIndex})
+     * first in field order, followed by model-level composite declarations.
+     */
+    public List<IndexDef> getEffectiveIndexes() {
+        List<IndexDef> all = new ArrayList<>();
+        for (FieldDef f : fields) {
+            for (AnnotationDef ann : f.getAnnotations()) {
+                boolean isIndex = "index".equalsIgnoreCase(ann.getName());
+                boolean isUniqueIndex = "uniqueIndex".equalsIgnoreCase(ann.getName());
+                if (!isIndex && !isUniqueIndex) continue;
+                Object nameArg = ann.getArgument("name");
+                if (nameArg == null && ann.getArgument("0") instanceof String) {
+                    nameArg = ann.getArgument("0");
+                }
+                Object uniqueArg = ann.getArgument("unique");
+                boolean unique = isUniqueIndex || Boolean.TRUE.equals(uniqueArg) || "true".equals(String.valueOf(uniqueArg));
+                IndexDef idx = new IndexDef(nameArg != null ? nameArg.toString() : null,
+                        Collections.singletonList(f.getName()), unique, true);
+                idx.setSourceFile(sourceFile);
+                idx.setSourceLine(sourceLine);
+                all.add(idx);
+            }
+        }
+        all.addAll(indexes);
+        return all;
     }
 
     public String getSourceFile() {

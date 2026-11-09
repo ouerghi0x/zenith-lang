@@ -305,7 +305,16 @@ public class Parser {
             }
 
             consume(TokenType.COLON, "Expected ':' after key '" + key + "'");
-            Object val = parseLiteralOrIdentifier();
+            Object val;
+            if ("jwtexpiration".equals(keyLower) && peek().getType() == TokenType.NUMBER_LITERAL
+                    && peekNext().getType() == TokenType.IDENTIFIER && peekNext().getLine() == peek().getLine()) {
+                // Support unquoted duration literal like 24h, 30m, 7d, 30s
+                Token numTok = advance();
+                Token unitTok = advance();
+                val = numTok.getValue() + unitTok.getValue();
+            } else {
+                val = parseLiteralOrIdentifier();
+            }
 
             if (val != null) {
                 String valStr = val.toString().trim();
@@ -342,13 +351,9 @@ public class Parser {
                                 "Property '" + key + "' must be a boolean (true or false), found: '" + valStr + "'");
                     }
                 } else if ("jwtexpiration".equals(keyLower)) {
-                    try {
-                        long exp = Long.parseLong(valStr);
-                        if (exp <= 0) {
-                            throw error(keyToken, "jwtExpiration must be a positive integer in milliseconds, found: " + valStr);
-                        }
-                    } catch (NumberFormatException nfe) {
-                        throw error(keyToken, "jwtExpiration must be an integer, found: '" + valStr + "'");
+                    long exp = AppConfig.parseDurationMs(valStr, -1L);
+                    if (exp <= 0) {
+                        throw error(keyToken, "jwtExpiration must be a positive duration (e.g. 24h, 30m, 7d, 60s) or milliseconds (e.g. 86400000), found: '" + valStr + "'");
                     }
                 } else if ("jwtsecret".equals(keyLower)) {
                     if (valStr.isEmpty()) {
@@ -396,10 +401,13 @@ public class Parser {
         List<RelationDef> relations = new ArrayList<>();
         CrudConfig crudConfig = null;
         List<CustomEndpointDef> customEndpoints = new ArrayList<>();
+        List<IndexDef> indexes = new ArrayList<>();
 
         while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
             Token cur = peek();
-            if (cur.getType() == TokenType.RELATIONS) {
+            if (cur.getType() == TokenType.AT) {
+                indexes.add(parseModelIndexDeclaration());
+            } else if (cur.getType() == TokenType.RELATIONS) {
                 relations.addAll(parseRelationsBlock());
             } else if (cur.getType() == TokenType.ENDPOINTS) {
                 CrudConfig insideCrud = parseEndpointsBlock(customEndpoints);
@@ -410,7 +418,8 @@ public class Parser {
                 crudConfig = parseCrudBlock();
             } else if (cur.getType() == TokenType.IDENTIFIER || cur.getType() == TokenType.ACTION
                     || cur.getType() == TokenType.PUBLIC || cur.getType() == TokenType.AUTH
-                    || cur.getType() == TokenType.GUARD || cur.getType() == TokenType.VAR) {
+                    || cur.getType() == TokenType.GUARD || cur.getType() == TokenType.VAR
+                    || cur.getType() == TokenType.BODY || cur.getType() == TokenType.CONFIG) {
                 // Could be a field definition or inline relation
                 FieldDef field = parseField();
                 fields.add(field);
@@ -438,10 +447,57 @@ public class Parser {
             }
         }
 
-        ModelDef model = new ModelDef(nameToken.getValue(), fields, relations, crudConfig, customEndpoints);
+        ModelDef model = new ModelDef(nameToken.getValue(), fields, relations, crudConfig, customEndpoints, indexes);
         model.setSourceFile(sourceFile);
         model.setSourceLine(nameToken.getLine());
         return model;
+    }
+
+    /**
+     * Parses a model-level composite index declaration:
+     * {@code @index([fieldA, fieldB])}, {@code @index([a, b], name = "idx_custom")},
+     * {@code @index(fields = [a, b], unique = true)} or {@code @uniqueIndex([a, b])}.
+     */
+    private IndexDef parseModelIndexDeclaration() {
+        Token atTok = peek();
+        Token nameTok = peekNext();
+        String annName = nameTok.getValue();
+        boolean isIndex = "index".equalsIgnoreCase(annName);
+        boolean isUniqueIndex = "uniqueIndex".equalsIgnoreCase(annName);
+        if (!isIndex && !isUniqueIndex) {
+            throw error(nameTok, "Unexpected model-level annotation '@" + annName
+                    + "'. Only '@index([...])' and '@uniqueIndex([...])' are allowed at model scope");
+        }
+        AnnotationDef ann = parseAnnotation();
+
+        Object fieldsArg = ann.getArgument("fields");
+        if (fieldsArg == null) fieldsArg = ann.getArgument("0");
+        if (fieldsArg == null) {
+            throw error(nameTok, "Model-level '@" + annName + "' requires a field list, e.g. '@" + annName + "([fieldA, fieldB])'");
+        }
+        List<String> fieldNames = new ArrayList<>();
+        if (fieldsArg instanceof List) {
+            for (Object o : (List<?>) fieldsArg) {
+                fieldNames.add(String.valueOf(o));
+            }
+        } else {
+            fieldNames.add(String.valueOf(fieldsArg));
+        }
+        if (fieldNames.isEmpty()) {
+            throw error(nameTok, "'@" + annName + "' field list must not be empty");
+        }
+
+        Object nameArg = ann.getArgument("name");
+        if (nameArg == null && ann.getArgument("1") instanceof String) {
+            nameArg = ann.getArgument("1");
+        }
+        Object uniqueArg = ann.getArgument("unique");
+        boolean unique = isUniqueIndex || Boolean.TRUE.equals(uniqueArg) || "true".equals(String.valueOf(uniqueArg));
+
+        IndexDef idx = new IndexDef(nameArg != null ? nameArg.toString() : null, fieldNames, unique, false);
+        idx.setSourceFile(sourceFile);
+        idx.setSourceLine(atTok.getLine());
+        return idx;
     }
 
     private FieldDef parseField() {
@@ -459,6 +515,9 @@ public class Parser {
             if (match(TokenType.EQUAL)) {
                 defaultValue = parseLiteralOrIdentifier();
             } else if (peek().getType() == TokenType.AT) {
+                if (isModelLevelIndexAhead(nameTok.getLine())) {
+                    break;
+                }
                 annotations.add(parseAnnotation());
             }
         }
@@ -466,6 +525,34 @@ public class Parser {
         match(TokenType.COMMA);
 
         return new FieldDef(nameTok.getValue(), type, optional, annotations, defaultValue);
+    }
+
+    /**
+     * Returns true when the upcoming {@code @} token begins a model-level composite index
+     * declaration (e.g. {@code @index([a, b])} or {@code @index(fields = [a, b])}) on a new line,
+     * so that {@link #parseField()} does not greedily attach it to the preceding field.
+     */
+    private boolean isModelLevelIndexAhead(int fieldLine) {
+        Token atTok = peek();
+        if (atTok.getType() != TokenType.AT || atTok.getLine() <= fieldLine) {
+            return false;
+        }
+        Token nameTok = peekNext();
+        String annName = nameTok.getValue();
+        if (!"index".equalsIgnoreCase(annName) && !"uniqueIndex".equalsIgnoreCase(annName)) {
+            return false;
+        }
+        // Check if followed by '([' or '(fields'
+        if (cursor + 2 < tokens.size() && tokens.get(cursor + 2).getType() == TokenType.LPAREN) {
+            if (cursor + 3 < tokens.size()) {
+                Token firstArg = tokens.get(cursor + 3);
+                if (firstArg.getType() == TokenType.LBRACKET
+                        || (firstArg.getType() == TokenType.IDENTIFIER && "fields".equalsIgnoreCase(firstArg.getValue()))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private TypeRef parseTypeRef() {
@@ -502,14 +589,23 @@ public class Parser {
     }
 
     private AnnotationDef parseAnnotation() {
-        consume(TokenType.AT, "Expected '@'");
-        Token nameTok = consume(TokenType.IDENTIFIER, "Expected annotation name");
+        Token atTok = consume(TokenType.AT, "Expected '@'");
+        Token nameTok;
+        if (peek().getType() == TokenType.IDENTIFIER || peek().getType() == TokenType.VAR
+                || peek().getType() == TokenType.ACTION || peek().getType() == TokenType.AUTH
+                || peek().getType() == TokenType.PUBLIC || peek().getType() == TokenType.GUARD
+                || peek().getType() == TokenType.BODY || peek().getType() == TokenType.CONFIG) {
+            nameTok = advance();
+        } else {
+            nameTok = consume(TokenType.IDENTIFIER, "Expected annotation name");
+        }
 
         Map<String, Object> args = new HashMap<>();
         if (match(TokenType.LPAREN)) {
             int argIdx = 0;
             while (!isAtEnd() && peek().getType() != TokenType.RPAREN) {
-                if (peek().getType() == TokenType.IDENTIFIER && peekNext().getType() == TokenType.EQUAL) {
+                if ((peek().getType() == TokenType.IDENTIFIER || peek().getType() == TokenType.VAR)
+                        && peekNext().getType() == TokenType.EQUAL) {
                     Token key = advance();
                     advance(); // =
                     Object val = parseLiteralOrIdentifier();
@@ -523,7 +619,7 @@ public class Parser {
             consume(TokenType.RPAREN, "Expected ')' after annotation arguments");
         }
 
-        return new AnnotationDef(nameTok.getValue(), args);
+        return new AnnotationDef(nameTok.getValue(), args, atTok.getLine());
     }
 
     private List<RelationDef> parseRelationsBlock() {
@@ -546,12 +642,22 @@ public class Parser {
 
             AnnotationDef ann = parseAnnotation();
             String relTypeStr = "manyToOne";
-            if (ann.getArguments().containsKey("0")) {
-                relTypeStr = ann.getArguments().get("0").toString();
-            } else if (ann.getArgument("type") != null) {
-                relTypeStr = ann.getArgument("type").toString();
-            } else {
+            if ("relation".equalsIgnoreCase(ann.getName())) {
+                if (ann.getArguments().containsKey("0")) {
+                    relTypeStr = ann.getArguments().get("0").toString();
+                } else if (ann.getArgument("type") != null) {
+                    relTypeStr = ann.getArgument("type").toString();
+                }
+            } else if ("manyToOne".equalsIgnoreCase(ann.getName())
+                    || "oneToMany".equalsIgnoreCase(ann.getName())
+                    || "oneToOne".equalsIgnoreCase(ann.getName())
+                    || "manyToMany".equalsIgnoreCase(ann.getName())) {
                 relTypeStr = ann.getName();
+            } else {
+                throw new ParseException("Unknown relation annotation '@" + ann.getName()
+                        + "' on relation '" + fieldNameTok.getValue()
+                        + "'. Expected '@relation(manyToOne)', '@relation(oneToMany)', '@relation(oneToOne)', or '@relation(manyToMany)'.",
+                        ann.getSourceLine() > 0 ? ann.getSourceLine() : fieldNameTok.getLine(), 1, sourceFile);
             }
 
             String mappedBy = ann.getArgument("mappedBy") != null ? ann.getArgument("mappedBy").toString() : null;

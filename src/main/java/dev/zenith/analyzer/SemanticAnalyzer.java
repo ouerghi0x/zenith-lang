@@ -6,6 +6,16 @@ import java.util.*;
 
 public class SemanticAnalyzer {
 
+    private static final List<String> SUPPORTED_FIELD_ANNOTATIONS = Arrays.asList(
+            "id", "auto", "unique", "index", "uniqueIndex",
+            "password", "email", "role",
+            "positive", "positiveOrZero", "negative", "negativeOrZero",
+            "min", "max", "length", "pattern", "size",
+            "autoNow", "autoUpdate",
+            "text", "file", "image", "relation",
+            "softDelete", "audited", "encrypted", "tenant", "owner"
+    );
+
     public ZenithFile analyze(ZenithFile file) {
         if (file.getConfig() != null) {
             Map<String, Object> props = file.getConfig().getProperties();
@@ -19,9 +29,9 @@ public class SemanticAnalyzer {
             }
             
             if (declaresJwtSecret) {
-                String secret = file.getConfig().getJwtSecret();
-                if (secret == null || secret.trim().length() < 32) {
-                    throw new AnalysisException("Configuration 'jwtSecret' must be at least 256 bits (32 characters) for secure HMAC-SHA256 signing.");
+                String rawSecret = file.getConfig().getRawJwtSecret();
+                if (rawSecret == null || rawSecret.trim().isEmpty()) {
+                    throw new AnalysisException("Configuration 'jwtSecret' cannot be empty.");
                 }
             }
         }
@@ -96,6 +106,27 @@ public class SemanticAnalyzer {
                     throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
                             + "' has unknown type '" + tName + "'. Did you mean a built-in type (String, Int, Long, DateTime, UUID, Boolean, Decimal) or an enum?",
                             model.getSourceFile(), model.getSourceLine(), 1);
+                }
+
+                // Validate all field annotations are supported
+                for (AnnotationDef ann : field.getAnnotations()) {
+                    String annName = ann.getName();
+                    boolean supported = false;
+                    for (String validAnn : SUPPORTED_FIELD_ANNOTATIONS) {
+                        if (validAnn.equalsIgnoreCase(annName)) {
+                            supported = true;
+                            break;
+                        }
+                    }
+                    if (!supported) {
+                        int errLine = ann.getSourceLine() > 0 ? ann.getSourceLine() : model.getSourceLine();
+                        String suggestion = closestMatch(annName, SUPPORTED_FIELD_ANNOTATIONS);
+                        throw new AnalysisException("Unsupported field annotation '@" + annName + "' on field '"
+                                + field.getName() + "' in model '" + model.getName() + "'."
+                                + (suggestion != null ? " Did you mean '@" + suggestion + "'?" : "")
+                                + " Supported annotations: @id, @auto, @unique, @index, @uniqueIndex, @email, @password, @role, @positive, @min, @max, @length, @pattern, @autoNow, @autoUpdate, @text, @file, @image, @relation.",
+                                model.getSourceFile(), errLine, 1);
+                    }
                 }
 
                 if (field.hasAnnotation("autoNow") || field.hasAnnotation("autoUpdate")) {
@@ -206,12 +237,14 @@ public class SemanticAnalyzer {
             }
 
             ModelDef validatedModel = new ModelDef(model.getName(), fields, model.getRelations(), model.getCrudConfig(),
-                    model.getCustomEndpoints());
+                    model.getCustomEndpoints(), model.getIndexes());
             validatedModel.setSourceFile(model.getSourceFile());
             validatedModel.setSourceLine(model.getSourceLine());
+            validateModelIndexes(validatedModel, enumNames);
             validatedModels.add(validatedModel);
             modelFieldsMap.put(model.getName(), fields);
         }
+        validateIndexNameCollisions(validatedModels);
         for (SeedDef seed : file.getSeeds()) {
             ModelDef targetModel = null;
             for (ModelDef m : validatedModels) {
@@ -489,6 +522,165 @@ public class SemanticAnalyzer {
                         + "Supported date/time functions: now(), today(), daysAgo(n), daysFromNow(n), hoursAgo(n), hoursFromNow(n), minutesAgo(n), minutesFromNow(n). Supported operations: notify(recipient, message).", srcFile, srcLine, 1);
             }
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Spec #02: Database Indexes (@index / @uniqueIndex)
+    // ---------------------------------------------------------------------
+
+    private static final java.util.regex.Pattern SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
+
+    /**
+     * Validates every index declared on a model: referenced fields exist, types are indexable,
+     * no duplicated columns, no redundant duplicate indexes, and explicit names are valid identifiers
+     * within the 63-character database limit.
+     */
+    private void validateModelIndexes(ModelDef model, Set<String> enumNames) {
+        Map<String, IndexDef> signatures = new HashMap<>();
+        FieldDef idField = model.getIdField();
+
+        for (IndexDef idx : model.getEffectiveIndexes()) {
+            String srcFile = idx.getSourceFile() != null ? idx.getSourceFile() : model.getSourceFile();
+            int srcLine = idx.getSourceLine() > 0 ? idx.getSourceLine() : model.getSourceLine();
+            String label = idx.isInline()
+                    ? (idx.isUnique() ? "@uniqueIndex" : "@index") + " on field '" + idx.getFields().get(0) + "'"
+                    : (idx.isUnique() ? "@uniqueIndex" : "@index") + idx.getFields();
+
+            if (idx.getFields().isEmpty()) {
+                throw new AnalysisException("Index " + label + " in model '" + model.getName() + "' must reference at least one field",
+                        srcFile, srcLine, 1);
+            }
+
+            Set<String> seenCols = new HashSet<>();
+            List<String> normalized = new ArrayList<>();
+            for (String fname : idx.getFields()) {
+                FieldDef f = model.findField(fname);
+                RelationDef rel = null;
+                if (f == null) {
+                    for (RelationDef r : model.getRelations()) {
+                        if (r.getFieldName().equalsIgnoreCase(fname)) {
+                            rel = r;
+                            break;
+                        }
+                    }
+                }
+                if (f == null && rel == null) {
+                    List<String> available = new ArrayList<>();
+                    for (FieldDef af : model.getFields()) available.add(af.getName());
+                    for (RelationDef r : model.getRelations()) {
+                        if (r.getRelationType() == RelationType.MANY_TO_ONE || r.getRelationType() == RelationType.ONE_TO_ONE) {
+                            available.add(r.getFieldName());
+                        }
+                    }
+                    String suggestion = closestMatch(fname, available);
+                    throw new AnalysisException("Index " + label + " in model '" + model.getName()
+                            + "' references unknown field '" + fname + "'."
+                            + (suggestion != null ? " Did you mean '" + suggestion + "'?" : "")
+                            + " Available fields: " + available,
+                            srcFile, srcLine, 1);
+                }
+                if (rel != null && rel.getRelationType() != RelationType.MANY_TO_ONE
+                        && rel.getRelationType() != RelationType.ONE_TO_ONE) {
+                    throw new AnalysisException("Index " + label + " in model '" + model.getName()
+                            + "' cannot index collection relation '" + rel.getFieldName() + "' (" + rel.getRelationType()
+                            + "). Only manyToOne / oneToOne relations (foreign key columns) are indexable.",
+                            srcFile, srcLine, 1);
+                }
+                if (f != null) {
+                    String t = f.getType().getName();
+                    if (f.getType().isList() || f.hasAnnotation("text") || "text".equalsIgnoreCase(t)
+                            || "bytes".equalsIgnoreCase(t) || "bytearray".equalsIgnoreCase(t)) {
+                        throw new AnalysisException("Index " + label + " in model '" + model.getName()
+                                + "' cannot index field '" + f.getName() + "' of unindexable type '"
+                                + (f.hasAnnotation("text") ? "Text" : t)
+                                + "'. Large text, binary and list columns cannot be B-tree indexed.",
+                                srcFile, srcLine, 1);
+                    }
+                }
+                String canonical = f != null ? f.getName() : rel.getFieldName();
+                if (!seenCols.add(canonical.toLowerCase())) {
+                    throw new AnalysisException("Index " + label + " in model '" + model.getName()
+                            + "' lists field '" + canonical + "' more than once", srcFile, srcLine, 1);
+                }
+                normalized.add(canonical.toLowerCase());
+            }
+
+            // Indexes on the primary key are silently normalized (PK is already indexed)
+            if (normalized.size() == 1 && idField != null && idField.getName().equalsIgnoreCase(normalized.get(0))) {
+                continue;
+            }
+
+            String sig = String.join(",", normalized);
+            IndexDef previous = signatures.put(sig, idx);
+            if (previous != null) {
+                throw new AnalysisException("Redundant duplicate index in model '" + model.getName() + "': " + label
+                        + " covers the same columns " + idx.getFields() + " as an earlier index declaration. Remove one of them.",
+                        srcFile, srcLine, 1);
+            }
+
+            if (idx.hasExplicitName()) {
+                String n = idx.getName();
+                if (!SQL_IDENTIFIER.matcher(n).matches()) {
+                    throw new AnalysisException("Index name '" + n + "' in model '" + model.getName()
+                            + "' is not a valid SQL identifier (letters, digits and '_' only; must not start with a digit)",
+                            srcFile, srcLine, 1);
+                }
+                if (n.length() > dev.zenith.generator.IndexResolver.MAX_IDENTIFIER_LENGTH) {
+                    throw new AnalysisException("Index name '" + n + "' in model '" + model.getName() + "' is " + n.length()
+                            + " characters long; database identifiers are limited to "
+                            + dev.zenith.generator.IndexResolver.MAX_IDENTIFIER_LENGTH + " characters",
+                            srcFile, srcLine, 1);
+                }
+            }
+        }
+    }
+
+    /** Index names are schema-global in PostgreSQL, so they must be unique across all models. */
+    private void validateIndexNameCollisions(List<ModelDef> models) {
+        Map<String, String> owners = new HashMap<>();
+        for (ModelDef m : models) {
+            for (dev.zenith.generator.IndexResolver.ResolvedIndex idx : dev.zenith.generator.IndexResolver.resolve(m)) {
+                String key = idx.name.toLowerCase();
+                String owner = owners.put(key, m.getName());
+                if (owner != null) {
+                    IndexDef src = idx.source;
+                    throw new AnalysisException("Index name '" + idx.name + "' is declared more than once (models '" + owner
+                            + "' and '" + m.getName() + "'). Index names must be unique across the schema.",
+                            src.getSourceFile() != null ? src.getSourceFile() : m.getSourceFile(),
+                            src.getSourceLine() > 0 ? src.getSourceLine() : m.getSourceLine(), 1);
+                }
+            }
+        }
+    }
+
+    private static String closestMatch(String target, List<String> candidates) {
+        String best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (String c : candidates) {
+            int d = levenshtein(target.toLowerCase(), c.toLowerCase());
+            if (d < bestDist) {
+                bestDist = d;
+                best = c;
+            }
+        }
+        return (best != null && bestDist <= Math.max(2, target.length() / 3)) ? best : null;
+    }
+
+    private static int levenshtein(String a, String b) {
+        int[] prev = new int[b.length() + 1];
+        int[] cur = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            cur[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                cur[j] = Math.min(Math.min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+            }
+            int[] tmp = prev;
+            prev = cur;
+            cur = tmp;
+        }
+        return prev[b.length()];
     }
 
     private FieldDef findFieldCaseInsensitive(List<FieldDef> fields, String name) {

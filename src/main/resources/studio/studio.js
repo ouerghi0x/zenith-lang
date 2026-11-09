@@ -1195,8 +1195,11 @@ async function triggerCompile() {
       // Update Swagger button link dynamically with configured port
       updateSwaggerButton(data.config);
 
-      // Clear Monaco error markers
+      // Clear Monaco error markers and red line highlight
       monaco.editor.setModelMarkers(editor.getModel(), 'zenith', []);
+      if (window.errorLineDecorations) {
+        window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations, []);
+      }
       dismissError();
 
       document.getElementById('schemaStatus').innerHTML = `
@@ -1222,16 +1225,29 @@ async function triggerCompile() {
       const errFile = data.file || window.currentActiveFile || 'schema.zen';
 
       if (!data.file || data.file === window.currentActiveFile) {
-        monaco.editor.setModelMarkers(editor.getModel(), 'zenith', [{
+        const model = editor.getModel();
+        const maxCol = (model && errLine <= model.getLineCount()) ? model.getLineMaxColumn(errLine) : (errCol + 30);
+        monaco.editor.setModelMarkers(model, 'zenith', [{
           startLineNumber: errLine,
-          startColumn: errCol,
+          startColumn: 1,
           endLineNumber: errLine,
-          endColumn: errCol + 15,
+          endColumn: maxCol,
           message: errMsg,
           severity: monaco.MarkerSeverity.Error
         }]);
+        window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations || [], [{
+          range: new monaco.Range(errLine, 1, errLine, 1),
+          options: {
+            isWholeLine: true,
+            className: 'zenith-error-line-highlight',
+            linesDecorationsClassName: 'zenith-error-line-gutter'
+          }
+        }]);
       } else {
         monaco.editor.setModelMarkers(editor.getModel(), 'zenith', []);
+        if (window.errorLineDecorations) {
+          window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations, []);
+        }
       }
 
       showErrorDrawer(errMsg, errLine, errCol, errFile);
@@ -1268,6 +1284,9 @@ function updateSwaggerButton(config) {
 
 function dismissError() {
   document.getElementById('errorDrawer').className = 'error-drawer';
+  if (typeof editor !== 'undefined' && editor && window.errorLineDecorations) {
+    window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations, []);
+  }
 }
 
 // Tab Drag and Drop Reordering

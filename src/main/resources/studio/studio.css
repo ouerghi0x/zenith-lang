@@ -2733,3 +2733,17 @@ body.is-desktop-app #desktopDownloadBtn {
   display: none !important;
 }
 
+/* Red Diagnostic Error Line Highlight in Monaco Editor */
+.zenith-error-line-highlight {
+  background-color: rgba(239, 68, 68, 0.22) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+.zenith-error-line-gutter {
+  background-color: #ef4444 !important;
+  width: 4px !important;
+  margin-left: 2px;
+  border-radius: 2px;
+}
+
+

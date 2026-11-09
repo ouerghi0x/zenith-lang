@@ -19,13 +19,24 @@ public class E2ETestSuiteRunner {
 
     public static void main(String[] args) {
         int selectedTier = -1;
+        int selectedFeature = 1;
         for (int i = 0; i < args.length; i++) {
             if ("--tier".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
                 try {
                     selectedTier = Integer.parseInt(args[i + 1]);
                     i++;
                 } catch (NumberFormatException ignored) {}
+            } else if ("--feature".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
+                try {
+                    selectedFeature = Integer.parseInt(args[i + 1]);
+                    i++;
+                } catch (NumberFormatException ignored) {}
             }
+        }
+
+        if (selectedFeature == 2) {
+            runFeature2(selectedTier);
+            return;
         }
 
         System.out.println(BOLD + CYAN + "================================================================================" + RESET);
@@ -66,9 +77,40 @@ public class E2ETestSuiteRunner {
         }
     }
 
+    /** Feature #2 (Database Indexes): all tiers live in one class, grouped by the T&lt;n&gt;_ prefix. */
+    private static void runFeature2(int selectedTier) {
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        System.out.println(BOLD + CYAN + "    Zenith Feature #2: Database Indexes (@index / @uniqueIndex)                 " + RESET);
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        long start = System.currentTimeMillis();
+        List<TestHarness.TestResult> results = new ArrayList<>();
+        String[] titles = {
+                "Tier 1: Parsing (inline, composite, names, unique)",
+                "Tier 2: Semantic Validation (unknown fields, duplicates, types, names)",
+                "Tier 3: Flyway SQL Generation (dialects, naming, truncation, quoting)",
+                "Tier 4: JPA Entity Generation (@Table indexes)" };
+        for (int t = 1; t <= 4; t++) {
+            if (selectedTier == -1 || selectedTier == t) {
+                runTier(t, titles[t - 1], Feature2DatabaseIndexesTest.class, results, "^T" + t + "_.*");
+            }
+        }
+        printSummary(results, System.currentTimeMillis() - start);
+        boolean allPassed = results.stream().allMatch(r -> r.passed);
+        if (!allPassed) {
+            System.err.println(RED + "\n[FAILURE] Some test cases did not pass. Check diagnostics above." + RESET);
+            System.exit(1);
+        }
+        System.out.println(GREEN + "\n[SUCCESS] All " + results.size() + " test cases passed cleanly!" + RESET);
+        System.exit(0);
+    }
+
     private static void runTier(int tierNumber, String tierTitle, Class<?> testClass, List<TestHarness.TestResult> results) {
+        runTier(tierNumber, tierTitle, testClass, results, "^T[1-4]_.*");
+    }
+
+    private static void runTier(int tierNumber, String tierTitle, Class<?> testClass, List<TestHarness.TestResult> results, String nameRegex) {
         System.out.println("\n" + BOLD + "--- Running " + tierTitle + " ---" + RESET);
-        List<Method> methods = getSortedTestMethods(testClass);
+        List<Method> methods = getSortedTestMethods(testClass, nameRegex);
 
         for (Method method : methods) {
             String testName = method.getName();
@@ -97,11 +139,11 @@ public class E2ETestSuiteRunner {
         }
     }
 
-    private static List<Method> getSortedTestMethods(Class<?> testClass) {
+    private static List<Method> getSortedTestMethods(Class<?> testClass, String nameRegex) {
         List<Method> methods = new ArrayList<>();
         for (Method m : testClass.getDeclaredMethods()) {
             if (Modifier.isPublic(m.getModifiers()) && Modifier.isStatic(m.getModifiers())
-                    && m.getParameterCount() == 0 && m.getName().matches("^T[1-4]_.*")) {
+                    && m.getParameterCount() == 0 && m.getName().matches(nameRegex)) {
                 methods.add(m);
             }
         }

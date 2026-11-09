@@ -1,6 +1,5 @@
 package dev.zenith.test;
 
-import dev.zenith.analyzer.AnalysisException;
 import dev.zenith.analyzer.SemanticAnalyzer;
 import dev.zenith.ast.*;
 import dev.zenith.generator.JavaSourceFile;
@@ -8,8 +7,6 @@ import dev.zenith.generator.ProjectGenerator;
 import dev.zenith.generator.ServiceGenerator;
 import dev.zenith.lexer.Lexer;
 import dev.zenith.lexer.Token;
-import dev.zenith.lexer.TokenType;
-import dev.zenith.parser.ParseException;
 import dev.zenith.parser.Parser;
 
 import java.lang.reflect.Method;
@@ -18,7 +15,8 @@ import java.util.regex.Pattern;
 
 /**
  * TestHarness: Core testing oracle and execution harness for Zenith Feature #1.
- * Provides DSL builders, pipeline invocations, AST reflection helpers, and assertions.
+ * Provides DSL builders, pipeline invocations, AST reflection helpers, and
+ * assertions.
  */
 public class TestHarness {
 
@@ -51,39 +49,38 @@ public class TestHarness {
     public static String createOrderModelSchema(String actionBody) {
         return wrapInStandardSchema(
                 "model Customer {\n" +
-                "    id: UUID @id @auto\n" +
-                "    email: String @email @unique\n" +
-                "    fullName: String\n" +
-                "    createdAt: DateTime @autoNow\n" +
-                "    updatedAt: DateTime @autoUpdate\n" +
-                "}\n\n" +
-                "model Invoice {\n" +
-                "    id: UUID @id @auto\n" +
-                "    orderId: UUID\n" +
-                "    amount: Decimal\n" +
-                "    status: String\n" +
-                "    createdAt: DateTime @autoNow\n" +
-                "}\n\n" +
-                "model Order {\n" +
-                "    id: UUID @id @auto\n" +
-                "    orderNumber: String @unique\n" +
-                "    totalAmount: Decimal\n" +
-                "    status: String = \"PENDING\"\n" +
-                "    customerId: UUID?\n" +
-                "    createdAt: DateTime @autoNow\n" +
-                "    updatedAt: DateTime @autoUpdate\n" +
-                "    relations {\n" +
-                "        customer: Customer? @relation(manyToOne)\n" +
-                "    }\n" +
-                "    endpoints {\n" +
-                "        post \"/execute\" -> OrderResponse {\n" +
-                "            action: {\n" +
-                actionBody + "\n" +
-                "            }\n" +
-                "        }\n" +
-                "    }\n" +
-                "}\n"
-        );
+                        "    id: UUID @id @auto\n" +
+                        "    email: String @email @unique\n" +
+                        "    fullName: String\n" +
+                        "    createdAt: DateTime @autoNow\n" +
+                        "    updatedAt: DateTime @autoUpdate\n" +
+                        "}\n\n" +
+                        "model Invoice {\n" +
+                        "    id: UUID @id @auto\n" +
+                        "    orderId: UUID\n" +
+                        "    amount: Decimal\n" +
+                        "    status: String\n" +
+                        "    createdAt: DateTime @autoNow\n" +
+                        "}\n\n" +
+                        "model Order {\n" +
+                        "    id: UUID @id @auto\n" +
+                        "    orderNumber: String @unique\n" +
+                        "    totalAmount: Decimal\n" +
+                        "    status: String = \"PENDING\"\n" +
+                        "    customerId: UUID?\n" +
+                        "    createdAt: DateTime @autoNow\n" +
+                        "    updatedAt: DateTime @autoUpdate\n" +
+                        "    relations {\n" +
+                        "        customer: Customer? @relation(manyToOne)\n" +
+                        "    }\n" +
+                        "    endpoints {\n" +
+                        "        post \"/execute\" -> OrderResponse {\n" +
+                        "            action: {\n" +
+                        actionBody + "\n" +
+                        "            }\n" +
+                        "        }\n" +
+                        "    }\n" +
+                        "}\n");
     }
 
     public static List<Token> tokenize(String dsl) {
@@ -143,7 +140,8 @@ public class TestHarness {
 
     public static void assertEquals(Object expected, Object actual, String message) {
         if (!Objects.equals(expected, actual)) {
-            throw new AssertionError("Assertion failed: " + message + " [Expected: " + expected + ", Actual: " + actual + "]");
+            throw new AssertionError(
+                    "Assertion failed: " + message + " [Expected: " + expected + ", Actual: " + actual + "]");
         }
     }
 
@@ -155,13 +153,15 @@ public class TestHarness {
 
     public static void assertContains(String text, String substring, String message) {
         if (text == null || !text.contains(substring)) {
-            throw new AssertionError("Assertion failed: " + message + " - Text does not contain expected substring [" + substring + "]");
+            throw new AssertionError(
+                    "Assertion failed: " + message + " - Text does not contain expected substring [" + substring + "]");
         }
     }
 
     public static void assertNotContains(String text, String substring, String message) {
         if (text != null && text.contains(substring)) {
-            throw new AssertionError("Assertion failed: " + message + " - Text unexpectedly contains substring [" + substring + "]");
+            throw new AssertionError(
+                    "Assertion failed: " + message + " - Text unexpectedly contains substring [" + substring + "]");
         }
     }
 
@@ -175,14 +175,16 @@ public class TestHarness {
      * Inspects action statements for variable bindings using reflection to support
      * both pre-M2 and post-M2 compiler states.
      */
-    public static boolean hasVariableBindingAST(CustomEndpointDef endpoint, String varName, String actionType, String targetModel) {
+    public static boolean hasVariableBindingAST(CustomEndpointDef endpoint, String varName, String actionType,
+            String targetModel) {
         try {
             // Check if getActions() exists (added in M2)
             Method getActionsMethod = endpoint.getClass().getMethod("getActions");
             @SuppressWarnings("unchecked")
             List<?> actions = (List<?>) getActionsMethod.invoke(endpoint);
             for (Object action : actions) {
-                if (action == null) continue;
+                if (action == null)
+                    continue;
                 String className = action.getClass().getSimpleName();
                 if ("VariableBindingActionDef".equals(className)) {
                     Method getVarName = action.getClass().getMethod("getVariableName");
@@ -201,7 +203,8 @@ public class TestHarness {
         } catch (NoSuchMethodException ignored) {
             // Pre-M2: check raw action statements
             for (String stmt : endpoint.getActionStatements()) {
-                if (stmt.trim().startsWith("var " + varName) && stmt.contains(actionType) && stmt.contains(targetModel)) {
+                if (stmt.trim().startsWith("var " + varName) && stmt.contains(actionType)
+                        && stmt.contains(targetModel)) {
                     return true;
                 }
             }

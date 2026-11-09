@@ -101,11 +101,78 @@ public class AppConfig {
     }
 
     public String getJwtSecret() {
-        return getString("jwtSecret", "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970");
+        String raw = getString("jwtSecret", null);
+        if (raw == null || raw.trim().isEmpty() || "auto".equalsIgnoreCase(raw.trim())) {
+            return deriveAppJwtSecret(getApp() + ":" + getPackage());
+        }
+        String trimmed = raw.trim();
+        if (trimmed.startsWith("${")) {
+            return trimmed;
+        }
+        // If user provided a human-readable passphrase (< 32 chars), deterministically stretch via SHA-256 to 64 hex chars (256 bits)
+        if (trimmed.length() < 32) {
+            return deriveAppJwtSecret(getApp() + ":" + trimmed);
+        }
+        return trimmed;
+    }
+
+    public String getRawJwtSecret() {
+        return getString("jwtSecret", null);
+    }
+
+    private static String deriveAppJwtSecret(String seed) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(("zenith-hmac-sha256:" + seed).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(64);
+            for (byte b : hash) {
+                hex.append(String.format("%02X", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            return "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
+        }
     }
 
     public long getJwtExpirationMs() {
-        return getLong("jwtExpiration", 86400000L); // 24 hours
+        Object val = properties.get("jwtExpiration");
+        if (val == null) {
+            for (Map.Entry<String, Object> e : properties.entrySet()) {
+                if ("jwtExpiration".equalsIgnoreCase(e.getKey())) {
+                    val = e.getValue();
+                    break;
+                }
+            }
+        }
+        if (val != null) {
+            return parseDurationMs(val.toString().trim(), 86400000L);
+        }
+        return 86400000L; // 24 hours
+    }
+
+    /**
+     * Parses either raw milliseconds (e.g. {@code 86400000}) or human-friendly duration strings
+     * ({@code 30s}, {@code 15m}, {@code 24h}, {@code 7d}, {@code 500ms}).
+     */
+    public static long parseDurationMs(String raw, long defaultMs) {
+        if (raw == null || raw.isEmpty()) return defaultMs;
+        String s = raw.trim().toLowerCase();
+        try {
+            if (s.endsWith("ms")) {
+                return Long.parseLong(s.substring(0, s.length() - 2).trim());
+            } else if (s.endsWith("s")) {
+                return Long.parseLong(s.substring(0, s.length() - 1).trim()) * 1000L;
+            } else if (s.endsWith("m")) {
+                return Long.parseLong(s.substring(0, s.length() - 1).trim()) * 60_000L;
+            } else if (s.endsWith("h")) {
+                return Long.parseLong(s.substring(0, s.length() - 1).trim()) * 3_600_000L;
+            } else if (s.endsWith("d")) {
+                return Long.parseLong(s.substring(0, s.length() - 1).trim()) * 86_400_000L;
+            }
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            return defaultMs;
+        }
     }
 
     public String getStorageProvider() {

@@ -7,6 +7,33 @@ import java.util.List;
 
 public class EntityGenerator {
 
+    /**
+     * Emits the JPA {@code @Table} annotation, including an {@code indexes} array for every
+     * declared {@code @index} / {@code @uniqueIndex} (Spec #02). Names and column lists are
+     * resolved by {@link IndexResolver} so they match the Flyway DDL exactly.
+     */
+    static String generateTableAnnotation(ModelDef model, String tableName) {
+        List<IndexResolver.ResolvedIndex> indexes = IndexResolver.resolve(model);
+        if (indexes.isEmpty()) {
+            return "@Table(name = \"" + tableName + "\")\n";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("@Table(name = \"").append(tableName).append("\", indexes = {\n");
+        for (int i = 0; i < indexes.size(); i++) {
+            IndexResolver.ResolvedIndex idx = indexes.get(i);
+            sb.append("    @Index(name = \"").append(idx.name).append("\", columnList = \"")
+                    .append(String.join(", ", idx.columns)).append("\"");
+            if (idx.unique) {
+                sb.append(", unique = true");
+            }
+            sb.append(")");
+            if (i < indexes.size() - 1) sb.append(",");
+            sb.append("\n");
+        }
+        sb.append("})\n");
+        return sb.toString();
+    }
+
     public static JavaSourceFile generate(ModelDef model, ZenithFile file) {
         String basePkg = file.getConfig().getPackage();
         String className = model.getName();
@@ -30,7 +57,7 @@ public class EntityGenerator {
         sb.append("\n");
 
         sb.append("@Entity\n");
-        sb.append("@Table(name = \"").append(tableName).append("\")\n");
+        sb.append(generateTableAnnotation(model, tableName));
         sb.append("public class ").append(className).append(" {\n\n");
 
         // Fields

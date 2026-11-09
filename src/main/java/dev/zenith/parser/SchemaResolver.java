@@ -33,13 +33,15 @@ public class SchemaResolver {
         visitedFiles.clear();
         importStack.clear();
 
-        String rootFileName = basePath != null ? basePath.getFileName().toString() : "main.zen";
+        String rootFileName = (basePath != null && basePath.toString().toLowerCase().endsWith(".zen"))
+                ? basePath.getFileName().toString()
+                : "schema.zen";
         Lexer lexer = new Lexer(rootSource);
         Parser parser = new Parser(lexer.tokenize(), rootFileName);
         ZenithFile rootFile = parser.parse();
 
         Path currentDir = basePath != null ? basePath.toAbsolutePath().normalize() : Paths.get(".").toAbsolutePath().normalize();
-        if (Files.isRegularFile(currentDir)) {
+        if (Files.isRegularFile(currentDir) || currentDir.toString().toLowerCase().endsWith(".zen")) {
             currentDir = currentDir.getParent();
         }
 

@@ -323,10 +323,30 @@ Zenith generates:
 - Interactive Swagger UI available at: `http://localhost:8080/swagger-ui.html`.
 - `@Tag` and `@Operation` auto-documented on all endpoints.
 
-### 3. Flyway Database Migrations (Opt-In)
+### 3. Flyway Database Migrations & Declarative Indexes (`@index`, `@uniqueIndex`)
 
 - Enable with `flyway: true` in `config`. If omitted or set to `false`, Flyway dependencies and migration files are not generated.
 - Generates `src/main/resources/db/migration/V1__initial_schema.sql` with exact DDL, foreign keys, and indexes for PostgreSQL, MySQL, or H2.
+- **Single-Column & Composite Indexes**: Annotate individual fields with `@index` / `@uniqueIndex`, or declare model-level composite indexes (`@index([customer, status])`, `@index([status, createdAt], name = "idx_custom")`, `@uniqueIndex([orderNumber, customer])`). Zenith emits matching `CREATE [UNIQUE] INDEX` statements in Flyway DDL and `@Table(indexes = { @Index(...) })` on JPA entities, with automatic 63-character identifier truncation and reserved keyword quoting.
+
+```zen
+model Order {
+    id: UUID @id @auto
+    orderNumber: String(length = 32) @unique
+    status: OrderStatus = PENDING @index             // Inline single-column index
+    createdAt: DateTime @autoNow
+
+    relations {
+        customer: Customer @relation(manyToOne)
+    }
+
+    @index([customer, status])                       // Composite index (customer_id, status)
+    @index([status, createdAt], name = "idx_orders_timeline")
+    @uniqueIndex([orderNumber, customer])            // Composite unique index
+}
+```
+
+> **💡 Placement Tip**: Place model-level composite indexes (`@index([...])` / `@uniqueIndex([...])`) **below the `relations { ... }` block** (and above `endpoints { ... }`). Because composite indexes often reference foreign-key relations (such as `customer` -> `customer_id`), declaring them after `relations` keeps all referenced columns defined above the index and separates model-level indexes from inline field decorators.
 
 ### 4. API Security & Role-Based Access Control (RBAC)
 
@@ -412,7 +432,7 @@ get "/my-products" -> List<ProductResponse> {
 
 ### 5. Declarative Logic & Domain Actions
 
-Zenith supports complete domain business logic: instantiate secondary entities, update related models, record audit trails, notify owners, perform date calculations, and resolve authenticated users:
+Zenith supports complete domain business logic: bind multi-entity operations to local variables (`var x = create / update`), instantiate secondary entities, update related models, record audit trails, notify owners, perform date calculations, and resolve authenticated users:
 
 ```zen
 post "/{id}/complete" -> Void {
@@ -423,19 +443,19 @@ post "/{id}/complete" -> Void {
         status = TaskStatus.DONE
         completedAt = now()
 
-        // 2. Update secondary related model (Parent Project)
+        // 2. Action variable binding: capture created audit record & propagate
+        var log = create AuditLog {
+            action = "TASK_COMPLETED",
+            details = "Task " + entity.title + " completed by " + currentUser.email,
+            retentionUntil = daysFromNow(90)
+        }
+
+        // 3. Update secondary related model (Parent Project) referencing log metadata
         update Project {
             where: id == entity.project.id
             completedTasks = entity.project.completedTasks + 1
             status = ProjectStatus.ACTIVE
             lastActivityAt = now()
-        }
-
-        // 3. Secondary entity instantiation with forward date calculation
-        create AuditLog {
-            action = "TASK_COMPLETED",
-            details = "Task " + entity.title + " completed by " + currentUser.email,
-            retentionUntil = daysFromNow(90)
         }
 
         // 4. Notification hook

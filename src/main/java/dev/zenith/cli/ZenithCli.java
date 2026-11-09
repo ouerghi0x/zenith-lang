@@ -352,7 +352,6 @@ public class ZenithCli {
         System.out.println("     ZENITH SYSTEM & ENVIRONMENT DIAGNOSTICS");
         System.out.println("==================================================");
 
-        boolean allGood = true;
         int warnings = 0;
 
         // 1. Zenith Version & CLI
@@ -368,9 +367,11 @@ public class ZenithCli {
         String javaVendor = System.getProperty("java.vendor", "Unknown");
         int majorJava = parseJavaMajorVersion(javaVersion);
         if (majorJava >= 17) {
-            System.out.println("[OK] Java Runtime: " + javaVendor + " " + javaVersion + " (Java " + majorJava + " >= 17)");
+            System.out.println(
+                    "[OK] Java Runtime: " + javaVendor + " " + javaVersion + " (Java " + majorJava + " >= 17)");
         } else {
-            System.out.println("[WARNING] Java Runtime: " + javaVersion + " detected. Zenith recommends Java 17 or higher.");
+            System.out.println(
+                    "[WARNING] Java Runtime: " + javaVersion + " detected. Zenith recommends Java 17 or higher.");
             warnings++;
         }
 
@@ -395,16 +396,19 @@ public class ZenithCli {
         } else {
             System.out.println("[WARNING] Apache Maven ('mvn') not found in PATH or tools/ directory.");
             System.out.println("          Building generated Spring Boot applications requires Maven.");
-            System.out.println("          Install via Scoop ('scoop install maven') or download: https://maven.apache.org");
+            System.out.println(
+                    "          Install via Scoop ('scoop install maven') or download: https://maven.apache.org");
             warnings++;
         }
 
         // 6. Docker Engine (Optional)
         String dockerVer = runCommandCapture("docker --version", "docker", "--version");
         if (dockerVer != null && dockerVer.toLowerCase().contains("docker")) {
-            System.out.println("[INFO] Docker Engine: Available (" + dockerVer.trim() + ") - Container features enabled");
+            System.out
+                    .println("[INFO] Docker Engine: Available (" + dockerVer.trim() + ") - Container features enabled");
         } else {
-            System.out.println("[INFO] Docker Engine: Not found (Optional: needed only for containerized postgres/minio)");
+            System.out.println(
+                    "[INFO] Docker Engine: Not found (Optional: needed only for containerized postgres/minio)");
         }
 
         // 7. Binary Location & PATH check
@@ -419,14 +423,16 @@ public class ZenithCli {
 
         System.out.println("==================================================");
         if (warnings == 0) {
-            System.out.println(">> Status: All essential dependencies are verified! You are ready to build with Zenith.\n");
+            System.out.println(
+                    ">> Status: All essential dependencies are verified! You are ready to build with Zenith.\n");
         } else {
             System.out.println(">> Doctor completed with " + warnings + " recommendation(s).\n");
         }
     }
 
     private static int parseJavaMajorVersion(String version) {
-        if (version == null) return 0;
+        if (version == null)
+            return 0;
         try {
             String[] parts = version.split("\\.");
             int first = Integer.parseInt(parts[0]);
@@ -471,7 +477,8 @@ public class ZenithCli {
         try {
             Process p = new ProcessBuilder(commandArgs).redirectErrorStream(true).start();
             StringBuilder sb = new StringBuilder();
-            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream()))) {
                 String line;
                 while ((line = r.readLine()) != null) {
                     sb.append(line).append("\n");
@@ -562,7 +569,8 @@ public class ZenithCli {
         System.out.println("  zenith validate <file.zen>                Validate schema syntax and semantics");
         System.out.println("  zenith inspect <file.zen>                 Show summary of models and endpoints");
         System.out.println("  zenith init [file.zen]                    Create a starter schema file");
-        System.out.println("  zenith doctor                             Diagnose Java, Maven, Docker and system environment");
+        System.out.println(
+                "  zenith doctor                             Diagnose Java, Maven, Docker and system environment");
         System.out.println("  zenith version                            Display installed Zenith version");
         System.out.println("  zenith help                               Show this help message\n");
     }

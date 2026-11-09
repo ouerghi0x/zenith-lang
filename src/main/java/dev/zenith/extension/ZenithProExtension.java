@@ -1,6 +1,5 @@
 package dev.zenith.extension;
 
-import dev.zenith.ast.ZenithFile;
 import java.util.Map;
 
 /**
@@ -47,4 +46,3 @@ public interface ZenithProExtension {
      */
     Map<String, Object> getProFeaturesMetadata();
 }
-

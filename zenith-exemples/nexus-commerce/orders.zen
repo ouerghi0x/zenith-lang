@@ -55,7 +55,7 @@ model Order {
             action: {
                 status = OrderStatus.PAID
 
-                create AuditLog {
+                var new_audkkit=create AuditLog {
                     action = "ORDER_PAYMENT_PROCESSED",
                     details = "Order " + entity.orderNumber + " marked PAID by " + currentUser.email
                 }

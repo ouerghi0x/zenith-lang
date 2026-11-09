@@ -3,7 +3,9 @@ package dev.zenith.generator;
 import dev.zenith.ast.*;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class FlywayGenerator {
 
@@ -19,12 +21,20 @@ public class FlywayGenerator {
 
         List<String> foreignKeyStatements = new ArrayList<>();
         List<String> indexStatements = new ArrayList<>();
+        Set<String> indexedSignatures = new HashSet<>();
 
         // 1. Create Tables
         for (ModelDef model : file.getModels()) {
             String tableName = TypeHelper.toSnakeCase(TypeHelper.pluralize(model.getName()));
             sb.append("-- Table: ").append(tableName).append("\n");
             sb.append("CREATE TABLE IF NOT EXISTS ").append(tableName).append(" (\n");
+
+            // Declared indexes (@index / @uniqueIndex) take precedence over auto-generated ones
+            for (IndexResolver.ResolvedIndex idx : IndexResolver.resolve(model)) {
+                if (indexedSignatures.add(tableName + ":" + idx.signature())) {
+                    indexStatements.add(IndexResolver.toCreateStatement(idx.name, tableName, idx.columns, idx.unique, isMysql));
+                }
+            }
 
             List<String> colDefs = new ArrayList<>();
             for (FieldDef field : model.getFields()) {
@@ -50,7 +60,7 @@ public class FlywayGenerator {
 
                 // Indexes for unique or search fields
                 if (field.hasAnnotation("unique") && !field.hasAnnotation("id")) {
-                    indexStatements.add("CREATE INDEX IF NOT EXISTS idx_" + tableName + "_" + colName + " ON " + tableName + " (" + colName + ");");
+                    addAutoIndex(indexStatements, indexedSignatures, tableName, colName, isMysql);
                 }
             }
 
@@ -68,7 +78,7 @@ public class FlywayGenerator {
                     String targetTable = TypeHelper.toSnakeCase(TypeHelper.pluralize(rel.getTargetModel()));
                     String fkName = "fk_" + tableName + "_" + fkCol;
                     foreignKeyStatements.add("ALTER TABLE " + tableName + " ADD CONSTRAINT " + fkName + " FOREIGN KEY (" + fkCol + ") REFERENCES " + targetTable + " (id) ON DELETE SET NULL;");
-                    indexStatements.add("CREATE INDEX IF NOT EXISTS idx_" + tableName + "_" + fkCol + " ON " + tableName + " (" + fkCol + ");");
+                    addAutoIndex(indexStatements, indexedSignatures, tableName, fkCol, isMysql);
                 }
             }
 
@@ -80,7 +90,7 @@ public class FlywayGenerator {
             if (crud != null) {
                 for (String sf : crud.getSearchFields()) {
                     String col = TypeHelper.toSnakeCase(sf);
-                    indexStatements.add("CREATE INDEX IF NOT EXISTS idx_" + tableName + "_" + col + " ON " + tableName + " (" + col + ");");
+                    addAutoIndex(indexStatements, indexedSignatures, tableName, col, isMysql);
                 }
             }
         }
@@ -98,7 +108,8 @@ public class FlywayGenerator {
             sb.append("    storage_provider VARCHAR(50) NOT NULL,\n");
             sb.append("    uploaded_at ").append(isMysql ? "DATETIME" : "TIMESTAMP").append(" NOT NULL\n");
             sb.append(");\n\n");
-            indexStatements.add("CREATE INDEX IF NOT EXISTS idx_file_metadata_file_key ON file_metadata (file_key);");
+            indexStatements.add(IndexResolver.toCreateStatement("idx_file_metadata_file_key", "file_metadata",
+                    java.util.Collections.singletonList("file_key"), false, isMysql));
         }
 
         // 2. Many-to-Many Join Tables
@@ -148,6 +159,14 @@ public class FlywayGenerator {
         }
 
         return new JavaSourceFile("src/main/resources/db/migration/V1__initial_schema.sql", sb.toString());
+    }
+
+    /** Adds an auto-generated single-column index unless the same column set is already indexed. */
+    private static void addAutoIndex(List<String> statements, Set<String> seen, String tableName, String col, boolean isMysql) {
+        if (seen.add(tableName + ":" + col)) {
+            String name = IndexResolver.shorten("idx_" + tableName + "_" + col);
+            statements.add(IndexResolver.toCreateStatement(name, tableName, java.util.Collections.singletonList(col), false, isMysql));
+        }
     }
 
     private static String toSqlType(FieldDef field, boolean isMysql) {

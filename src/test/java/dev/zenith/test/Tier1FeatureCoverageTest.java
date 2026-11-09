@@ -1,12 +1,8 @@
 package dev.zenith.test;
 
-import dev.zenith.analyzer.AnalysisException;
 import dev.zenith.ast.*;
 import dev.zenith.lexer.Token;
-import dev.zenith.lexer.TokenType;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.List;
 
 /**
@@ -43,10 +39,9 @@ public class Tier1FeatureCoverageTest {
     public static void T1_03_lexer_allows_var_as_field_name_backward_compatibility() {
         String dsl = TestHarness.wrapInStandardSchema(
                 "model ConfigItem {\n" +
-                "    id: Long @id @auto\n" +
-                "    var: String\n" +
-                "}\n"
-        );
+                        "    id: Long @id @auto\n" +
+                        "    var: String\n" +
+                        "}\n");
         ZenithFile file = TestHarness.parse(dsl);
         TestHarness.assertNotNull(file, "Parsed file should not be null");
         ModelDef model = file.getModels().get(0);
@@ -57,7 +52,8 @@ public class Tier1FeatureCoverageTest {
         List<Token> tokens = TestHarness.tokenize("\"var inside string\"");
         TestHarness.assertTrue(!tokens.isEmpty(), "Tokens should not be empty");
         TestHarness.assertEquals("STRING_LITERAL", tokens.get(0).getType().name(), "Should be STRING_LITERAL");
-        TestHarness.assertEquals("var inside string", tokens.get(0).getValue(), "String literal value should be preserved");
+        TestHarness.assertEquals("var inside string", tokens.get(0).getValue(),
+                "String literal value should be preserved");
     }
 
     public static void T1_05_lexer_multiple_consecutive_var_tokens() {
@@ -80,7 +76,8 @@ public class Tier1FeatureCoverageTest {
     }
 
     public static void T1_07_parser_creates_variable_binding_update_action() {
-        String dsl = TestHarness.createOrderModelSchema("var updCust = update Customer { fullName = \"Updated Customer\" }");
+        String dsl = TestHarness
+                .createOrderModelSchema("var updCust = update Customer { fullName = \"Updated Customer\" }");
         ZenithFile file = TestHarness.parse(dsl);
         ModelDef order = file.getModels().stream().filter(m -> m.getName().equals("Order")).findFirst().orElse(null);
         TestHarness.assertNotNull(order, "Order model should exist");
@@ -92,11 +89,10 @@ public class Tier1FeatureCoverageTest {
     public static void T1_08_parser_variable_binding_with_field_assignments() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var newInv = create Invoice {\n" +
-                "    orderId = id\n" +
-                "    amount = 150.00\n" +
-                "    status = \"ISSUED\"\n" +
-                "}"
-        );
+                        "    orderId = id\n" +
+                        "    amount = 150.00\n" +
+                        "    status = \"ISSUED\"\n" +
+                        "}");
         ZenithFile file = TestHarness.parse(dsl);
         ModelDef order = file.getModels().stream().filter(m -> m.getName().equals("Order")).findFirst().orElse(null);
         CustomEndpointDef endpoint = order.getCustomEndpoints().get(0);
@@ -107,9 +103,8 @@ public class Tier1FeatureCoverageTest {
     public static void T1_09_parser_preserves_action_statement_order() {
         String dsl = TestHarness.createOrderModelSchema(
                 "status = \"PROCESSING\"\n" +
-                "var inv = create Invoice { amount = totalAmount }\n" +
-                "status = \"COMPLETED\""
-        );
+                        "var inv = create Invoice { amount = totalAmount }\n" +
+                        "status = \"COMPLETED\"");
         ZenithFile file = TestHarness.parse(dsl);
         ModelDef order = file.getModels().stream().filter(m -> m.getName().equals("Order")).findFirst().orElse(null);
         CustomEndpointDef endpoint = order.getCustomEndpoints().get(0);
@@ -145,8 +140,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_13_semantics_registers_variable_in_action_symbol_table() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var inv = create Invoice { amount = totalAmount }\n" +
-                "totalAmount = inv.amount"
-        );
+                        "totalAmount = inv.amount");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "Variable 'inv' must be registered in action symbol table");
     }
@@ -154,8 +148,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_14_semantics_variable_visible_to_subsequent_statements() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var cust = create Customer { fullName = \"John Doe\", email = \"john@test.com\" }\n" +
-                "customerId = cust.id"
-        );
+                        "customerId = cust.id");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "Subsequent statement must access 'cust.id'");
     }
@@ -163,8 +156,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_15_semantics_multiple_distinct_variables_different_types() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var cust = create Customer { fullName = \"Alice\", email = \"alice@test.com\" }\n" +
-                "var inv = create Invoice { amount = totalAmount, orderId = id }"
-        );
+                        "var inv = create Invoice { amount = totalAmount, orderId = id }");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "Multiple variables of distinct types should analyze cleanly");
     }
@@ -174,8 +166,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_16_semantics_resolves_declared_model_field() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var inv = create Invoice { amount = 50.00 }\n" +
-                "totalAmount = inv.amount"
-        );
+                        "totalAmount = inv.amount");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "Property 'amount' should resolve to Invoice.amount");
     }
@@ -183,8 +174,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_17_semantics_resolves_db_generated_id_field() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var cust = create Customer { fullName = \"Bob\", email = \"bob@test.com\" }\n" +
-                "customerId = cust.id"
-        );
+                        "customerId = cust.id");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "DB-generated 'id' field must be resolved on bound variable");
     }
@@ -192,8 +182,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_18_semantics_resolves_db_generated_created_at_field() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var cust = create Customer { fullName = \"Carol\", email = \"carol@test.com\" }\n" +
-                "createdAt = cust.createdAt"
-        );
+                        "createdAt = cust.createdAt");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "DB-generated 'createdAt' must be resolved on bound variable");
     }
@@ -201,8 +190,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_19_semantics_resolves_db_generated_updated_at_field() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var cust = create Customer { fullName = \"Dave\", email = \"dave@test.com\" }\n" +
-                "updatedAt = cust.updatedAt"
-        );
+                        "updatedAt = cust.updatedAt");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "DB-generated 'updatedAt' must be resolved on bound variable");
     }
@@ -210,8 +198,7 @@ public class Tier1FeatureCoverageTest {
     public static void T1_20_semantics_resolves_relation_navigation_field() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var ord = create Order { totalAmount = 250.00 }\n" +
-                "customerId = ord.customer.id"
-        );
+                        "customerId = ord.customer.id");
         ZenithFile file = TestHarness.analyze(dsl);
         TestHarness.assertNotNull(file, "Relation navigation 'ord.customer.id' must be resolved");
     }
@@ -219,41 +206,47 @@ public class Tier1FeatureCoverageTest {
     // --- Group 5: Transpilation & Repository Auto-Injection ---
 
     public static void T1_21_codegen_transpiles_var_create_to_java_save_assignment() {
-        String dsl = TestHarness.createOrderModelSchema("var newCust = create Customer { fullName = \"Eve\", email = \"eve@test.com\" }");
+        String dsl = TestHarness.createOrderModelSchema(
+                "var newCust = create Customer { fullName = \"Eve\", email = \"eve@test.com\" }");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Order");
-        TestHarness.assertContains(serviceCode, "Customer newCust =", "Generated code must declare and assign 'Customer newCust'");
-        TestHarness.assertContains(serviceCode, "customerRepository.save(", "Generated code must invoke customerRepository.save(...)");
+        TestHarness.assertContains(serviceCode, "Customer newCust =",
+                "Generated code must declare and assign 'Customer newCust'");
+        TestHarness.assertContains(serviceCode, "customerRepository.save(",
+                "Generated code must invoke customerRepository.save(...)");
     }
 
     public static void T1_22_codegen_transpiles_var_update_to_java_find_and_save() {
         String dsl = TestHarness.createOrderModelSchema("var updCust = update Customer { fullName = \"Updated Eve\" }");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Order");
-        TestHarness.assertContains(serviceCode, "Customer updCust =", "Generated code must declare and assign 'Customer updCust'");
-        TestHarness.assertContains(serviceCode, "customerRepository.save(", "Generated code must invoke customerRepository.save(...)");
+        TestHarness.assertContains(serviceCode, "Customer updCust =",
+                "Generated code must declare and assign 'Customer updCust'");
+        TestHarness.assertContains(serviceCode, "customerRepository.save(",
+                "Generated code must invoke customerRepository.save(...)");
     }
 
     public static void T1_23_codegen_replaces_bound_property_with_getter() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var inv = create Invoice { amount = 75.00 }\n" +
-                "totalAmount = inv.amount"
-        );
+                        "totalAmount = inv.amount");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Order");
-        TestHarness.assertContains(serviceCode, "inv.getAmount()", "Property access 'inv.amount' must be transpiled to 'inv.getAmount()'");
+        TestHarness.assertContains(serviceCode, "inv.getAmount()",
+                "Property access 'inv.amount' must be transpiled to 'inv.getAmount()'");
     }
 
     public static void T1_24_codegen_auto_injects_extra_repositories_into_service() {
         String dsl = TestHarness.createOrderModelSchema("var inv = create Invoice { amount = 80.00 }");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Order");
-        TestHarness.assertContains(serviceCode, "InvoiceRepository invoiceRepository", "Service must inject InvoiceRepository for bound model");
+        TestHarness.assertContains(serviceCode, "InvoiceRepository invoiceRepository",
+                "Service must inject InvoiceRepository for bound model");
     }
 
     public static void T1_25_codegen_transpiles_nested_getter_chain() {
         String dsl = TestHarness.createOrderModelSchema(
                 "var ord = create Order { totalAmount = 120.00 }\n" +
-                "customerId = ord.customer.id"
-        );
+                        "customerId = ord.customer.id");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Order");
-        TestHarness.assertContains(serviceCode, "ord.getCustomer().getId()", "Nested property 'ord.customer.id' must be transpiled to 'ord.getCustomer().getId()'");
+        TestHarness.assertContains(serviceCode, "ord.getCustomer().getId()",
+                "Nested property 'ord.customer.id' must be transpiled to 'ord.getCustomer().getId()'");
     }
 
     // --- Group 6: Transactional Boundary & Method Semantics ---
@@ -261,7 +254,8 @@ public class Tier1FeatureCoverageTest {
     public static void T1_26_codegen_annotates_action_with_transactional() {
         String dsl = TestHarness.createOrderModelSchema("var inv = create Invoice { amount = 500.00 }");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Order");
-        TestHarness.assertContains(serviceCode, "@Transactional", "Custom action method must be annotated with @Transactional");
+        TestHarness.assertContains(serviceCode, "@Transactional",
+                "Custom action method must be annotated with @Transactional");
     }
 
     public static void T1_27_codegen_ensures_transactional_import_present() {
@@ -274,31 +268,30 @@ public class Tier1FeatureCoverageTest {
     public static void T1_28_codegen_preserves_execution_sequence_in_java_output() {
         String dsl = TestHarness.createOrderModelSchema(
                 "status = \"FIRST\"\n" +
-                "var inv = create Invoice { amount = 10.00 }\n" +
-                "status = \"SECOND\""
-        );
+                        "var inv = create Invoice { amount = 10.00 }\n" +
+                        "status = \"SECOND\"");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Order");
         int idxFirst = serviceCode.indexOf("\"FIRST\"");
         int idxInv = serviceCode.indexOf("new Invoice()");
         int idxSecond = serviceCode.indexOf("\"SECOND\"");
         TestHarness.assertTrue(idxFirst != -1 && idxInv != -1 && idxSecond != -1, "All 3 statements must be present");
-        TestHarness.assertTrue(idxFirst < idxInv && idxInv < idxSecond, "Statements must be transpiled in exact sequence order");
+        TestHarness.assertTrue(idxFirst < idxInv && idxInv < idxSecond,
+                "Statements must be transpiled in exact sequence order");
     }
 
     public static void T1_29_codegen_handles_void_return_custom_action() {
         String dsl = TestHarness.wrapInStandardSchema(
                 "model Task {\n" +
-                "    id: Long @id @auto\n" +
-                "    title: String\n" +
-                "    endpoints {\n" +
-                "        post \"/doWork\" -> Void {\n" +
-                "            action: {\n" +
-                "                var t = create Task { title = \"Subtask\" }\n" +
-                "            }\n" +
-                "        }\n" +
-                "    }\n" +
-                "}\n"
-        );
+                        "    id: Long @id @auto\n" +
+                        "    title: String\n" +
+                        "    endpoints {\n" +
+                        "        post \"/doWork\" -> Void {\n" +
+                        "            action: {\n" +
+                        "                var t = create Task { title = \"Subtask\" }\n" +
+                        "            }\n" +
+                        "        }\n" +
+                        "    }\n" +
+                        "}\n");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Task");
         TestHarness.assertContains(serviceCode, "public void doWork(", "Method return type should be void");
     }
@@ -306,22 +299,21 @@ public class Tier1FeatureCoverageTest {
     public static void T1_30_codegen_handles_dto_return_custom_action() {
         String dsl = TestHarness.wrapInStandardSchema(
                 "dto TaskResponse {\n" +
-                "    id: Long\n" +
-                "    title: String\n" +
-                "}\n\n" +
-                "model Task {\n" +
-                "    id: Long @id @auto\n" +
-                "    title: String\n" +
-                "    endpoints {\n" +
-                "        post \"/createSubtask\" -> TaskResponse {\n" +
-                "            action: {\n" +
-                "                var sub = create Task { title = \"New Subtask\" }\n" +
-                "                return TaskResponse { id = sub.id, title = sub.title }\n" +
-                "            }\n" +
-                "        }\n" +
-                "    }\n" +
-                "}\n"
-        );
+                        "    id: Long\n" +
+                        "    title: String\n" +
+                        "}\n\n" +
+                        "model Task {\n" +
+                        "    id: Long @id @auto\n" +
+                        "    title: String\n" +
+                        "    endpoints {\n" +
+                        "        post \"/createSubtask\" -> TaskResponse {\n" +
+                        "            action: {\n" +
+                        "                var sub = create Task { title = \"New Subtask\" }\n" +
+                        "                return TaskResponse { id = sub.id, title = sub.title }\n" +
+                        "            }\n" +
+                        "        }\n" +
+                        "    }\n" +
+                        "}\n");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Task");
         TestHarness.assertContains(serviceCode, "TaskResponse", "Service method return type must be TaskResponse");
     }
