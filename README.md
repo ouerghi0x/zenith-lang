@@ -226,6 +226,20 @@ Launches a dedicated, frameless native desktop application window:
 .\bin\zenith.bat studio zenith-exemples\nexus-commerce\schema.zen --desktop
 ```
 
+### 7. `zenith mcp` _(Model Context Protocol Server for AI Agents)_
+
+Starts the native Zenith MCP server over standard I/O (JSON-RPC 2.0). Connects Claude Code, Cursor, Antigravity, and MCP-compatible AI assistants directly to the Zenith compiler:
+
+```cmd
+.\bin\zenith.bat mcp
+```
+
+**Exposed MCP Capabilities:**
+- **7 Tools**: `zenith_get_specification`, `zenith_get_examples`, `zenith_list_features`, `zenith_validate`, `zenith_explain_error`, `zenith_build`, `zenith_get_project_info`.
+- **Resources**: `zenith://specification/*`, `zenith://examples/*`.
+- **Prompts**: `create_crud_project`, `create_authentication_system`, `debug_zenith_project`, `extend_existing_project`.
+- **Structured Diagnostics**: Machine-readable error codes (`ZEN-xxx`), exact file/line/column markers, and automated code fix suggestions.
+
 #### Download Prebuilt Windows Desktop Installer (.exe)
 
 You can download the standalone desktop installer directly:

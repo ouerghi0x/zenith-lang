@@ -50,6 +50,10 @@ public class E2ETestSuiteRunner {
             runFeature13(selectedTier);
             return;
         }
+        if (selectedFeature == 24) {
+            runFeature24(selectedTier);
+            return;
+        }
 
         System.out.println(BOLD + CYAN + "================================================================================" + RESET);
         System.out.println(BOLD + CYAN + "    Zenith Feature #1: Action Variable Binding (var x = create / update)         " + RESET);
@@ -185,6 +189,33 @@ public class E2ETestSuiteRunner {
         for (int t = 1; t <= 4; t++) {
             if (selectedTier == -1 || selectedTier == t) {
                 runTier(t, titles[t - 1], Feature13RateLimitingTest.class, results, "^T" + t + "_.*");
+            }
+        }
+        printSummary(results, System.currentTimeMillis() - start);
+        boolean allPassed = results.stream().allMatch(r -> r.passed);
+        if (!allPassed) {
+            System.err.println(RED + "\n[FAILURE] Some test cases did not pass. Check diagnostics above." + RESET);
+            System.exit(1);
+        }
+        System.out.println(GREEN + "\n[SUCCESS] All " + results.size() + " test cases passed cleanly!" + RESET);
+        System.exit(0);
+    }
+
+    /** Feature #24 / Task 25 (Zenith MCP Server): all tiers live in Feature24McpServerTest. */
+    private static void runFeature24(int selectedTier) {
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        System.out.println(BOLD + CYAN + "    Zenith Feature #24: Zenith MCP Server (JSON-RPC 2.0 / AI Agent Tools)      " + RESET);
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        long start = System.currentTimeMillis();
+        List<TestHarness.TestResult> results = new ArrayList<>();
+        String[] titles = {
+                "Tier 1: Protocol Handshake & Discovery (Initialize, Tools, Resources, Prompts)",
+                "Tier 2: Specification, Feature Discovery, & Examples Tool Calls",
+                "Tier 3: Validation, Diagnostics, & Error Explanation",
+                "Tier 4: Compilation via MCP (zenith_build) & Project Inspection" };
+        for (int t = 1; t <= 4; t++) {
+            if (selectedTier == -1 || selectedTier == t) {
+                runTier(t, titles[t - 1], Feature24McpServerTest.class, results, "^T" + t + "_.*");
             }
         }
         printSummary(results, System.currentTimeMillis() - start);

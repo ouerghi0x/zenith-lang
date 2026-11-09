@@ -54,6 +54,9 @@ public class ZenithCli {
                 case "studio":
                     handleStudio(args);
                     break;
+                case "mcp":
+                    handleMcp(args);
+                    break;
                 case "doctor":
                     handleDoctor(args);
                     break;
@@ -557,6 +560,12 @@ public class ZenithCli {
         launcher.start();
     }
 
+    private static void handleMcp(String[] args) {
+        // Runs Zenith MCP Server over stdin/stdout for AI agents (Claude Code, Cursor, Antigravity)
+        dev.zenith.mcp.ZenithMcpServer server = new dev.zenith.mcp.ZenithMcpServer();
+        server.start();
+    }
+
     private static void printHelp() {
         System.out.println(BANNER);
         System.out.println("Zenith CLI - The high-level Web DSL targeting Spring Boot & Java 17\n");
@@ -569,6 +578,7 @@ public class ZenithCli {
         System.out.println("  zenith validate <file.zen>                Validate schema syntax and semantics");
         System.out.println("  zenith inspect <file.zen>                 Show summary of models and endpoints");
         System.out.println("  zenith init [file.zen]                    Create a starter schema file");
+        System.out.println("  zenith mcp                                Launch Zenith MCP Server for AI coding agents (Claude, Cursor, Antigravity)");
         System.out.println(
                 "  zenith doctor                             Diagnose Java, Maven, Docker and system environment");
         System.out.println("  zenith version                            Display installed Zenith version");
