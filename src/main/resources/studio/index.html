@@ -460,8 +460,10 @@
           <a href="#ref-storage" class="guide-pill">11. Storage &amp; Media</a>
           <a href="#ref-fullstack" class="guide-pill">12. Full-Stack SDK</a>
           <a href="#ref-jobs" class="guide-pill">13. Background Jobs</a>
-          <a href="#ref-tests" class="guide-pill">14. Automated Tests</a>
-          <a href="#ref-desktop" class="guide-pill">15. Desktop &amp; CLI</a>
+          <a href="#ref-mail" class="guide-pill">14. Transactional Emails</a>
+          <a href="#ref-tests" class="guide-pill">15. Automated Tests</a>
+          <a href="#ref-desktop" class="guide-pill">16. Desktop &amp; CLI</a>
+          <a href="#ref-mcp" class="guide-pill">17. Zenith MCP Server</a>
         </div>
 
         <!-- 1. Configuration Block -->
@@ -2024,6 +2026,11 @@ mvn test</code></pre>
                 <td>Launches Zenith Studio in pure standalone frameless application mode (dedicated OS taskbar icon, borderless window).</td>
               </tr>
               <tr>
+                <td><code>zenith mcp</code></td>
+                <td><code>—</code></td>
+                <td>Starts the official Zenith MCP server over standard I/O (JSON-RPC 2.0) for AI coding assistants.</td>
+              </tr>
+              <tr>
                 <td><code>Desktop Installer (.exe)</code></td>
                 <td><code>Zenith-Studio-Setup.exe</code></td>
                 <td>Official offline installer with desktop shortcut, Start Menu integration, and standalone runtime.</td>
@@ -2039,6 +2046,63 @@ mvn test</code></pre>
           </a>
           <span style="font-size: 11px; color: var(--text-muted);">Self-contained NSIS setup (~82 MB)</span>
         </div>
+
+        <!-- 17. Zenith MCP Server -->
+        <h3 class="guide-section-title" id="ref-mcp">17. Zenith MCP Server (AI Agent Integration) <span class="guide-badge">mcp</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">The Model Context Protocol (MCP) server provides seamless integration with AI coding agents (Claude Code, Cursor, Antigravity) allowing them to inspect language specifications, validate schemas with structured diagnostics, and build Spring Boot 3 applications.</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th style="width: 28%;">MCP Tool</th>
+                <th style="width: 24%;">Arguments</th>
+                <th>Responsibility &amp; Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>zenith_get_specification</code></td>
+                <td>—</td>
+                <td>Returns complete Zenith language specification, grammar rules, primitives, and supported decorators.</td>
+              </tr>
+              <tr>
+                <td><code>zenith_get_examples</code></td>
+                <td><code>topic?</code></td>
+                <td>Retrieves tested production examples (<code>basic-crud</code>, <code>authentication</code>, <code>relationships</code>, <code>rate-limiting</code>, <code>emails</code>).</td>
+              </tr>
+              <tr>
+                <td><code>zenith_list_features</code></td>
+                <td>—</td>
+                <td>Discovers supported Zenith capabilities and decorators directly from the compiler core.</td>
+              </tr>
+              <tr>
+                <td><code>zenith_validate</code></td>
+                <td><code>source?, filePath?</code></td>
+                <td>Validates source code and returns machine-readable structured diagnostics (<code>ZEN-xxx</code>, exact line/column, and auto-fix suggestions).</td>
+              </tr>
+              <tr>
+                <td><code>zenith_explain_error</code></td>
+                <td><code>errorMessage, errorCode?</code></td>
+                <td>Explains compiler diagnostics and returns actionable code corrections with code examples.</td>
+              </tr>
+              <tr>
+                <td><code>zenith_build</code></td>
+                <td><code>source?, filePath?, outputDir?</code></td>
+                <td>Compiles a Zenith project into a production-grade Spring Boot 3 &amp; Java 17 application.</td>
+              </tr>
+              <tr>
+                <td><code>zenith_get_project_info</code></td>
+                <td><code>source?, filePath?</code></td>
+                <td>Inspects project metadata, domain models, JPA fields, enums, security roles, and active endpoints.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
+          <strong>AI Prompts &amp; Resources:</strong> Exposes prompt workflows (<code>create_crud_project</code>, <code>create_authentication_system</code>, <code>debug_zenith_project</code>, <code>extend_existing_project</code>) and resources (<code>zenith://specification/*</code>, <code>zenith://examples/*</code>).
+        </p>
           </div>
         </div>
       </div>

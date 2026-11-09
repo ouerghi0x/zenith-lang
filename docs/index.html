@@ -87,7 +87,8 @@
           <li><a href="#sdk" class="sidebar-link">15. Full-Stack TypeScript SDK</a></li>
           <li><a href="#testing" class="sidebar-link">16. Automated Test Generation</a></li>
           <li><a href="#docker" class="sidebar-link">17. Docker Containerization</a></li>
-          <li><a href="#showcase" class="sidebar-link">18. Complete Reference Project</a></li>
+          <li><a href="#mcp" class="sidebar-link">18. Zenith MCP Server (AI Agents)</a></li>
+          <li><a href="#showcase" class="sidebar-link">19. Complete Reference Project</a></li>
         </ul>
       </div>
     </aside>
@@ -184,6 +185,11 @@
               <td><code>zenith studio</code></td>
               <td><code>&lt;file.zen&gt; [--desktop] [--port 3000]</code></td>
               <td>Launches Zenith Studio — available both as a local web IDE and native standalone desktop app.</td>
+            </tr>
+            <tr>
+              <td><code>zenith mcp</code></td>
+              <td><code>—</code></td>
+              <td>Runs the native Model Context Protocol (MCP) server over standard I/O (JSON-RPC 2.0) for AI coding assistants (Claude Code, Cursor, Antigravity).</td>
             </tr>
             <tr>
               <td><code>zenith init</code></td>
@@ -1222,8 +1228,83 @@ zenith studio schema.zen --desktop</code></pre>
         <pre class="code-content"><code>docker compose up --build</code></pre>
       </div>
 
-      <!-- 18. Showcase -->
-      <h2 class="section-heading" id="showcase">18. Complete Reference Project</h2>
+      <!-- 18. MCP Server -->
+      <h2 class="section-heading" id="mcp">18. Zenith MCP Server (AI Agent Integration)</h2>
+      <p>
+        Zenith features an official, zero-overhead <strong>Model Context Protocol (MCP) Server</strong> complying with protocol standard <code>2024-11-05</code> over standard I/O (JSON-RPC 2.0). Connect Claude Code, Cursor, Antigravity, and autonomous AI agents directly to Zenith to retrieve language specifications, generate valid schemas, diagnose syntax/semantic errors, and compile full applications.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">Terminal / CLI Launcher</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code># Launch the Zenith MCP server over stdio
+zenith mcp</code></pre>
+      </div>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>MCP Tool</th>
+              <th>Arguments</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>zenith_get_specification</code></td>
+              <td>—</td>
+              <td>Retrieves the complete Zenith language specification, top-level grammar, and decorators.</td>
+            </tr>
+            <tr>
+              <td><code>zenith_get_examples</code></td>
+              <td><code>topic?</code></td>
+              <td>Retrieves production-grade <code>.zen</code> schemas by category (<code>basic-crud</code>, <code>authentication</code>, <code>relationships</code>, <code>rate-limiting</code>, <code>emails</code>).</td>
+            </tr>
+            <tr>
+              <td><code>zenith_list_features</code></td>
+              <td>—</td>
+              <td>Discovers all supported capabilities, decorators, and features supported by the compiler core.</td>
+            </tr>
+            <tr>
+              <td><code>zenith_validate</code></td>
+              <td><code>source?, filePath?</code></td>
+              <td>Validates source code and returns machine-readable structured diagnostics (error codes <code>ZEN-xxx</code>, exact line/column, and auto-fix suggestions).</td>
+            </tr>
+            <tr>
+              <td><code>zenith_explain_error</code></td>
+              <td><code>errorMessage, errorCode?</code></td>
+              <td>Explains compiler diagnostics and provides actionable code corrections and correct syntax examples.</td>
+            </tr>
+            <tr>
+              <td><code>zenith_build</code></td>
+              <td><code>source?, filePath?, outputDir?</code></td>
+              <td>Compiles a Zenith project and emits complete production Java 17 & Spring Boot 3 code.</td>
+            </tr>
+            <tr>
+              <td><code>zenith_get_project_info</code></td>
+              <td><code>source?, filePath?</code></td>
+              <td>Inspects project configuration, models, fields, enums, security roles, and active endpoints.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="font-size: 16px; margin: 24px 0 10px 0; color: #f8fafc;">MCP Resources &amp; AI Workflow Prompts</h3>
+      <p style="font-size: 14px; margin-bottom: 12px; color: var(--text-secondary);">
+        Agents can discover built-in resources under <code>zenith://specification/*</code> and <code>zenith://examples/*</code>, and execute guided workflow prompts:
+      </p>
+      <ul>
+        <li><code>create_crud_project</code>: Step-by-step guidance to scaffold a complete typed CRUD REST API.</li>
+        <li><code>create_authentication_system</code>: Guides creation of JWT authentication with Role enums and RBAC.</li>
+        <li><code>debug_zenith_project</code>: Diagnoses and repairs compiler validation diagnostics.</li>
+        <li><code>extend_existing_project</code>: Guides extending existing domain models without breaking relational foreign keys.</li>
+      </ul>
+
+      <!-- 19. Showcase -->
+      <h2 class="section-heading" id="showcase">19. Complete Reference Project</h2>
       <p>
         The canonical reference project <strong>NexusCommerce</strong> illustrates how all Zenith features integrate cleanly. Inspect the complete codebase in <code>zenith-exemples/nexus-commerce/</code> or test it live in Zenith Studio.
       </p>
