@@ -528,6 +528,7 @@ public class Parser {
         ModelDef model = new ModelDef(nameToken.getValue(), fields, relations, crudConfig, customEndpoints, indexes);
         model.setSourceFile(sourceFile);
         model.setSourceLine(nameToken.getLine());
+        model.setSourceColumn(nameToken.getColumn());
         return model;
     }
 
@@ -876,6 +877,7 @@ public class Parser {
         crud.setCacheDuration(cacheDuration);
         crud.setSourceFile(sourceFile);
         crud.setSourceLine(crudTok.getLine());
+        crud.setSourceColumn(crudTok.getColumn());
         return crud;
     }
 
@@ -1076,6 +1078,7 @@ public class Parser {
         Map<String, String> paramTypes = new LinkedHashMap<>();
         List<GuardDef> guards = new ArrayList<>();
         List<String> actions = new ArrayList<>();
+        List<ActionStatementDef> actionDefs = new ArrayList<>();
         List<String> roles = new ArrayList<>();
 
         if (match(TokenType.LBRACE)) {
@@ -1118,17 +1121,25 @@ public class Parser {
                     match(TokenType.COLON); // ':' is optional: 'action {' or 'action: {'
                     consume(TokenType.LBRACE, "Expected '{' to start action block");
                     while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+                        Token startTok = peek();
                         String a = parseActionStatement();
                         if (!a.isEmpty()) {
                             actions.add(a);
+                            actionDefs.add(new ActionStatementDef(a, new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
                         }
                         match(TokenType.COMMA);
                     }
                     consume(TokenType.RBRACE, "Expected '}' closing action block");
                 } else if (key.getType() == TokenType.CREATE) {
-                    actions.add(parseCreateAction());
+                    Token startTok = peek();
+                    String a = parseCreateAction();
+                    actions.add(a);
+                    actionDefs.add(new ActionStatementDef(a, new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
                 } else if (key.getType() == TokenType.UPDATE) {
-                    actions.add(parseUpdateAction());
+                    Token startTok = peek();
+                    String a = parseUpdateAction();
+                    actions.add(a);
+                    actionDefs.add(new ActionStatementDef(a, new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
                 } else if (key.getType() == TokenType.IDENTIFIER || key.getType() == TokenType.AUTH
                         || key.getType() == TokenType.PUBLIC) {
                     Token idTok = advance();
@@ -1221,9 +1232,11 @@ public class Parser {
         CustomEndpointDef cep = new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards,
                 actions, requiresAuth,
                 userScoped, query, paramTypes, bodyType, rateLimit, roles);
+        cep.setActionStatementDefs(actionDefs);
         cep.setCacheDuration(cacheDuration);
         cep.setSourceFile(sourceFile);
         cep.setSourceLine(methodTok.getLine());
+        cep.setSourceColumn(methodTok.getColumn());
         return cep;
     }
 

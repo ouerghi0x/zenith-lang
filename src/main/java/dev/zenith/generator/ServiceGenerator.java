@@ -1,6 +1,7 @@
 package dev.zenith.generator;
 
 import dev.zenith.ast.*;
+import dev.zenith.generator.trace.TraceableSourceWriter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -117,6 +118,8 @@ public class ServiceGenerator {
         FieldDef idField = model.getIdField();
         String idType = idField != null ? TypeHelper.toSimpleJavaType(idField.getType()) : "Long";
 
+        String targetPath = pkgDir + "impl/" + implName + ".java";
+        TraceableSourceWriter writer = new TraceableSourceWriter(targetPath);
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePkg).append(".service.impl;\n\n");
 
@@ -572,7 +575,7 @@ public class ServiceGenerator {
                         if (entityCond.isEmpty()) {
                             continue;
                         }
-                        String javaCond = LogicTranspiler.transpileCondition(entityCond, model);
+                        String javaCond = LogicTranspiler.transpileCondition(entityCond, model, file);
                         sb.append("        if (!(").append(javaCond).append(")) {\n");
                         sb.append("            throw new IllegalArgumentException(\"")
                                 .append(guard.getErrorMessage().replace("\"", "\\\"")).append("\");\n");
@@ -597,7 +600,12 @@ public class ServiceGenerator {
                         }
 
                         boolean modifiedEntity = false;
-                        for (String stmt : custom.getActionStatements()) {
+                        var actionDefs = custom.getActionStatementDefs();
+                        for (int ai = 0; ai < custom.getActionStatements().size(); ai++) {
+                            String stmt = custom.getActionStatements().get(ai);
+                            ActionStatementDef aDef = ai < actionDefs.size() ? actionDefs.get(ai) : null;
+                            SourceLocation stmtLoc = aDef != null && aDef.getSourceLocation() != null ? aDef.getSourceLocation() : custom.getSourceLocation();
+
                             String t = stmt.trim();
                             if (t.startsWith("return ") || t.equals("return")) {
                                 explicitReturnStmt = stmt;
@@ -608,9 +616,17 @@ public class ServiceGenerator {
                                 }
                                 String javaStmt = LogicTranspiler.transpileStatement(stmt, model, file);
                                 if (!javaStmt.isEmpty()) {
+                                    int startGenLine = TraceableSourceWriter.countLines(sb.toString());
                                     for (String line : javaStmt.split("\n")) {
                                         sb.append("        ").append(line.trim().isEmpty() ? "" : line).append("\n");
                                     }
+                                    int endGenLine = TraceableSourceWriter.countLines(sb.toString()) - 1;
+                                    writer.addMapping(custom.getMethod() + " " + custom.getPath() + " : " + t,
+                                            startGenLine, Math.max(startGenLine, endGenLine),
+                                            ServiceGenerator.class.getName(), "generateImplementation", 610,
+                                            stmtLoc,
+                                            stmt);
+
                                     if (isSecondary) {
                                         sb.append("\n");
                                     }
@@ -856,7 +872,16 @@ public class ServiceGenerator {
 
         sb.append("}\n");
 
-        return new JavaSourceFile(pkgDir + "impl/" + implName + ".java", sb.toString());
+        writer.append(sb.toString());
+
+        CrudConfig crudCfg = model.getCrudConfig();
+        SourceLocation origin = crudCfg != null && crudCfg.getSourceLocation() != null ? crudCfg.getSourceLocation() : model.getSourceLocation();
+        writer.addMapping(implName, 1, writer.getCurrentLine(),
+                ServiceGenerator.class.getName(), "generateImplementation", 120,
+                origin,
+                crudCfg != null ? "crud { ... }" : "model " + className);
+
+        return new JavaSourceFile(targetPath, writer.getContent(), writer.getMappings());
     }
 
     private static String getMapperCall(String ret, String className, ZenithFile file) {

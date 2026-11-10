@@ -1,6 +1,7 @@
 package dev.zenith.generator;
 
 import dev.zenith.ast.*;
+import dev.zenith.generator.trace.TraceableSourceWriter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -301,6 +302,13 @@ public class EntityGenerator {
         sb.append("}\n");
 
         String path = "src/main/java/" + basePkg.replace('.', '/') + "/entity/" + className + ".java";
-        return new JavaSourceFile(path, sb.toString());
+        TraceableSourceWriter writer = new TraceableSourceWriter(path);
+        writer.append(sb.toString());
+        writer.addMapping(className, 1, writer.getCurrentLine(),
+                EntityGenerator.class.getName(), "generate", 42,
+                model.getSourceLocation(),
+                "model " + className);
+
+        return new JavaSourceFile(path, writer.getContent(), writer.getMappings());
     }
 }

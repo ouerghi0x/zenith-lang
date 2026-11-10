@@ -4,6 +4,7 @@ import dev.zenith.ast.DtoDef;
 import dev.zenith.ast.EnumDef;
 import dev.zenith.ast.ModelDef;
 import dev.zenith.ast.ZenithFile;
+import dev.zenith.generator.trace.GenerationManifest;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -118,6 +119,18 @@ public class ProjectGenerator {
         return files;
     }
 
+    public static GenerationManifest buildManifest(ZenithFile file, List<JavaSourceFile> sourceFiles) {
+        String rootSchema = "schema.zen";
+        if (file.getModels() != null && !file.getModels().isEmpty() && file.getModels().get(0).getSourceFile() != null) {
+            rootSchema = file.getModels().get(0).getSourceFile();
+        }
+        GenerationManifest manifest = new GenerationManifest(rootSchema);
+        for (JavaSourceFile src : sourceFiles) {
+            manifest.addAllMappings(src.getMappings());
+        }
+        return manifest;
+    }
+
     public static void writeToDirectory(ZenithFile file, Path outputDir) throws IOException {
         List<JavaSourceFile> sourceFiles = generateAll(file);
         java.util.Set<Path> generatedPaths = new java.util.HashSet<>();
@@ -127,6 +140,13 @@ public class ProjectGenerator {
             Files.createDirectories(targetPath.getParent());
             Files.writeString(targetPath, src.getContent(), StandardCharsets.UTF_8);
         }
+
+        // Emit Generation Source Map Manifest (.zenith/generation-manifest.json)
+        GenerationManifest manifest = buildManifest(file, sourceFiles);
+        Path manifestPath = outputDir.resolve(".zenith/generation-manifest.json");
+        Files.createDirectories(manifestPath.getParent());
+        Files.writeString(manifestPath, manifest.toJson(), StandardCharsets.UTF_8);
+        generatedPaths.add(manifestPath.toAbsolutePath().normalize());
 
         // Clean up orphaned .java files from previous builds
         String basePkg = file.getConfig().getPackage();

@@ -1,6 +1,7 @@
 package dev.zenith.generator;
 
 import dev.zenith.ast.*;
+import dev.zenith.generator.trace.TraceableSourceWriter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -112,6 +113,13 @@ public class RepositoryGenerator {
         sb.append("}\n");
 
         String path = "src/main/java/" + basePkg.replace('.', '/') + "/repository/" + repoName + ".java";
-        return new JavaSourceFile(path, sb.toString());
+        TraceableSourceWriter writer = new TraceableSourceWriter(path);
+        writer.append(sb.toString());
+        writer.addMapping(repoName, 1, writer.getCurrentLine(),
+                RepositoryGenerator.class.getName(), "generate", 38,
+                model.getSourceLocation(),
+                "model " + className);
+
+        return new JavaSourceFile(path, writer.getContent(), writer.getMappings());
     }
 }

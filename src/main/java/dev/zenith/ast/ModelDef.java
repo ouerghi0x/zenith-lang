@@ -13,6 +13,8 @@ public class ModelDef {
     private final List<IndexDef> indexes;
     private String sourceFile;
     private int sourceLine;
+    private int sourceColumn = 1;
+    private SourceLocation sourceLocation;
 
     public ModelDef(String name, List<FieldDef> fields, List<RelationDef> relations, CrudConfig crudConfig, List<CustomEndpointDef> customEndpoints) {
         this(name, fields, relations, crudConfig, customEndpoints, null);
@@ -67,6 +69,7 @@ public class ModelDef {
 
     public void setSourceFile(String sourceFile) {
         this.sourceFile = sourceFile;
+        updateSourceLocation();
     }
 
     public int getSourceLine() {
@@ -75,6 +78,38 @@ public class ModelDef {
 
     public void setSourceLine(int sourceLine) {
         this.sourceLine = sourceLine;
+        updateSourceLocation();
+    }
+
+    public int getSourceColumn() {
+        return sourceColumn;
+    }
+
+    public void setSourceColumn(int sourceColumn) {
+        this.sourceColumn = sourceColumn;
+        updateSourceLocation();
+    }
+
+    public SourceLocation getSourceLocation() {
+        if (sourceLocation == null && sourceFile != null) {
+            sourceLocation = new SourceLocation(sourceFile, sourceLine > 0 ? sourceLine : 1, sourceColumn > 0 ? sourceColumn : 1);
+        }
+        return sourceLocation;
+    }
+
+    public void setSourceLocation(SourceLocation sourceLocation) {
+        this.sourceLocation = sourceLocation;
+        if (sourceLocation != null) {
+            this.sourceFile = sourceLocation.getSourceFile();
+            this.sourceLine = sourceLocation.getStartLine();
+            this.sourceColumn = sourceLocation.getStartColumn();
+        }
+    }
+
+    private void updateSourceLocation() {
+        if (sourceFile != null && sourceLine > 0) {
+            this.sourceLocation = new SourceLocation(sourceFile, sourceLine, sourceColumn > 0 ? sourceColumn : 1);
+        }
     }
 
     public boolean hasEndpoints() {

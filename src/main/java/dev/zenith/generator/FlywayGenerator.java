@@ -1,6 +1,7 @@
 package dev.zenith.generator;
 
 import dev.zenith.ast.*;
+import dev.zenith.generator.trace.TraceableSourceWriter;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -158,7 +159,15 @@ public class FlywayGenerator {
             sb.append("\n");
         }
 
-        return new JavaSourceFile("src/main/resources/db/migration/V1__initial_schema.sql", sb.toString());
+        String path = "src/main/resources/db/migration/V1__initial_schema.sql";
+        TraceableSourceWriter writer = new TraceableSourceWriter(path);
+        writer.append(sb.toString());
+        writer.addMapping("V1__initial_schema.sql", 1, writer.getCurrentLine(),
+                FlywayGenerator.class.getName(), "generate", 27,
+                file.getModels().isEmpty() ? null : file.getModels().get(0).getSourceLocation(),
+                "flyway migration schema");
+
+        return new JavaSourceFile(path, writer.getContent(), writer.getMappings());
     }
 
     /** Adds an auto-generated single-column index unless the same column set is already indexed. */

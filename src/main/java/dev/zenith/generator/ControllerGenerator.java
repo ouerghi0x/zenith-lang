@@ -1,6 +1,7 @@
 package dev.zenith.generator;
 
 import dev.zenith.ast.*;
+import dev.zenith.generator.trace.TraceableSourceWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -18,6 +19,8 @@ public class ControllerGenerator {
         FieldDef idField = model.getIdField();
         String idType = idField != null ? TypeHelper.toSimpleJavaType(idField.getType()) : "Long";
 
+        String targetPath = "src/main/java/" + basePkg.replace('.', '/') + "/controller/" + controllerName + ".java";
+        TraceableSourceWriter writer = new TraceableSourceWriter(targetPath);
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePkg).append(".controller;\n\n");
 
@@ -274,8 +277,20 @@ public class ControllerGenerator {
 
         sb.append("}\n");
 
-        String path = "src/main/java/" + basePkg.replace('.', '/') + "/controller/" + controllerName + ".java";
-        return new JavaSourceFile(path, sb.toString());
+        writer.append(sb.toString());
+        if (crud != null) {
+            writer.addMapping(className + "Controller", 1, writer.getCurrentLine(),
+                    ControllerGenerator.class.getName(), "generate", 116,
+                    crud.getSourceLocation() != null ? crud.getSourceLocation() : model.getSourceLocation(),
+                    "crud { paginate: " + crud.isPaginate() + " }");
+        } else {
+            writer.addMapping(className + "Controller", 1, writer.getCurrentLine(),
+                    ControllerGenerator.class.getName(), "generate", 50,
+                    model.getSourceLocation(),
+                    "model " + className);
+        }
+
+        return new JavaSourceFile(targetPath, writer.getContent(), writer.getMappings());
     }
 
     private static String getCrudPreAuthorize(CrudConfig crud, String operation, boolean defaultIsPublic) {

@@ -19,6 +19,8 @@ public class CrudConfig {
     private String cacheDuration; // optional cache duration e.g. "15m", "1h", "300s"
     private String sourceFile;
     private int sourceLine;
+    private int sourceColumn = 1;
+    private SourceLocation sourceLocation;
 
     public String getSourceFile() {
         return sourceFile;
@@ -26,6 +28,7 @@ public class CrudConfig {
 
     public void setSourceFile(String sourceFile) {
         this.sourceFile = sourceFile;
+        updateLocation();
     }
 
     public int getSourceLine() {
@@ -34,6 +37,38 @@ public class CrudConfig {
 
     public void setSourceLine(int sourceLine) {
         this.sourceLine = sourceLine;
+        updateLocation();
+    }
+
+    public int getSourceColumn() {
+        return sourceColumn;
+    }
+
+    public void setSourceColumn(int sourceColumn) {
+        this.sourceColumn = sourceColumn;
+        updateLocation();
+    }
+
+    public SourceLocation getSourceLocation() {
+        if (sourceLocation == null && sourceFile != null) {
+            sourceLocation = new SourceLocation(sourceFile, sourceLine > 0 ? sourceLine : 1, sourceColumn > 0 ? sourceColumn : 1);
+        }
+        return sourceLocation;
+    }
+
+    public void setSourceLocation(SourceLocation loc) {
+        this.sourceLocation = loc;
+        if (loc != null) {
+            this.sourceFile = loc.getSourceFile();
+            this.sourceLine = loc.getStartLine();
+            this.sourceColumn = loc.getStartColumn();
+        }
+    }
+
+    private void updateLocation() {
+        if (sourceFile != null && sourceLine > 0) {
+            this.sourceLocation = new SourceLocation(sourceFile, sourceLine, sourceColumn > 0 ? sourceColumn : 1);
+        }
     }
 
     public CrudConfig(boolean enabled, boolean paginate, List<String> searchFields, List<String> filterFields,

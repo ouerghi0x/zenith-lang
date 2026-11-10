@@ -231,8 +231,12 @@ public class SemanticAnalyzer {
                 }
 
                 Map<String, String> actionVariables = new HashMap<>();
-                for (String stmt : endpoint.getActionStatements()) {
-                    validateActionStatement(stmt, model, file, modelNames, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, epLine, actionVariables);
+                var actionDefs = endpoint.getActionStatementDefs();
+                for (int ai = 0; ai < endpoint.getActionStatements().size(); ai++) {
+                    String stmt = endpoint.getActionStatements().get(ai);
+                    ActionStatementDef ad = ai < actionDefs.size() ? actionDefs.get(ai) : null;
+                    int stmtLine = ad != null && ad.getSourceLocation() != null ? ad.getSourceLocation().getStartLine() : epLine;
+                    validateActionStatement(stmt, model, file, modelNames, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, stmtLine, actionVariables);
                 }
 
                 if (endpoint.hasRateLimit()) {
@@ -531,6 +535,7 @@ public class SemanticAnalyzer {
             }
             validatePropertyAccesses(parts[1], localVars, file, context, srcFile, srcLine);
             validateExpressionFunctions(parts[1], context, srcFile, srcLine);
+            validateEnumConstants(left, parts[1], model, file, context, srcFile, srcLine);
             return;
         }
 
@@ -558,6 +563,75 @@ public class SemanticAnalyzer {
             if (!supportedFns.contains(fnName.toLowerCase())) {
                 throw new AnalysisException("Unsupported function '" + fnName + "(...)' in " + context + " expression: '" + expr.trim() + "'. "
                         + "Supported date/time functions: now(), today(), daysAgo(n), daysFromNow(n), hoursAgo(n), hoursFromNow(n), minutesAgo(n), minutesFromNow(n). Supported operations: notify(recipient, message).", srcFile, srcLine, 1);
+            }
+        }
+    }
+
+    private void validateEnumConstants(String targetField, String rightExpr, ModelDef model, ZenithFile file, String context, String srcFile, int srcLine) {
+        if (rightExpr == null || file == null || file.getEnums().isEmpty()) return;
+
+        FieldDef fDef = model != null ? model.findField(targetField) : null;
+        String fieldTypeName = fDef != null ? fDef.getType().getName() : null;
+
+        // Normalize whitespace around dots so "OrderStatus . PAIDs" becomes "OrderStatus.PAIDs"
+        String normalizedExpr = rightExpr.replaceAll("\\s*\\.\\s*", ".");
+
+        // 1. Matches EnumName.CONSTANT_NAME (e.g. OrderStatus.PAIDd)
+        java.util.regex.Pattern enumDotPattern = java.util.regex.Pattern.compile("\\b([A-Z][a-zA-Z0-9_]*)\\.([a-zA-Z0-9_]+)\\b");
+        java.util.regex.Matcher m = enumDotPattern.matcher(normalizedExpr);
+        while (m.find()) {
+            String enumName = m.group(1);
+            String constantName = m.group(2);
+
+            EnumDef enumDef = null;
+            for (EnumDef e : file.getEnums()) {
+                if (e.getName().equalsIgnoreCase(enumName)) {
+                    enumDef = e;
+                    break;
+                }
+            }
+
+            if (enumDef != null) {
+                boolean validConstant = false;
+                for (String val : enumDef.getValues()) {
+                    if (val.equalsIgnoreCase(constantName)) {
+                        validConstant = true;
+                        break;
+                    }
+                }
+                if (!validConstant) {
+                    throw new AnalysisException("Unknown enum constant '" + constantName + "' for enum '" + enumDef.getName()
+                            + "' in " + context + ". Available values: " + String.join(", ", enumDef.getValues()),
+                            srcFile, srcLine, 1);
+                }
+            }
+        }
+
+        // 2. Unqualified enum assignment e.g. status = PAIDd when status is an Enum
+        if (fieldTypeName != null) {
+            EnumDef targetEnum = null;
+            for (EnumDef e : file.getEnums()) {
+                if (e.getName().equalsIgnoreCase(fieldTypeName)) {
+                    targetEnum = e;
+                    break;
+                }
+            }
+            if (targetEnum != null) {
+                String token = normalizedExpr.trim();
+                if (token.matches("^[a-zA-Z0-9_]+$")) {
+                    boolean validConstant = false;
+                    for (String val : targetEnum.getValues()) {
+                        if (val.equalsIgnoreCase(token)) {
+                            validConstant = true;
+                            break;
+                        }
+                    }
+                    if (!validConstant) {
+                        throw new AnalysisException("Invalid enum value '" + token + "' for enum field '" + targetField
+                                + "' of type '" + targetEnum.getName() + "' in " + context + ". Available values: " + String.join(", ", targetEnum.getValues()),
+                                srcFile, srcLine, 1);
+                    }
+                }
             }
         }
     }

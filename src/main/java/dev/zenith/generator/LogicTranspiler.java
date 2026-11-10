@@ -13,6 +13,10 @@ import java.util.regex.Pattern;
 public class LogicTranspiler {
 
     public static String transpileCondition(String expr, ModelDef model) {
+        return transpileCondition(expr, model, null);
+    }
+
+    public static String transpileCondition(String expr, ModelDef model, ZenithFile file) {
         if (expr == null || expr.trim().isEmpty()) return "true";
         String s = expr.trim();
 
@@ -99,12 +103,13 @@ public class LogicTranspiler {
                 left = left.substring(modelLower.length() + 1).trim();
             }
 
-            right = transpileValueExpression(right, model);
+            right = transpileValueExpression(right, model, file);
 
             // 1. Check if left side is a regular entity field
             if (model != null) {
                 var field = model.findField(left);
                 if (field != null) {
+                    right = qualifyEnumValue(left, right, model, file);
                     String cap = TypeHelper.capitalize(field.getName());
                     String fType = TypeHelper.toSimpleJavaType(field.getType());
                     if ("LocalDate".equalsIgnoreCase(fType) || "Date".equalsIgnoreCase(field.getType().getName())) {
@@ -686,7 +691,14 @@ public class LogicTranspiler {
                     }
                 }
             }
-            if (isEnumName || root.equals("java") || root.equals("org") || root.equals("com") || root.equals("Math") || root.equals("System")) {
+            // Check if root looks like an enum or constant class (starts with uppercase) and child is an enum constant (UPPERCASE)
+            String[] segments = match.split("\\.");
+            boolean isStaticConstantOrEnum = false;
+            if (segments.length == 2 && Character.isUpperCase(root.charAt(0)) && segments[1].matches("^[A-Z0-9_]+$")) {
+                isStaticConstantOrEnum = true;
+            }
+
+            if (isEnumName || isStaticConstantOrEnum || root.equals("java") || root.equals("org") || root.equals("com") || root.equals("Math") || root.equals("System")) {
                 chainSb.append(match);
                 lastEnd = m.end();
                 continue;

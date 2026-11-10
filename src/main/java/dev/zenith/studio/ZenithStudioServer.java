@@ -9,7 +9,10 @@ import dev.zenith.ast.FieldDef;
 import dev.zenith.ast.JobDef;
 import dev.zenith.ast.ModelDef;
 import dev.zenith.ast.ZenithFile;
+import dev.zenith.diagnostics.CompilerDiagnostic;
+import dev.zenith.diagnostics.MavenDiagnosticParser;
 import dev.zenith.generator.JavaSourceFile;
+import dev.zenith.generator.trace.GenerationManifest;
 import dev.zenith.generator.ProjectGenerator;
 import dev.zenith.generator.TypeHelper;
 
@@ -43,6 +46,7 @@ public class ZenithStudioServer {
 
     private Process runningSpringProcess = null;
     private final List<String> processLogs = new CopyOnWriteArrayList<>();
+    private final List<CompilerDiagnostic> activeDiagnostics = new CopyOnWriteArrayList<>();
     private ZenithFile latestCompiledFile = null;
 
     public ZenithStudioServer(int port, Path initialFilePath) {
@@ -420,6 +424,7 @@ public class ZenithStudioServer {
             }
 
             processLogs.clear();
+            activeDiagnostics.clear();
             processLogs.add("[Zenith Studio] Generating project files into target/studio-run...");
 
             try {
@@ -498,12 +503,28 @@ public class ZenithStudioServer {
 
                 // Stream stdout/stderr in background thread
                 new Thread(() -> {
+                    List<JavaSourceFile> currentSources = ProjectGenerator.generateAll(latestCompiledFile);
+                    GenerationManifest activeManifest = ProjectGenerator.buildManifest(latestCompiledFile, currentSources);
+                    MavenDiagnosticParser diagnosticParser = new MavenDiagnosticParser(activeManifest);
+
                     try (BufferedReader reader = new BufferedReader(
                             new InputStreamReader(runningSpringProcess.getInputStream()))) {
                         String line;
                         boolean schemaErrorDetected = false;
                         while ((line = reader.readLine()) != null) {
                             processLogs.add(line);
+
+                            // Intercept Java/Maven Compiler Errors for Generated Code Traceability
+                            CompilerDiagnostic diag = diagnosticParser.parseLine(line);
+                            if (diag != null) {
+                                activeDiagnostics.add(diag);
+                                processLogs.add("");
+                                processLogs.add("[Zenith Diagnostic] 🔍 ROOT-CAUSE DIAGNOSTIC REPORT:");
+                                for (String diagLine : diag.toCliReport().split("\n")) {
+                                    processLogs.add("  " + diagLine);
+                                }
+                                processLogs.add("");
+                            }
 
                             // Intercept Hibernate / Flyway / JDBC constraint schema mismatch errors
                             // (ISSUE-004)
@@ -579,7 +600,15 @@ public class ZenithStudioServer {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             boolean isRunning = runningSpringProcess != null && runningSpringProcess.isAlive();
-            StringBuilder sb = new StringBuilder("{\"running\": ").append(isRunning).append(", \"logs\": [");
+            StringBuilder sb = new StringBuilder("{\"running\": ").append(isRunning);
+
+            // Include first compiler diagnostic if one occurred
+            if (!activeDiagnostics.isEmpty()) {
+                CompilerDiagnostic d = activeDiagnostics.get(0);
+                sb.append(", \"diagnostic\": ").append(d.toJson());
+            }
+
+            sb.append(", \"logs\": [");
             for (int i = 0; i < processLogs.size(); i++) {
                 if (i > 0)
                     sb.append(",");
@@ -595,6 +624,7 @@ public class ZenithStudioServer {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             processLogs.clear();
+            activeDiagnostics.clear();
             sendResponse(exchange, 200, "application/json", "{\"success\": true}");
         }
     }

@@ -1197,6 +1197,7 @@ async function triggerCompile() {
 
       // Clear Monaco error markers and red line highlight
       monaco.editor.setModelMarkers(editor.getModel(), 'zenith', []);
+      monaco.editor.setModelMarkers(editor.getModel(), 'zenith-build', []);
       if (window.errorLineDecorations) {
         window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations, []);
       }
@@ -3380,6 +3381,41 @@ function startLogPolling() {
       const res = await fetch('/api/logs');
       const data = await res.json();
       renderConsoleLogs(data.logs || [], data.running);
+
+      // Feature #27: Highlight Monaco Editor on build diagnostic
+      if (data.diagnostic && data.diagnostic.schemaOrigin) {
+        const orig = data.diagnostic.schemaOrigin;
+        const targetLine = orig.line || 1;
+        const targetCol = orig.column || 1;
+        const origFile = orig.file || 'schema.zen';
+
+        if (!origFile || origFile === window.currentActiveFile || origFile === 'schema.zen') {
+          const model = editor.getModel();
+          if (model) {
+            const maxCol = targetLine <= model.getLineCount() ? model.getLineMaxColumn(targetLine) : 80;
+            monaco.editor.setModelMarkers(model, 'zenith-build', [{
+              startLineNumber: targetLine,
+              startColumn: 1,
+              endLineNumber: targetLine,
+              endColumn: maxCol,
+              message: `Generated Spring Boot compilation failed: ${data.diagnostic.generatedTarget ? data.diagnostic.generatedTarget.javacError : 'build error'} (Origin: ${orig.snippet || 'schema declaration'})`,
+              severity: monaco.MarkerSeverity.Error
+            }]);
+
+            window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations || [], [{
+              range: new monaco.Range(targetLine, 1, targetLine, 1),
+              options: {
+                isWholeLine: true,
+                className: 'zenith-error-line-highlight',
+                linesDecorationsClassName: 'zenith-error-line-gutter'
+              }
+            }]);
+
+            // Reveal and center the line in the Monaco editor
+            editor.revealLineInCenter(targetLine);
+          }
+        }
+      }
     } catch (_) {}
   }, 800);
 }

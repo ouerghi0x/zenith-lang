@@ -1,6 +1,7 @@
 package dev.zenith.generator;
 
 import dev.zenith.ast.*;
+import dev.zenith.generator.trace.TraceableSourceWriter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -71,7 +72,15 @@ public class DtoGenerator {
         sb.append(String.join(",\n", recordComponents));
         sb.append("\n) {}\n");
 
-        return new JavaSourceFile(pkgDir + className + ".java", sb.toString());
+        String path = pkgDir + className + ".java";
+        TraceableSourceWriter writer = new TraceableSourceWriter(path);
+        writer.append(sb.toString());
+        writer.addMapping(className, 1, writer.getCurrentLine(),
+                DtoGenerator.class.getName(), "generateDtoBody", 38,
+                null,
+                "dto " + dto.getName());
+
+        return new JavaSourceFile(path, writer.getContent(), writer.getMappings());
     }
 
     public static JavaSourceFile generatePageResponse(ZenithFile file) {
@@ -157,7 +166,15 @@ public class DtoGenerator {
         sb.append(String.join(",\n", recordComponents));
         sb.append("\n) {}\n");
 
-        return new JavaSourceFile(pkgDir + className + ".java", sb.toString());
+        String path = pkgDir + className + ".java";
+        TraceableSourceWriter writer = new TraceableSourceWriter(path);
+        writer.append(sb.toString());
+        writer.addMapping(className, 1, writer.getCurrentLine(),
+                DtoGenerator.class.getName(), "generateCreateRequest", 110,
+                model.getSourceLocation(),
+                "model " + model.getName());
+
+        return new JavaSourceFile(path, writer.getContent(), writer.getMappings());
     }
 
     private static JavaSourceFile generateUpdateRequest(ModelDef model, ZenithFile file, String pkgDir,
@@ -205,7 +222,15 @@ public class DtoGenerator {
         sb.append(String.join(",\n", recordComponents));
         sb.append("\n) {}\n");
 
-        return new JavaSourceFile(pkgDir + className + ".java", sb.toString());
+        String path = pkgDir + className + ".java";
+        TraceableSourceWriter writer = new TraceableSourceWriter(path);
+        writer.append(sb.toString());
+        writer.addMapping(className, 1, writer.getCurrentLine(),
+                DtoGenerator.class.getName(), "generateUpdateRequest", 180,
+                model.getSourceLocation(),
+                "model " + model.getName());
+
+        return new JavaSourceFile(path, writer.getContent(), writer.getMappings());
     }
 
     private static JavaSourceFile generateResponse(ModelDef model, ZenithFile file, String pkgDir, String basePkg) {
@@ -243,7 +268,15 @@ public class DtoGenerator {
         sb.append(String.join(",\n", recordComponents));
         sb.append("\n) {}\n");
 
-        return new JavaSourceFile(pkgDir + className + ".java", sb.toString());
+        String path = pkgDir + className + ".java";
+        TraceableSourceWriter writer = new TraceableSourceWriter(path);
+        writer.append(sb.toString());
+        writer.addMapping(className, 1, writer.getCurrentLine(),
+                DtoGenerator.class.getName(), "generateResponse", 240,
+                model.getSourceLocation(),
+                "model " + model.getName());
+
+        return new JavaSourceFile(path, writer.getContent(), writer.getMappings());
     }
 
     public static String resolveTargetIdType(String targetModelName, ZenithFile file) {

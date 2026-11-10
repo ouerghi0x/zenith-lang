@@ -12,6 +12,7 @@ public class CustomEndpointDef {
     private final String description;
     private final List<GuardDef> guards;
     private final List<String> actionStatements;
+    private List<ActionStatementDef> actionStatementDefs;
     private final List<String> roles; // canonical role access control
     private final Boolean requiresAuth; // null = default, true = authenticated, false = public
     private final Boolean userScoped; // null = auto-detect, true = filter by current user
@@ -22,6 +23,8 @@ public class CustomEndpointDef {
     private String cacheDuration; // optional cache duration e.g. "1h", "15m"
     private String sourceFile;
     private int sourceLine;
+    private int sourceColumn = 1;
+    private SourceLocation sourceLocation;
 
     public String getSourceFile() {
         return sourceFile;
@@ -29,6 +32,7 @@ public class CustomEndpointDef {
 
     public void setSourceFile(String sourceFile) {
         this.sourceFile = sourceFile;
+        updateLoc();
     }
 
     public int getSourceLine() {
@@ -37,6 +41,38 @@ public class CustomEndpointDef {
 
     public void setSourceLine(int sourceLine) {
         this.sourceLine = sourceLine;
+        updateLoc();
+    }
+
+    public int getSourceColumn() {
+        return sourceColumn;
+    }
+
+    public void setSourceColumn(int sourceColumn) {
+        this.sourceColumn = sourceColumn;
+        updateLoc();
+    }
+
+    public SourceLocation getSourceLocation() {
+        if (sourceLocation == null && sourceFile != null) {
+            sourceLocation = new SourceLocation(sourceFile, sourceLine > 0 ? sourceLine : 1, sourceColumn > 0 ? sourceColumn : 1);
+        }
+        return sourceLocation;
+    }
+
+    public void setSourceLocation(SourceLocation loc) {
+        this.sourceLocation = loc;
+        if (loc != null) {
+            this.sourceFile = loc.getSourceFile();
+            this.sourceLine = loc.getStartLine();
+            this.sourceColumn = loc.getStartColumn();
+        }
+    }
+
+    private void updateLoc() {
+        if (sourceFile != null && sourceLine > 0) {
+            this.sourceLocation = new SourceLocation(sourceFile, sourceLine, sourceColumn > 0 ? sourceColumn : 1);
+        }
     }
 
     public String getBodyType() {
@@ -133,6 +169,20 @@ public class CustomEndpointDef {
 
     public List<String> getActionStatements() {
         return Collections.unmodifiableList(actionStatements);
+    }
+
+    public List<ActionStatementDef> getActionStatementDefs() {
+        if (actionStatementDefs == null) {
+            actionStatementDefs = new ArrayList<>();
+            for (String stmt : actionStatements) {
+                actionStatementDefs.add(new ActionStatementDef(stmt, getSourceLocation()));
+            }
+        }
+        return Collections.unmodifiableList(actionStatementDefs);
+    }
+
+    public void setActionStatementDefs(List<ActionStatementDef> defs) {
+        this.actionStatementDefs = defs != null ? new ArrayList<>(defs) : new ArrayList<>();
     }
 
     public Boolean getRequiresAuth() {

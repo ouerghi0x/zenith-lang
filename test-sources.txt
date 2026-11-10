@@ -7,6 +7,7 @@ C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature10Un
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature12CachingLayerTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature13RateLimitingTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature24McpServerTest.java
+C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature27TraceabilityTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature2DatabaseIndexesTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\Feature5TransactionalEmailTest.java
 C:\Users\wergh\Desktop\apiRestLanguage\src\test\java\dev\zenith\test\LexerVarVerification.java
