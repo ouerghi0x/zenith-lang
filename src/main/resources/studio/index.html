@@ -462,8 +462,9 @@
           <a href="#ref-jobs" class="guide-pill">13. Background Jobs</a>
           <a href="#ref-mail" class="guide-pill">14. Transactional Emails</a>
           <a href="#ref-tests" class="guide-pill">15. Automated Tests</a>
-          <a href="#ref-desktop" class="guide-pill">16. Desktop &amp; CLI</a>
-          <a href="#ref-mcp" class="guide-pill">17. Zenith MCP Server</a>
+          <a href="#ref-cache" class="guide-pill">16. Caching Layer</a>
+          <a href="#ref-desktop" class="guide-pill">17. Desktop &amp; CLI</a>
+          <a href="#ref-mcp" class="guide-pill">18. Zenith MCP Server</a>
         </div>
 
         <!-- 1. Configuration Block -->
@@ -569,6 +570,18 @@
                 <td><code>String</code></td>
                 <td><code>"noreply@example.com"</code></td>
                 <td>Default sender email address for all transactional email contracts. Override via <code>${SPRING_MAIL_FROM:...}</code>.</td>
+              </tr>
+              <tr>
+                <td><code>cache</code></td>
+                <td><code>Identifier</code></td>
+                <td><code>none</code></td>
+                <td>Caching engine: <code>redis</code>, <code>caffeine</code>, <code>memory</code>, or <code>none</code>. Configures Spring Boot Cache (<code>@EnableCaching</code>, <code>CacheConfig.java</code>), JSON serializers, custom TTL mappings, and fallback error handling. In <code>redis</code> mode, provisions <code>redis:7-alpine</code> container.</td>
+              </tr>
+              <tr>
+                <td><code>cacheTtl</code></td>
+                <td><code>Duration</code> | <code>String</code></td>
+                <td><code>"10m"</code></td>
+                <td>Global default cache expiration TTL (e.g. <code>"15m"</code>, <code>"1h"</code>, <code>"300s"</code>).</td>
               </tr>
             </tbody>
           </table>
@@ -2001,8 +2014,61 @@ class OrderControllerTest {
         <pre class="guide-code"><code># Run the entire test suite against the in-memory test profile:
 mvn test</code></pre>
 
-        <!-- 15. Zenith Studio Desktop & CLI -->
-        <h3 class="guide-section-title" id="ref-desktop">15. Zenith Studio Desktop &amp; CLI Options <span class="guide-badge">studio</span></h3>
+        <!-- 16. Caching Layer -->
+        <h3 class="guide-section-title" id="ref-cache">16. Caching Layer (Redis / Spring Cache / Caffeine) <span class="guide-badge">cache</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Declarative sub-millisecond caching via Spring Boot's caching abstraction (<code>@EnableCaching</code>, <code>@Cacheable</code>, <code>@CacheEvict</code>). Configure caching globally or granularly on CRUD blocks and custom GET endpoints.</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th style="width: 28%;">DSL Syntax</th>
+                <th style="width: 22%;">Target Block</th>
+                <th>Generated Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>cache: redis | caffeine</code></td>
+                <td><code>config { ... }</code></td>
+                <td>Selects cache manager. Generates <code>CacheConfig.java</code> with JSON serializers, per-cache TTLs, and fault-tolerant fallback error handlers. In Redis mode, provisions <code>redis:7-alpine</code> in <code>docker-compose.yml</code>.</td>
+              </tr>
+              <tr>
+                <td><code>cache: "15m"</code> | <code>true</code></td>
+                <td><code>crud { ... }</code></td>
+                <td>Annotates <code>getById</code> with <code>@Cacheable("&lt;model&gt;", key="#id")</code> and <code>getAll</code> with <code>@Cacheable("&lt;model&gt;_list")</code>. All mutations (<code>create</code>, <code>update</code>, <code>delete</code>) receive <code>@CacheEvict(allEntries=true)</code>.</td>
+              </tr>
+              <tr>
+                <td><code>cache: "1h"</code></td>
+                <td><code>get "/path" { ... }</code></td>
+                <td>Annotates the custom GET endpoint service method with <code>@Cacheable("&lt;model&gt;_&lt;method&gt;")</code> using the custom TTL duration.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <pre class="guide-code"><code>config {
+    cache: redis
+    cacheTtl: "15m"
+}
+
+model CatalogItem {
+    id: UUID @id @auto
+    title: String
+    price: Decimal
+
+    endpoints {
+        crud {
+            cache: "15m"
+        }
+        get "/featured" -> List&lt;CatalogItemResponse&gt; {
+            cache: "1h"
+        }
+    }
+}</code></pre>
+
+        <!-- 17. Zenith Studio Desktop & CLI -->
+        <h3 class="guide-section-title" id="ref-desktop">17. Zenith Studio Desktop &amp; CLI Options <span class="guide-badge">studio</span></h3>
         <p style="font-size: 12px; margin-bottom: 8px;">Zenith Studio can be used both as an in-browser engineering workspace and as a dedicated, frameless native desktop application.</p>
         
         <div class="table-container">
@@ -2047,8 +2113,8 @@ mvn test</code></pre>
           <span style="font-size: 11px; color: var(--text-muted);">Self-contained NSIS setup (~82 MB)</span>
         </div>
 
-        <!-- 17. Zenith MCP Server -->
-        <h3 class="guide-section-title" id="ref-mcp">17. Zenith MCP Server (AI Agent Integration) <span class="guide-badge">mcp</span></h3>
+        <!-- 18. Zenith MCP Server -->
+        <h3 class="guide-section-title" id="ref-mcp">18. Zenith MCP Server (AI Agent Integration) <span class="guide-badge">mcp</span></h3>
         <p style="font-size: 12px; margin-bottom: 8px;">The Model Context Protocol (MCP) server provides seamless integration with AI coding agents (Claude Code, Cursor, Antigravity) allowing them to inspect language specifications, validate schemas with structured diagnostics, and build Spring Boot 3 applications.</p>
 
         <div class="table-container">

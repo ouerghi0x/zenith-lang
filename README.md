@@ -809,7 +809,41 @@ model Order {
 - **Local Console Mode (`mail: console`)**: In local development, dispatched emails are logged directly to the console with complete headers, recipient address, and formatted HTML preview without requiring remote SMTP server credentials.
 - **Enterprise Spring Boot Setup**: Automatically configures `spring-boot-starter-mail`, `spring-boot-starter-thymeleaf`, `EmailService.java`, and `application.yml` mail properties bound to environment variables.
 
-### 12. Automated Unit & Integration Tests Generation
+### 12. Declarative Caching Layer (Redis / Spring Cache / Caffeine)
+
+Eliminate repetitive database load and achieve sub-millisecond response times with declarative caching:
+
+```zen
+config {
+    app: "HighScaleCommerce"
+    cache: redis                // redis | caffeine | memory | none
+    cacheTtl: "15m"             // Default cache expiration TTL
+}
+
+model Product {
+    id: UUID @id @auto
+    sku: String @unique
+    name: String
+    price: Decimal
+
+    endpoints {
+        crud {
+            cache: "15m"        // Caches getById & getAll; evicts automatically on mutations
+        }
+
+        get "/featured" -> List<ProductResponse> {
+            cache: "1h"         // Custom 1-hour cache TTL on custom read endpoint
+        }
+    }
+}
+```
+
+- **Zero-Stale Invalidation**: Mutating operations (`create`, `update`, `delete`) automatically emit `@CacheEvict(value = {"product", "product_list"}, allEntries = true)`.
+- **Fault-Tolerant Redis Handler**: Generates a dedicated `CacheErrorHandler` in `CacheConfig.java` that logs network blips and seamlessly falls back to direct database execution if Redis becomes temporarily unreachable.
+- **Enterprise Serialization**: Configures `GenericJackson2JsonRedisSerializer` and `RedisCacheConfiguration` with explicit TTL mappings.
+- **Turnkey Containerization**: Automatically injects a `redis:7-alpine` service container and persistent `redisdata` volume into `docker-compose.yml`.
+
+### 13. Automated Unit & Integration Tests Generation
 
 Zenith completely eliminates manual test boilerplate by synthesizing complete **JUnit 5**, **Spring Boot Test**, and **MockMvc** test suites directly from your schema AST:
 

@@ -78,17 +78,18 @@
           <li><a href="#storage" class="sidebar-link">12. Object Storage (S3/MinIO)</a></li>
           <li><a href="#jobs" class="sidebar-link">13. Scheduled Workers (Cron)</a></li>
           <li><a href="#mail" class="sidebar-link">14. Transactional Emails (mail/send)</a></li>
+          <li><a href="#cache" class="sidebar-link">15. Caching Layer (Redis / Spring Cache)</a></li>
         </ul>
       </div>
 
       <div class="sidebar-category">
         <div class="category-title">Testing & Delivery</div>
         <ul class="sidebar-nav">
-          <li><a href="#sdk" class="sidebar-link">15. Full-Stack TypeScript SDK</a></li>
-          <li><a href="#testing" class="sidebar-link">16. Automated Test Generation</a></li>
-          <li><a href="#docker" class="sidebar-link">17. Docker Containerization</a></li>
-          <li><a href="#mcp" class="sidebar-link">18. Zenith MCP Server (AI Agents)</a></li>
-          <li><a href="#showcase" class="sidebar-link">19. Complete Reference Project</a></li>
+          <li><a href="#sdk" class="sidebar-link">16. Full-Stack TypeScript SDK</a></li>
+          <li><a href="#testing" class="sidebar-link">17. Automated Test Generation</a></li>
+          <li><a href="#docker" class="sidebar-link">18. Docker Containerization</a></li>
+          <li><a href="#mcp" class="sidebar-link">19. Zenith MCP Server (AI Agents)</a></li>
+          <li><a href="#showcase" class="sidebar-link">20. Complete Reference Project</a></li>
         </ul>
       </div>
     </aside>
@@ -337,6 +338,18 @@ zenith studio schema.zen --desktop</code></pre>
               <td>String</td>
               <td><code>"noreply@example.com"</code></td>
               <td>Default sender email address for all transactional email dispatches. Supports <code>${SPRING_MAIL_FROM:...}</code> env override.</td>
+            </tr>
+            <tr>
+              <td><code>cache</code></td>
+              <td><code>redis</code> | <code>caffeine</code> | <code>memory</code> | <code>none</code></td>
+              <td><code>none</code></td>
+              <td>Declarative cache provider. Configures Spring Boot Cache abstraction (<code>@EnableCaching</code>, <code>CacheConfig.java</code>), JSON serialization, custom TTLs, and fault-tolerant fallback error handlers. In <code>redis</code> mode, provisions <code>redis:7-alpine</code> container in <code>docker-compose.yml</code>.</td>
+            </tr>
+            <tr>
+              <td><code>cacheTtl</code></td>
+              <td>Duration | String</td>
+              <td><code>"10m"</code></td>
+              <td>Default cache expiration time-to-live (e.g. <code>"15m"</code>, <code>"1h"</code>, <code>"300s"</code>). Overridable per CRUD entity or individual read endpoint.</td>
             </tr>
           </tbody>
         </table>
@@ -1126,8 +1139,71 @@ zenith studio schema.zen --desktop</code></pre>
         </p>
       </div>
 
-      <!-- 15. TypeScript SDK -->
-      <h2 class="section-heading" id="sdk">15. Full-Stack TypeScript Client SDK</h2>
+      <!-- 15. Caching Layer -->
+      <h2 class="section-heading" id="cache">15. Declarative Caching Layer (Redis / Spring Cache)</h2>
+      <p>
+        Zenith features first-class, declarative caching powered by Spring Boot's caching abstraction (<code>@EnableCaching</code>, <code>@Cacheable</code>, <code>@CacheEvict</code>). Developers can configure caching at the CRUD collection level or on individual custom GET endpoints with granular time-to-live durations.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">caching_example.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">config</span> {
+    <span class="syn-prop">app</span>: <span class="syn-str">"HighTrafficStore"</span>
+    <span class="syn-prop">cache</span>: <span class="syn-str">redis</span>        <span class="syn-com">// redis | caffeine | memory | none</span>
+    <span class="syn-prop">cacheTtl</span>: <span class="syn-str">"15m"</span>     <span class="syn-com">// Default TTL for cached records</span>
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">Product</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> <span class="syn-ann">@id</span> <span class="syn-ann">@auto</span>
+    <span class="syn-prop">name</span>: <span class="syn-type">String</span>
+    <span class="syn-prop">price</span>: <span class="syn-type">Decimal</span>
+
+    <span class="syn-kw">endpoints</span> {
+        <span class="syn-kw">crud</span> {
+            <span class="syn-prop">cache</span>: <span class="syn-str">"15m"</span>  <span class="syn-com">// Enables @Cacheable on getById/getAll &amp; @CacheEvict on mutations</span>
+        }
+
+        <span class="syn-kw">get</span> <span class="syn-str">"/featured"</span> -&gt; <span class="syn-type">List&lt;ProductResponse&gt;</span> {
+            <span class="syn-prop">cache</span>: <span class="syn-str">"1h"</span>   <span class="syn-com">// Custom endpoint cache TTL (1 hour)</span>
+        }
+    }
+}</code></pre>
+      </div>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Feature / Component</th>
+              <th>Behavior &amp; Generated Output</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>RedisCacheManager</code></td>
+              <td>Configures JSON serialization (<code>GenericJackson2JsonRedisSerializer</code>) for zero Java-serialization vulnerabilities and custom per-cache TTL mappings.</td>
+            </tr>
+            <tr>
+              <td><code>CacheErrorHandler</code></td>
+              <td>Fault-tolerant error handling: logs Redis connection timeouts or network blips and seamlessly falls back to direct database execution instead of terminating client HTTP requests.</td>
+            </tr>
+            <tr>
+              <td><code>@CacheEvict</code></td>
+              <td>Mutations (<code>create</code>, <code>update</code>, <code>delete</code>) automatically evict <code>&lt;model&gt;</code> and <code>&lt;model&gt;_list</code> cache entries, ensuring zero stale data.</td>
+            </tr>
+            <tr>
+              <td><code>docker-compose.yml</code></td>
+              <td>When <code>cache: redis</code> is active, automatically spins up a lightweight <code>redis:7-alpine</code> container on port <code>6379</code> with persistent volume storage.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 16. TypeScript SDK -->
+      <h2 class="section-heading" id="sdk">16. Full-Stack TypeScript Client SDK</h2>
       <p>
         Zenith generates a zero-dependency TypeScript client SDK in <code>sdk/typescript/</code> containing strongly-typed models, fetch API clients with JWT bearer injection, and React Query caching hooks.
       </p>
@@ -1206,6 +1282,46 @@ zenith studio schema.zen --desktop</code></pre>
         </table>
       </div>
 
+      <!-- 17. Automated Tests -->
+      <h2 class="section-heading" id="testing">17. Automated Test Generation</h2>
+      <p>
+        Zenith generates full test suites with MockMvc and DataJpaTest under <code>src/test/java/</code>:
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Test Class</th>
+              <th>Framework</th>
+              <th>Assertion Scope</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>*ApplicationTests.java</code></td>
+              <td><code>@SpringBootTest</code></td>
+              <td>Verifies Spring context startup, bean wiring, and configuration health.</td>
+            </tr>
+            <tr>
+              <td><code>AuthControllerTest.java</code></td>
+              <td><code>MockMvc</code></td>
+              <td>Tests JWT registration, authentication, token return, and bad credentials.</td>
+            </tr>
+            <tr>
+              <td><code>*ControllerTest.java</code></td>
+              <td><code>MockMvc</code> + <code>@WithMockUser</code></td>
+              <td>Asserts unauthenticated (401), forbidden roles (403), validation (400), not found (404), and happy paths.</td>
+            </tr>
+            <tr>
+              <td><code>*RepositoryTest.java</code></td>
+              <td><code>@DataJpaTest</code></td>
+              <td>Verifies JPA entity mappings, constraints, foreign keys, and queries under H2.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <div class="code-block-wrap">
         <div class="code-block-header">
           <span class="code-block-title">Terminal</span>
@@ -1214,8 +1330,8 @@ zenith studio schema.zen --desktop</code></pre>
         <pre class="code-content"><code>mvn test</code></pre>
       </div>
 
-      <!-- 17. Docker -->
-      <h2 class="section-heading" id="docker">17. Docker Containerization</h2>
+      <!-- 18. Docker -->
+      <h2 class="section-heading" id="docker">18. Docker Containerization</h2>
       <p>
         Zenith generates a multi-stage <code>Dockerfile</code> (Maven 3.9 builder + Eclipse Temurin 17 JRE Alpine runtime with unprivileged user) and a pre-configured <code>docker-compose.yml</code> pairing the API with PostgreSQL healthchecks and persistent storage volumes.
       </p>
@@ -1228,8 +1344,8 @@ zenith studio schema.zen --desktop</code></pre>
         <pre class="code-content"><code>docker compose up --build</code></pre>
       </div>
 
-      <!-- 18. MCP Server -->
-      <h2 class="section-heading" id="mcp">18. Zenith MCP Server (AI Agent Integration)</h2>
+      <!-- 19. MCP Server -->
+      <h2 class="section-heading" id="mcp">19. Zenith MCP Server (AI Agent Integration)</h2>
       <p>
         Zenith features an official, zero-overhead <strong>Model Context Protocol (MCP) Server</strong> complying with protocol standard <code>2024-11-05</code> over standard I/O (JSON-RPC 2.0). Connect Claude Code, Cursor, Antigravity, and autonomous AI agents directly to Zenith to retrieve language specifications, generate valid schemas, diagnose syntax/semantic errors, and compile full applications.
       </p>
@@ -1303,8 +1419,8 @@ zenith mcp</code></pre>
         <li><code>extend_existing_project</code>: Guides extending existing domain models without breaking relational foreign keys.</li>
       </ul>
 
-      <!-- 19. Showcase -->
-      <h2 class="section-heading" id="showcase">19. Complete Reference Project</h2>
+      <!-- 20. Showcase -->
+      <h2 class="section-heading" id="showcase">20. Complete Reference Project</h2>
       <p>
         The canonical reference project <strong>NexusCommerce</strong> illustrates how all Zenith features integrate cleanly. Inspect the complete codebase in <code>zenith-exemples/nexus-commerce/</code> or test it live in Zenith Studio.
       </p>
