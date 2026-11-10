@@ -215,6 +215,26 @@ public class AppConfig {
         return properties.containsKey("mail") || properties.containsKey("mailProvider") || properties.containsKey("mailFrom");
     }
 
+    public String getCacheProvider() {
+        Object val = properties.get("cache");
+        if (val == null) val = properties.get("cacheProvider");
+        if (val == null) return "none";
+        String s = val.toString().trim().toLowerCase();
+        if ("true".equals(s)) return "caffeine"; // sensible default when cache: true in config
+        if ("false".equals(s) || "none".equals(s)) return "none";
+        return s;
+    }
+
+    public boolean hasCache() {
+        return !"none".equalsIgnoreCase(getCacheProvider());
+    }
+
+    public String getCacheTtl() {
+        Object val = properties.get("cacheTtl");
+        if (val == null) val = properties.get("cache_ttl");
+        return val != null ? val.toString().trim() : "10m";
+    }
+
     public Map<String, Object> getProperties() {
         return properties;
     }

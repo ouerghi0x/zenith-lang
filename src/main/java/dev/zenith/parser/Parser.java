@@ -13,7 +13,7 @@ public class Parser {
 
     private static final Set<String> ALLOWED_CONFIG_KEYS = Set.of(
             "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket",
-            "usermodel", "jwtsecret", "jwtexpiration", "ratelimit", "mail", "mailprovider", "mailfrom"
+            "usermodel", "jwtsecret", "jwtexpiration", "ratelimit", "mail", "mailprovider", "mailfrom", "cache", "cacheprovider", "cachettl"
     );
 
     public Parser(List<Token> tokens) {
@@ -357,7 +357,7 @@ public class Parser {
 
             if (!ALLOWED_CONFIG_KEYS.contains(keyLower)) {
                 throw error(keyToken, "Invalid configuration key '" + key + "'. Supported configuration keys are: "
-                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration, rateLimit, mail, mailProvider, mailFrom.");
+                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration, rateLimit, mail, mailProvider, mailFrom, cache, cacheProvider, cacheTtl.");
             }
 
             boolean isDuplicate = props.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(key));
@@ -431,6 +431,11 @@ public class Parser {
                     String p = valStr.toLowerCase();
                     if (!p.equals("smtp") && !p.equals("sendgrid") && !p.equals("ses") && !p.equals("console")) {
                         throw error(keyToken, "Invalid mail provider '" + valStr + "'. Supported options: smtp, sendgrid, ses, console.");
+                    }
+                } else if ("cache".equals(keyLower) || "cacheprovider".equals(keyLower)) {
+                    String c = valStr.toLowerCase();
+                    if (!c.equals("redis") && !c.equals("caffeine") && !c.equals("memory") && !c.equals("none") && !c.equals("true") && !c.equals("false")) {
+                        throw error(keyToken, "Invalid cache provider '" + valStr + "'. Supported options: redis, caffeine, memory, none.");
                     }
                 }
             }
@@ -792,6 +797,7 @@ public class Parser {
         List<String> defaultRoles = new ArrayList<>();
         Map<String, List<String>> operationRoles = new LinkedHashMap<>();
         RateLimitSpec rateLimit = null;
+        String cacheDuration = null;
 
         if (match(TokenType.LBRACE)) {
             while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
@@ -854,6 +860,8 @@ public class Parser {
                     } catch (IllegalArgumentException iae) {
                         throw error(key, iae.getMessage());
                     }
+                } else if ("cache".equals(k)) {
+                    cacheDuration = parseCacheDurationToken(key);
                 } else {
                     parseLiteralOrIdentifier(); // skip unknown
                 }
@@ -865,6 +873,7 @@ public class Parser {
 
         CrudConfig crud = new CrudConfig(enabled, paginate, search, filter, sort, requiresAuth, defaultRoles,
                 operationRoles, rateLimit);
+        crud.setCacheDuration(cacheDuration);
         crud.setSourceFile(sourceFile);
         crud.setSourceLine(crudTok.getLine());
         return crud;
@@ -881,6 +890,65 @@ public class Parser {
             sb.append(advance().getValue());
         }
         return sb.toString().trim();
+    }
+
+    private String parseCacheDurationToken(Token keyToken) {
+        if (peek().getType() == TokenType.STRING_LITERAL) {
+            String val = advance().getValue().trim();
+            validateCacheDuration(keyToken, val);
+            return val;
+        } else if (peek().getType() == TokenType.TRUE) {
+            advance();
+            return "10m";
+        } else if (peek().getType() == TokenType.FALSE) {
+            advance();
+            return "0s";
+        }
+        // Check if raw token like 15m, 1h, 30s
+        int keyLine = keyToken.getLine();
+        StringBuilder sb = new StringBuilder();
+        while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == keyLine) {
+            sb.append(advance().getValue());
+        }
+        String val = sb.toString().trim();
+        validateCacheDuration(keyToken, val);
+        return val;
+    }
+
+    public static void validateCacheDuration(Token token, String durationStr) {
+        if (durationStr == null || durationStr.isEmpty()) return;
+        String s = durationStr.trim().toLowerCase();
+        if ("true".equals(s) || "false".equals(s)) return;
+        if (!s.matches("^\\d+(s|m|h|d|ms)$")) {
+            throw new ParseException("Invalid cache duration format: '" + durationStr + "'. Expected format e.g. '15m', '1h', '300s', '30s'.",
+                    token.getLine(), token.getColumn());
+        }
+    }
+
+    public static java.time.Duration parseCacheDuration(String durationStr) {
+        if (durationStr == null || durationStr.trim().isEmpty() || "false".equalsIgnoreCase(durationStr) || "0s".equalsIgnoreCase(durationStr)) {
+            return java.time.Duration.ZERO;
+        }
+        String s = durationStr.trim().toLowerCase();
+        if ("true".equals(s)) return java.time.Duration.ofMinutes(10);
+        if (s.endsWith("ms")) {
+            long ms = Long.parseLong(s.substring(0, s.length() - 2));
+            return java.time.Duration.ofMillis(ms);
+        } else if (s.endsWith("s")) {
+            long sec = Long.parseLong(s.substring(0, s.length() - 1));
+            return java.time.Duration.ofSeconds(sec);
+        } else if (s.endsWith("m")) {
+            long min = Long.parseLong(s.substring(0, s.length() - 1));
+            return java.time.Duration.ofMinutes(min);
+        } else if (s.endsWith("h")) {
+            long hrs = Long.parseLong(s.substring(0, s.length() - 1));
+            return java.time.Duration.ofHours(hrs);
+        } else if (s.endsWith("d")) {
+            long days = Long.parseLong(s.substring(0, s.length() - 1));
+            return java.time.Duration.ofDays(days);
+        }
+        long sec = Long.parseLong(s);
+        return java.time.Duration.ofSeconds(sec);
     }
 
     private RateLimitSpec parseRateLimitAnnotation(AnnotationDef ann) {
@@ -1004,6 +1072,7 @@ public class Parser {
         Boolean userScoped = null;
         String query = null;
         RateLimitSpec rateLimit = null;
+        String cacheDuration = null;
         Map<String, String> paramTypes = new LinkedHashMap<>();
         List<GuardDef> guards = new ArrayList<>();
         List<String> actions = new ArrayList<>();
@@ -1136,6 +1205,8 @@ public class Parser {
                         } catch (IllegalArgumentException iae) {
                             throw error(idTok, iae.getMessage());
                         }
+                    } else if ("cache".equalsIgnoreCase(k)) {
+                        cacheDuration = parseCacheDurationToken(idTok);
                     } else {
                         parseLiteralOrIdentifier();
                     }
@@ -1150,6 +1221,7 @@ public class Parser {
         CustomEndpointDef cep = new CustomEndpointDef(methodTok.getValue(), path, returnType, description, guards,
                 actions, requiresAuth,
                 userScoped, query, paramTypes, bodyType, rateLimit, roles);
+        cep.setCacheDuration(cacheDuration);
         cep.setSourceFile(sourceFile);
         cep.setSourceLine(methodTok.getLine());
         return cep;

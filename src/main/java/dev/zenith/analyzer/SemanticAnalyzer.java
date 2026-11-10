@@ -242,6 +242,14 @@ public class SemanticAnalyzer {
                                 + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, epLine, 1);
                     }
                 }
+
+                if (endpoint.hasCache()) {
+                    String m = endpoint.getMethod().toUpperCase();
+                    if (!"GET".equals(m)) {
+                        throw new AnalysisException("Caching is only permitted on read operations (GET), cannot cache endpoint '"
+                                + endpoint.getMethod() + " " + endpoint.getPath() + "'.", epFile, epLine, 1);
+                    }
+                }
             }
 
             if (model.getCrudConfig() != null && model.getCrudConfig().hasRateLimit()) {

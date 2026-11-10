@@ -16,6 +16,7 @@ public class CrudConfig {
     private final List<String> defaultRoles; // default roles for all operations in this crud block
     private final Map<String, List<String>> operationRoles; // granular roles e.g. "delete" -> ["ADMIN"], "getAll" -> ["public"]
     private RateLimitSpec rateLimit; // optional rate limit for crud routes
+    private String cacheDuration; // optional cache duration e.g. "15m", "1h", "300s"
     private String sourceFile;
     private int sourceLine;
 
@@ -129,5 +130,17 @@ public class CrudConfig {
 
     public boolean hasRateLimit() {
         return rateLimit != null;
+    }
+
+    public String getCacheDuration() {
+        return cacheDuration;
+    }
+
+    public void setCacheDuration(String cacheDuration) {
+        this.cacheDuration = cacheDuration;
+    }
+
+    public boolean hasCache() {
+        return cacheDuration != null && !cacheDuration.isEmpty() && !"false".equalsIgnoreCase(cacheDuration) && !"0s".equalsIgnoreCase(cacheDuration);
     }
 }

@@ -46,6 +46,10 @@ public class E2ETestSuiteRunner {
             runFeature10(selectedTier);
             return;
         }
+        if (selectedFeature == 12) {
+            runFeature12(selectedTier);
+            return;
+        }
         if (selectedFeature == 13) {
             runFeature13(selectedTier);
             return;
@@ -162,6 +166,33 @@ public class E2ETestSuiteRunner {
         for (int t = 1; t <= 4; t++) {
             if (selectedTier == -1 || selectedTier == t) {
                 runTier(t, titles[t - 1], Feature10UnifiedRbacTest.class, results, "^T" + t + "_.*");
+            }
+        }
+        printSummary(results, System.currentTimeMillis() - start);
+        boolean allPassed = results.stream().allMatch(r -> r.passed);
+        if (!allPassed) {
+            System.err.println(RED + "\n[FAILURE] Some test cases did not pass. Check diagnostics above." + RESET);
+            System.exit(1);
+        }
+        System.out.println(GREEN + "\n[SUCCESS] All " + results.size() + " test cases passed cleanly!" + RESET);
+        System.exit(0);
+    }
+
+    /** Feature #12 (Caching Layer Redis/Caffeine): all tiers live in Feature12CachingLayerTest. */
+    private static void runFeature12(int selectedTier) {
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        System.out.println(BOLD + CYAN + "    Zenith Feature #12: Caching Layer (Redis / Spring Cache / Caffeine)         " + RESET);
+        System.out.println(BOLD + CYAN + "================================================================================" + RESET);
+        long start = System.currentTimeMillis();
+        List<TestHarness.TestResult> results = new ArrayList<>();
+        String[] titles = {
+                "Tier 1: DSL Parsing & AST Modeling",
+                "Tier 2: Semantic Validation & Boundaries",
+                "Tier 3: Spring Cache Code Generation (Redis & Caffeine)",
+                "Tier 4: Docker & Infrastructure Generation (Redis Container & Properties)" };
+        for (int t = 1; t <= 4; t++) {
+            if (selectedTier == -1 || selectedTier == t) {
+                runTier(t, titles[t - 1], Feature12CachingLayerTest.class, results, "^T" + t + "_.*");
             }
         }
         printSummary(results, System.currentTimeMillis() - start);

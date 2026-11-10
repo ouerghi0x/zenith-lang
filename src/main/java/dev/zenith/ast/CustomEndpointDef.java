@@ -19,6 +19,7 @@ public class CustomEndpointDef {
     private final Map<String, String> paramTypes; // optional explicit parameter types: e.g. {"id": "UUID"}
     private final String bodyType; // optional body
     private RateLimitSpec rateLimit; // optional endpoint rate limiting
+    private String cacheDuration; // optional cache duration e.g. "1h", "15m"
     private String sourceFile;
     private int sourceLine;
 
@@ -179,5 +180,17 @@ public class CustomEndpointDef {
 
     public boolean hasRateLimit() {
         return rateLimit != null;
+    }
+
+    public String getCacheDuration() {
+        return cacheDuration;
+    }
+
+    public void setCacheDuration(String cacheDuration) {
+        this.cacheDuration = cacheDuration;
+    }
+
+    public boolean hasCache() {
+        return cacheDuration != null && !cacheDuration.isEmpty() && !"false".equalsIgnoreCase(cacheDuration) && !"0s".equalsIgnoreCase(cacheDuration);
     }
 }

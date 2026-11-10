@@ -208,6 +208,13 @@ public class ServiceGenerator {
             sb.append("import ").append(basePkg).append(".service.EmailService;\n");
         }
 
+        CrudConfig crudConfig = model.getCrudConfig();
+        boolean modelHasCache = (crudConfig != null && crudConfig.hasCache()) || model.getCustomEndpoints().stream().anyMatch(CustomEndpointDef::hasCache);
+        if (modelHasCache) {
+            sb.append("import org.springframework.cache.annotation.Cacheable;\n");
+            sb.append("import org.springframework.cache.annotation.CacheEvict;\n");
+        }
+
         sb.append("import org.springframework.stereotype.Service;\n");
         sb.append("import org.springframework.transaction.annotation.Transactional;\n");
         sb.append("import org.springframework.data.domain.Page;\n");
@@ -310,8 +317,14 @@ public class ServiceGenerator {
         }
 
         if (crud != null) {
+            String cacheSlug = TypeHelper.toSnakeCase(className).replace('_', '-');
+            boolean crudCache = crud.hasCache();
+
             sb.append("    @Override\n");
             sb.append("    @Transactional(readOnly = true)\n");
+            if (crudCache) {
+                sb.append("    @Cacheable(value = \"").append(cacheSlug).append("_list\", key = \"{#page, #size, #sort, #direction, #search}\")\n");
+            }
             sb.append("    public PageResponse<").append(className)
                     .append("Response> getAll(").append(implGetAllParams).append(") {\n");
             sb.append(
@@ -364,6 +377,9 @@ public class ServiceGenerator {
             // getById
             sb.append("    @Override\n");
             sb.append("    @Transactional(readOnly = true)\n");
+            if (crudCache) {
+                sb.append("    @Cacheable(value = \"").append(cacheSlug).append("\", key = \"#id\")\n");
+            }
             sb.append("    public ").append(className).append("Response getById(").append(idType).append(" id) {\n");
             sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
             sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
@@ -373,6 +389,9 @@ public class ServiceGenerator {
 
             // create
             sb.append("    @Override\n");
+            if (crudCache) {
+                sb.append("    @CacheEvict(value = {\"").append(cacheSlug).append("\", \"").append(cacheSlug).append("_list\"}, allEntries = true)\n");
+            }
             sb.append("    public ").append(className).append("Response create(Create").append(className)
                     .append("Request request) {\n");
             sb.append("        ").append(className).append(" entity = mapper.toEntity(request);\n");
@@ -396,6 +415,9 @@ public class ServiceGenerator {
 
             // update
             sb.append("    @Override\n");
+            if (crudCache) {
+                sb.append("    @CacheEvict(value = {\"").append(cacheSlug).append("\", \"").append(cacheSlug).append("_list\"}, allEntries = true)\n");
+            }
             sb.append("    public ").append(className).append("Response update(").append(idType).append(" id, Update")
                     .append(className).append("Request request) {\n");
             sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
@@ -422,6 +444,9 @@ public class ServiceGenerator {
 
             // delete
             sb.append("    @Override\n");
+            if (crudCache) {
+                sb.append("    @CacheEvict(value = {\"").append(cacheSlug).append("\", \"").append(cacheSlug).append("_list\"}, allEntries = true)\n");
+            }
             sb.append("    public void delete(").append(idType).append(" id) {\n");
             sb.append("        if (!repository.existsById(id)) {\n");
             sb.append("            throw new ResourceNotFoundException(\"").append(className)
@@ -451,7 +476,12 @@ public class ServiceGenerator {
             }
             String serviceParams = String.join(", ", paramParts);
 
+            String modelSlug = TypeHelper.toSnakeCase(className).replace('_', '-');
             sb.append("    @Override\n");
+            if (custom.hasCache()) {
+                String epCacheName = modelSlug + "_" + methodName;
+                sb.append("    @Cacheable(value = \"").append(epCacheName).append("\")\n");
+            }
             sb.append("    public ").append(ret).append(" ").append(methodName).append("(")
                     .append(serviceParams).append(") {\n");
 

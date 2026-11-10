@@ -153,6 +153,24 @@ public class PropertiesGenerator {
             sb.append("    provider: ${ZENITH_MAIL_PROVIDER:").append(provider).append("}\n");
         }
 
+        if (file.hasCache()) {
+            String provider = file.getConfig().getCacheProvider();
+            boolean isRedis = "redis".equalsIgnoreCase(provider);
+            String springCacheType = isRedis ? "redis" : "caffeine";
+
+            sb.append("\nspring:\n");
+            sb.append("  cache:\n");
+            sb.append("    type: ").append(springCacheType).append("\n");
+
+            if (isRedis) {
+                sb.append("  data:\n");
+                sb.append("    redis:\n");
+                sb.append("      host: ${REDIS_HOST:localhost}\n");
+                sb.append("      port: ${REDIS_PORT:6379}\n");
+                sb.append("      timeout: 2000ms\n");
+            }
+        }
+
         return new JavaSourceFile("src/main/resources/application.yml", sb.toString());
     }
 }

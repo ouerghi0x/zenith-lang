@@ -126,6 +126,30 @@ public class PomGenerator {
             sb.append("        </dependency>\n");
         }
 
+        if (file.hasCache()) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>org.springframework.boot</groupId>\n");
+            sb.append("            <artifactId>spring-boot-starter-cache</artifactId>\n");
+            sb.append("        </dependency>\n");
+
+            String provider = file.getConfig().getCacheProvider();
+            if ("redis".equalsIgnoreCase(provider)) {
+                sb.append("        <dependency>\n");
+                sb.append("            <groupId>org.springframework.boot</groupId>\n");
+                sb.append("            <artifactId>spring-boot-starter-data-redis</artifactId>\n");
+                sb.append("        </dependency>\n");
+                sb.append("        <dependency>\n");
+                sb.append("            <groupId>org.apache.commons</groupId>\n");
+                sb.append("            <artifactId>commons-pool2</artifactId>\n");
+                sb.append("        </dependency>\n");
+            } else {
+                sb.append("        <dependency>\n");
+                sb.append("            <groupId>com.github.ben-manes.caffeine</groupId>\n");
+                sb.append("            <artifactId>caffeine</artifactId>\n");
+                sb.append("        </dependency>\n");
+            }
+        }
+
         String configuredDb = file.getConfig().getDatabase() != null ? file.getConfig().getDatabase().toLowerCase() : "postgres";
         if ("mysql".equals(configuredDb) || "mariadb".equals(configuredDb)) {
             sb.append("        <dependency>\n");

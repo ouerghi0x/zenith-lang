@@ -72,6 +72,12 @@ public class DockerGenerator {
             sb.append("      STORAGE_SECRET_KEY: minioadmin\n");
         }
 
+        boolean usesRedis = file.hasCache() && "redis".equalsIgnoreCase(file.getConfig().getCacheProvider());
+        if (usesRedis) {
+            sb.append("      REDIS_HOST: redis\n");
+            sb.append("      REDIS_PORT: 6379\n");
+        }
+
         if ("postgres".equals(db) || "postgresql".equals(db)) {
             sb.append("      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/").append(appName).append("_db\n");
             sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
@@ -131,6 +137,15 @@ public class DockerGenerator {
             sb.append("      - miniodata:/data\n\n");
         }
 
+        if (usesRedis) {
+            sb.append("  redis:\n");
+            sb.append("    image: redis:7-alpine\n");
+            sb.append("    ports:\n");
+            sb.append("      - \"6379:6379\"\n");
+            sb.append("    volumes:\n");
+            sb.append("      - redisdata:/data\n\n");
+        }
+
         List<String> volumes = new ArrayList<>();
         if ("postgres".equals(db) || "postgresql".equals(db)) {
             volumes.add("  pgdata:");
@@ -139,6 +154,9 @@ public class DockerGenerator {
         }
         if (file.hasStorage()) {
             volumes.add("  miniodata:");
+        }
+        if (usesRedis) {
+            volumes.add("  redisdata:");
         }
 
         if (!volumes.isEmpty()) {

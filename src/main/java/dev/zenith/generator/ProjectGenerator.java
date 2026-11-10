@@ -52,6 +52,11 @@ public class ProjectGenerator {
             files.addAll(EmailGenerator.generate(file));
         }
 
+        // 4.9. Caching Layer (Redis / Caffeine)
+        if (file.hasCache()) {
+            files.add(CacheConfigGenerator.generate(file));
+        }
+
         // 5. Enums
         for (EnumDef e : file.getEnums()) {
             files.add(EnumGenerator.generate(e, file));

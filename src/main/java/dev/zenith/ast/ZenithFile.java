@@ -70,6 +70,17 @@ public class ZenithFile {
         return config;
     }
 
+    public boolean hasCache() {
+        if (config != null && config.hasCache()) return true;
+        for (ModelDef m : models) {
+            if (m.getCrudConfig() != null && m.getCrudConfig().hasCache()) return true;
+            for (CustomEndpointDef ep : m.getCustomEndpoints()) {
+                if (ep.hasCache()) return true;
+            }
+        }
+        return false;
+    }
+
     public List<JobDef> getJobs() {
         return Collections.unmodifiableList(jobs);
     }
