@@ -1,0 +1,6 @@
+// mailcontracts.zen
+mail OrderConfirmation(order: Order, customer: Customer) {
+    to: customer.email
+    subject: "Order #" + order.orderNumber + " Confirmed"
+    content: "<h1>Order Confirmed!</h1><p>Hello " + customer.fullName + ", your order #" + order.orderNumber + " for amount " + order.totalAmount + " DT is confirmed.</p>"
+}

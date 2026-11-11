@@ -89,7 +89,8 @@
           <li><a href="#testing" class="sidebar-link">17. Automated Test Generation</a></li>
           <li><a href="#docker" class="sidebar-link">18. Docker Containerization</a></li>
           <li><a href="#mcp" class="sidebar-link">19. Zenith MCP Server (AI Agents)</a></li>
-          <li><a href="#showcase" class="sidebar-link">20. Complete Reference Project</a></li>
+          <li><a href="#micro-engine" class="sidebar-link">20. Core Micro-Engine (In-Memory Simulation)</a></li>
+          <li><a href="#showcase" class="sidebar-link">21. Complete Reference Project</a></li>
         </ul>
       </div>
     </aside>
@@ -332,6 +333,30 @@ zenith studio schema.zen --desktop</code></pre>
               <td><code>smtp</code> | <code>sendgrid</code> | <code>ses</code> | <code>console</code></td>
               <td><code>console</code></td>
               <td>Transactional email delivery provider backend. In local development (<code>console</code>), dispatched emails log complete headers, recipients, and rendered HTML bodies to stdout without requiring real SMTP credentials.</td>
+            </tr>
+            <tr>
+              <td><code>mailHost</code></td>
+              <td>String</td>
+              <td><code>"localhost"</code></td>
+              <td>SMTP server hostname (e.g. <code>"smtp.gmail.com"</code>). Bound to <code>${SPRING_MAIL_HOST:...}</code>.</td>
+            </tr>
+            <tr>
+              <td><code>mailPort</code></td>
+              <td>Integer</td>
+              <td><code>587</code></td>
+              <td>SMTP server port (e.g. <code>587</code> for TLS, <code>465</code> for SSL). Bound to <code>${SPRING_MAIL_PORT:...}</code>.</td>
+            </tr>
+            <tr>
+              <td><code>mailUsername</code></td>
+              <td>String</td>
+              <td><code>""</code></td>
+              <td>SMTP authentication username or email (e.g. <code>"user@gmail.com"</code>). Bound to <code>${SPRING_MAIL_USERNAME:...}</code>.</td>
+            </tr>
+            <tr>
+              <td><code>mailPassword</code></td>
+              <td>String</td>
+              <td><code>""</code></td>
+              <td>SMTP authentication password or app password. Bound to <code>${SPRING_MAIL_PASSWORD:...}</code>.</td>
             </tr>
             <tr>
               <td><code>mailFrom</code></td>
@@ -1060,10 +1085,16 @@ zenith studio schema.zen --desktop</code></pre>
               <td><strong>Required.</strong> The subject line of the email. Supports string concatenation with dynamic parameter attributes (e.g. <code>"Order #" + order.orderNumber + " Confirmed"</code>).</td>
             </tr>
             <tr>
+              <td><code>content</code></td>
+              <td>Inside <code>mail { ... }</code></td>
+              <td>String / Expression</td>
+              <td><strong>Inline content.</strong> Direct text or HTML email body supporting dynamic expressions and parameter interpolation (e.g. <code>"&lt;h1&gt;Order Confirmed&lt;/h1&gt;&lt;p&gt;Order #" + order.orderNumber + " for " + customer.fullName + "&lt;/p&gt;"</code>). Use either <code>content</code> or <code>template</code>.</td>
+            </tr>
+            <tr>
               <td><code>template</code></td>
               <td>Inside <code>mail { ... }</code></td>
               <td>String Path</td>
-              <td>Relative path to the Thymeleaf HTML template file under <code>src/main/resources/templates/</code> (e.g. <code>"emails/order-confirmation.html"</code>). If absent, Zenith auto-scaffolds a responsive starter HTML template with parameter bindings.</td>
+              <td>Relative path to the Thymeleaf HTML template file under <code>src/main/resources/templates/</code> (e.g. <code>"emails/order-confirmation.html"</code>). If absent and no <code>content</code> is provided, Zenith auto-scaffolds a starter template.</td>
             </tr>
             <tr>
               <td><code>from</code></td>
@@ -1082,6 +1113,30 @@ zenith studio schema.zen --desktop</code></pre>
               <td>Inside <code>config { ... }</code></td>
               <td><code>smtp</code> | <code>sendgrid</code> | <code>ses</code> | <code>console</code></td>
               <td>Configures the email delivery backend. In <code>console</code> mode (default for dev), dispatched emails print formatted preview headers and rendered HTML to standard out without external SMTP credentials.</td>
+            </tr>
+            <tr>
+              <td><code>config.mailHost</code></td>
+              <td>Inside <code>config { ... }</code></td>
+              <td>String</td>
+              <td>SMTP server hostname (e.g. <code>"smtp.gmail.com"</code>). Bound to <code>${SPRING_MAIL_HOST}</code>.</td>
+            </tr>
+            <tr>
+              <td><code>config.mailPort</code></td>
+              <td>Inside <code>config { ... }</code></td>
+              <td>Integer</td>
+              <td>SMTP server port (e.g. <code>587</code>, <code>465</code>). Bound to <code>${SPRING_MAIL_PORT}</code>.</td>
+            </tr>
+            <tr>
+              <td><code>config.mailUsername</code></td>
+              <td>Inside <code>config { ... }</code></td>
+              <td>String</td>
+              <td>SMTP authentication username or email. Bound to <code>${SPRING_MAIL_USERNAME}</code>.</td>
+            </tr>
+            <tr>
+              <td><code>config.mailPassword</code></td>
+              <td>Inside <code>config { ... }</code></td>
+              <td>String</td>
+              <td>SMTP authentication password or app password. Bound to <code>${SPRING_MAIL_PASSWORD}</code>.</td>
             </tr>
             <tr>
               <td><code>config.mailFrom</code></td>
@@ -1419,8 +1474,46 @@ zenith mcp</code></pre>
         <li><code>extend_existing_project</code>: Guides extending existing domain models without breaking relational foreign keys.</li>
       </ul>
 
-      <!-- 20. Showcase -->
-      <h2 class="section-heading" id="showcase">20. Complete Reference Project</h2>
+      <!-- 20. Core Micro-Engine -->
+      <h2 class="section-heading" id="micro-engine">20. Zenith Core Micro-Engine (In-Memory Simulation)</h2>
+      <p>
+        The <strong>Zenith Core Micro-Engine</strong> provides an in-memory tree-walk evaluator embedded inside the compiler core and Zenith Studio. It executes custom endpoint action statements, domain precondition guards, and email dispatch contracts in <strong>under 5 milliseconds</strong> directly on the parsed AST without compiling Java or booting the Spring Boot JVM.
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th style="width: 28%;">Execution Mode</th>
+              <th style="width: 26%;">Trigger / Button</th>
+              <th>Scope &amp; Responsibility</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>In-Memory Simulation</strong></td>
+              <td><code>Simulate</code> (API Tester)</td>
+              <td>
+                Instantly evaluates custom endpoint logic (<code>action: { ... }</code>, <code>guard: condition, message</code>, variable calculations <code>var x = ...</code>, and mocked transactional emails <code>send Mail(...)</code>). Returns simulated status, state diffs, and step-by-step precondition traces.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Live Spring Boot Execution</strong></td>
+              <td><code>Send</code> (API Tester)</td>
+              <td>
+                Hits the live running Spring Boot port on <code>localhost:8080</code> (or configured port). Handles physical PostgreSQL/H2 SQL transactions, cryptographic BCrypt authentication (<code>/auth/login</code>, <code>/auth/register</code>), JPA repositories, and file uploads.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
+        <em>Note on Studio UI:</em> In the <strong>API Tester</strong>, the <code>Simulate</code> button is selectively displayed only on custom endpoints declaring executable domain logic (actions or guards). Standard persistence operations (CRUD and Auth) use <code>Send</code> to interact with the database.
+      </p>
+
+      <!-- 21. Showcase -->
+      <h2 class="section-heading" id="showcase">21. Complete Reference Project</h2>
       <p>
         The canonical reference project <strong>NexusCommerce</strong> illustrates how all Zenith features integrate cleanly. Inspect the complete codebase in <code>zenith-exemples/nexus-commerce/</code> or test it live in Zenith Studio.
       </p>

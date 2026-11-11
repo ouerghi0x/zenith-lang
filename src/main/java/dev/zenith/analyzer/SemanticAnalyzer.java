@@ -13,21 +13,21 @@ public class SemanticAnalyzer {
             "min", "max", "length", "pattern", "size",
             "autoNow", "autoUpdate",
             "text", "file", "image", "relation", "rateLimit",
-            "softDelete", "audited", "encrypted", "tenant", "owner"
-    );
+            "softDelete", "audited", "encrypted", "tenant", "owner");
 
     public ZenithFile analyze(ZenithFile file) {
         if (file.getConfig() != null) {
             Map<String, Object> props = file.getConfig().getProperties();
             boolean hasExplicitAuth = file.hasAuth();
-            
+
             boolean declaresJwtSecret = props.keySet().stream().anyMatch(k -> k.equalsIgnoreCase("jwtSecret"));
             boolean declaresJwtExpiration = props.keySet().stream().anyMatch(k -> k.equalsIgnoreCase("jwtExpiration"));
-            
+
             if (!hasExplicitAuth && (declaresJwtSecret || declaresJwtExpiration)) {
-                throw new AnalysisException("Configuration 'jwtSecret' and 'jwtExpiration' require authentication to be enabled ('auth: jwt').");
+                throw new AnalysisException(
+                        "Configuration 'jwtSecret' and 'jwtExpiration' require authentication to be enabled ('auth: jwt').");
             }
-            
+
             if (declaresJwtSecret) {
                 String rawSecret = file.getConfig().getRawJwtSecret();
                 if (rawSecret == null || rawSecret.trim().isEmpty()) {
@@ -42,25 +42,29 @@ public class SemanticAnalyzer {
 
         for (DtoDef d : file.getDtos()) {
             if (!dtoNames.add(d.getName())) {
-                throw new AnalysisException("Duplicate dto defined: '" + d.getName() + "'", d.getSourceFile(), d.getSourceLine(), 1);
+                throw new AnalysisException("Duplicate dto defined: '" + d.getName() + "'", d.getSourceFile(),
+                        d.getSourceLine(), 1);
             }
             Set<String> dtoFieldNames = new HashSet<>();
             for (FieldDef f : d.getFields()) {
                 if (!dtoFieldNames.add(f.getName().toLowerCase())) {
-                    throw new AnalysisException("Duplicate field '" + f.getName() + "' in dto '" + d.getName() + "'", d.getSourceFile(), d.getSourceLine(), 1);
+                    throw new AnalysisException("Duplicate field '" + f.getName() + "' in dto '" + d.getName() + "'",
+                            d.getSourceFile(), d.getSourceLine(), 1);
                 }
             }
         }
 
         for (EnumDef e : file.getEnums()) {
             if (!enumNames.add(e.getName())) {
-                throw new AnalysisException("Duplicate enum defined: '" + e.getName() + "'", e.getSourceFile(), e.getSourceLine(), 1);
+                throw new AnalysisException("Duplicate enum defined: '" + e.getName() + "'", e.getSourceFile(),
+                        e.getSourceLine(), 1);
             }
         }
 
         for (ModelDef m : file.getModels()) {
             if (!modelNames.add(m.getName())) {
-                throw new AnalysisException("Duplicate model defined: '" + m.getName() + "'", m.getSourceFile(), m.getSourceLine(), 1);
+                throw new AnalysisException("Duplicate model defined: '" + m.getName() + "'", m.getSourceFile(),
+                        m.getSourceLine(), 1);
             }
         }
 
@@ -94,8 +98,8 @@ public class SemanticAnalyzer {
             // Validate field types & annotations
             for (FieldDef field : fields) {
                 String tName = field.getType().getName();
-                boolean isPrimitiveOrKnown = isScalarReturnType(tName) 
-                        || enumNames.contains(tName) 
+                boolean isPrimitiveOrKnown = isScalarReturnType(tName)
+                        || enumNames.contains(tName)
                         || modelNames.contains(tName)
                         || dtoNames.contains(tName)
                         || "text".equalsIgnoreCase(tName)
@@ -104,7 +108,8 @@ public class SemanticAnalyzer {
 
                 if (!isPrimitiveOrKnown) {
                     throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
-                            + "' has unknown type '" + tName + "'. Did you mean a built-in type (String, Int, Long, DateTime, UUID, Boolean, Decimal) or an enum?",
+                            + "' has unknown type '" + tName
+                            + "'. Did you mean a built-in type (String, Int, Long, DateTime, UUID, Boolean, Decimal) or an enum?",
                             model.getSourceFile(), model.getSourceLine(), 1);
                 }
 
@@ -131,11 +136,12 @@ public class SemanticAnalyzer {
 
                 if (field.hasAnnotation("autoNow") || field.hasAnnotation("autoUpdate")) {
                     String simpleType = tName.toLowerCase();
-                    if (!"datetime".equals(simpleType) && !"localdatetime".equals(simpleType) 
+                    if (!"datetime".equals(simpleType) && !"localdatetime".equals(simpleType)
                             && !"date".equals(simpleType) && !"localdate".equals(simpleType)) {
                         String annName = field.hasAnnotation("autoNow") ? "@autoNow" : "@autoUpdate";
                         throw new AnalysisException("Field '" + field.getName() + "' in model '" + model.getName()
-                                + "' annotated with " + annName + " must be of type DateTime (or Date), found '" + tName + "'.",
+                                + "' annotated with " + annName + " must be of type DateTime (or Date), found '" + tName
+                                + "'.",
                                 model.getSourceFile(), model.getSourceLine(), 1);
                     }
                 }
@@ -188,10 +194,12 @@ public class SemanticAnalyzer {
                     if (containsIgnoreCase(modelNames, bt)) {
                         String canonicalModel = findMatchIgnoreCase(modelNames, bt);
                         throw new AnalysisException("Cannot use entity model '" + canonicalModel
-                                + "' directly as request body in REST endpoint '" + endpoint.getMethod() + " " + endpoint.getPath()
+                                + "' directly as request body in REST endpoint '" + endpoint.getMethod() + " "
+                                + endpoint.getPath()
                                 + "' on model '" + model.getName()
                                 + "'. REST APIs cannot bind directly to JPA entities; model DTOs always end with 'Request' or 'Response' (use 'Create"
-                                + canonicalModel + "Request', 'Update" + canonicalModel + "Request', or a custom 'dto').",
+                                + canonicalModel + "Request', 'Update" + canonicalModel
+                                + "Request', or a custom 'dto').",
                                 epFile, epLine, 1);
                     }
                     if (!containsIgnoreCase(dtoNames, bt) && !isAutoGeneratedModelDto(bt, modelNames)) {
@@ -211,7 +219,8 @@ public class SemanticAnalyzer {
                     if (containsIgnoreCase(modelNames, baseRet)) {
                         String canonicalModel = findMatchIgnoreCase(modelNames, baseRet);
                         String suggestedDto = canonicalModel + "Response";
-                        String suggestedReturn = rawRet.startsWith("List<") ? ("List<" + suggestedDto + ">") : suggestedDto;
+                        String suggestedReturn = rawRet.startsWith("List<") ? ("List<" + suggestedDto + ">")
+                                : suggestedDto;
                         throw new AnalysisException("Cannot return entity model '" + canonicalModel
                                 + "' directly in REST endpoint '" + endpoint.getMethod() + " " + endpoint.getPath()
                                 + "' on model '" + model.getName()
@@ -235,8 +244,11 @@ public class SemanticAnalyzer {
                 for (int ai = 0; ai < endpoint.getActionStatements().size(); ai++) {
                     String stmt = endpoint.getActionStatements().get(ai);
                     ActionStatementDef ad = ai < actionDefs.size() ? actionDefs.get(ai) : null;
-                    int stmtLine = ad != null && ad.getSourceLocation() != null ? ad.getSourceLocation().getStartLine() : epLine;
-                    validateActionStatement(stmt, model, file, modelNames, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, stmtLine, actionVariables);
+                    int stmtLine = ad != null && ad.getSourceLocation() != null ? ad.getSourceLocation().getStartLine()
+                            : epLine;
+                    validateActionStatement(stmt, model, file, modelNames,
+                            "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, stmtLine,
+                            actionVariables);
                 }
 
                 if (endpoint.hasRateLimit()) {
@@ -250,19 +262,25 @@ public class SemanticAnalyzer {
                 if (endpoint.hasCache()) {
                     String m = endpoint.getMethod().toUpperCase();
                     if (!"GET".equals(m)) {
-                        throw new AnalysisException("Caching is only permitted on read operations (GET), cannot cache endpoint '"
-                                + endpoint.getMethod() + " " + endpoint.getPath() + "'.", epFile, epLine, 1);
+                        throw new AnalysisException(
+                                "Caching is only permitted on read operations (GET), cannot cache endpoint '"
+                                        + endpoint.getMethod() + " " + endpoint.getPath() + "'.",
+                                epFile, epLine, 1);
                     }
                 }
             }
 
             if (model.getCrudConfig() != null && model.getCrudConfig().hasRateLimit()) {
                 RateLimitSpec rls = model.getCrudConfig().getRateLimit();
-                String crudFile = model.getCrudConfig().getSourceFile() != null ? model.getCrudConfig().getSourceFile() : model.getSourceFile();
-                int crudLine = model.getCrudConfig().getSourceLine() > 0 ? model.getCrudConfig().getSourceLine() : model.getSourceLine();
+                String crudFile = model.getCrudConfig().getSourceFile() != null ? model.getCrudConfig().getSourceFile()
+                        : model.getSourceFile();
+                int crudLine = model.getCrudConfig().getSourceLine() > 0 ? model.getCrudConfig().getSourceLine()
+                        : model.getSourceLine();
                 if (rls.getCapacity() <= 0) {
-                    throw new AnalysisException("Rate limit capacity must be greater than zero on crud block for model '"
-                            + model.getName() + "'", crudFile, crudLine, 1);
+                    throw new AnalysisException(
+                            "Rate limit capacity must be greater than zero on crud block for model '"
+                                    + model.getName() + "'",
+                            crudFile, crudLine, 1);
                 }
             }
 
@@ -291,7 +309,8 @@ public class SemanticAnalyzer {
                     FieldDef f = targetModel.findField(key);
                     RelationDef r = targetModel.findRelation(key);
                     if (f == null && r == null) {
-                        throw new AnalysisException("Seed for model '" + targetModel.getName() + "' references unknown field '" + key + "'");
+                        throw new AnalysisException("Seed for model '" + targetModel.getName()
+                                + "' references unknown field '" + key + "'");
                     }
                     Object val = row.get(key);
                     if (val instanceof SeedRef) {
@@ -304,15 +323,19 @@ public class SemanticAnalyzer {
                             }
                         }
                         if (refModel == null) {
-                            throw new AnalysisException("Seed reference points to unknown model '" + ref.getModelName() + "' in " + targetModel.getName() + "." + key);
+                            throw new AnalysisException("Seed reference points to unknown model '" + ref.getModelName()
+                                    + "' in " + targetModel.getName() + "." + key);
                         }
                         if (r != null && !r.getTargetModel().equalsIgnoreCase(ref.getModelName())) {
-                            throw new AnalysisException("Seed reference model '" + ref.getModelName() + "' does not match relation target '" + r.getTargetModel() + "' on field '" + key + "'");
+                            throw new AnalysisException(
+                                    "Seed reference model '" + ref.getModelName() + "' does not match relation target '"
+                                            + r.getTargetModel() + "' on field '" + key + "'");
                         }
                     }
                 }
 
-                // Check that required (non-optional, non-auto, non-relation) fields are supplied in seed data
+                // Check that required (non-optional, non-auto, non-relation) fields are
+                // supplied in seed data
                 for (FieldDef f : targetModel.getFields()) {
                     if (!f.isOptional() && !f.hasAnnotation("id") && !f.hasAnnotation("auto")
                             && !f.hasAnnotation("autoNow") && !f.hasAnnotation("autoUpdate")
@@ -337,14 +360,17 @@ public class SemanticAnalyzer {
         Set<String> jobNames = new HashSet<>();
         for (JobDef j : file.getJobs()) {
             if (!jobNames.add(j.getName().toLowerCase())) {
-                throw new AnalysisException("Duplicate background job defined: '" + j.getName() + "'", j.getSourceFile(), j.getSourceLine(), 1);
+                throw new AnalysisException("Duplicate background job defined: '" + j.getName() + "'",
+                        j.getSourceFile(), j.getSourceLine(), 1);
             }
             if (j.getCronExpression() == null && j.getFixedRate() == null) {
-                throw new AnalysisException("Job '" + j.getName() + "' must specify either 'cron' or 'fixedRate'", j.getSourceFile(), j.getSourceLine(), 1);
+                throw new AnalysisException("Job '" + j.getName() + "' must specify either 'cron' or 'fixedRate'",
+                        j.getSourceFile(), j.getSourceLine(), 1);
             }
             Map<String, String> jobVariables = new HashMap<>();
             for (String stmt : j.getActionStatements()) {
-                validateActionStatement(stmt, null, file, modelNames, "job '" + j.getName() + "'", j.getSourceFile(), j.getSourceLine(), jobVariables);
+                validateActionStatement(stmt, null, file, modelNames, "job '" + j.getName() + "'", j.getSourceFile(),
+                        j.getSourceLine(), jobVariables);
             }
         }
 
@@ -355,7 +381,7 @@ public class SemanticAnalyzer {
         validateMailDefinitions(file, modelNames);
 
         return new ZenithFile(file.getConfig(), file.getEnums(), validatedModels, file.getDtos(), file.getSeeds(),
-                file.getJobs(), file.getMails(), file.getImports(), file.hasExplicitConfig());
+                file.getJobs(), file.getMails(), file.getSockets(), file.getImports(), file.hasExplicitConfig());
     }
 
     private void validateRoleReferences(ZenithFile file, List<ModelDef> models) {
@@ -368,12 +394,14 @@ public class SemanticAnalyzer {
                 int srcLine = crud.getSourceLine() > 0 ? crud.getSourceLine() : model.getSourceLine();
 
                 for (String role : crud.getDefaultRoles()) {
-                    validateSingleRole(role, definedRoles, srcFile, srcLine, "crud configuration on model '" + model.getName() + "'");
+                    validateSingleRole(role, definedRoles, srcFile, srcLine,
+                            "crud configuration on model '" + model.getName() + "'");
                 }
                 for (Map.Entry<String, List<String>> entry : crud.getOperationRoles().entrySet()) {
                     String op = entry.getKey();
                     for (String role : entry.getValue()) {
-                        validateSingleRole(role, definedRoles, srcFile, srcLine, "crud operation '" + op + "' on model '" + model.getName() + "'");
+                        validateSingleRole(role, definedRoles, srcFile, srcLine,
+                                "crud operation '" + op + "' on model '" + model.getName() + "'");
                     }
                 }
             }
@@ -383,12 +411,14 @@ public class SemanticAnalyzer {
                 int epLine = endpoint.getSourceLine() > 0 ? endpoint.getSourceLine() : model.getSourceLine();
 
                 for (String role : endpoint.getRoles()) {
-                    validateSingleRole(role, definedRoles, epFile, epLine, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "' on model '" + model.getName() + "'");
+                    validateSingleRole(role, definedRoles, epFile, epLine, "endpoint '" + endpoint.getMethod() + " "
+                            + endpoint.getPath() + "' on model '" + model.getName() + "'");
                 }
 
                 for (GuardDef guard : endpoint.getGuards()) {
                     for (String role : guard.extractRoles()) {
-                        validateSingleRole(role, definedRoles, epFile, epLine, "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "' on model '" + model.getName() + "'");
+                        validateSingleRole(role, definedRoles, epFile, epLine, "endpoint '" + endpoint.getMethod() + " "
+                                + endpoint.getPath() + "' on model '" + model.getName() + "'");
                     }
                 }
             }
@@ -396,7 +426,8 @@ public class SemanticAnalyzer {
     }
 
     private void validateSingleRole(String role, Set<String> definedRoles, String file, int line, String context) {
-        if (role == null || role.trim().isEmpty()) return;
+        if (role == null || role.trim().isEmpty())
+            return;
         String r = role.trim();
         if ("public".equalsIgnoreCase(r) || "authenticated".equalsIgnoreCase(r) || "auth".equalsIgnoreCase(r)) {
             return;
@@ -411,31 +442,43 @@ public class SemanticAnalyzer {
         }
 
         if (!found) {
-            throw new AnalysisException("Role '" + r + "' referenced in " + context + " does not exist. Available roles: " + (definedRoles.isEmpty() ? "none" : String.join(", ", definedRoles)), file, line, 1);
+            throw new AnalysisException(
+                    "Role '" + r + "' referenced in " + context + " does not exist. Available roles: "
+                            + (definedRoles.isEmpty() ? "none" : String.join(", ", definedRoles)),
+                    file, line, 1);
         }
     }
 
-    private static final Set<String> RESERVED_ACTION_VARS = Set.of("entity", "body", "currentUser", "currentUsername", "id", "this", "request", "response");
+    private static final Set<String> RESERVED_ACTION_VARS = Set.of("entity", "body", "currentUser", "currentUsername",
+            "id", "this", "request", "response");
 
-    private void validateActionStatement(String stmt, ModelDef model, ZenithFile file, Set<String> modelNames, String context, String srcFile, int srcLine, Map<String, String> localVars) {
-        if (stmt == null || stmt.trim().isEmpty()) return;
+    private void validateActionStatement(String stmt, ModelDef model, ZenithFile file, Set<String> modelNames,
+            String context, String srcFile, int srcLine, Map<String, String> localVars) {
+        if (stmt == null || stmt.trim().isEmpty())
+            return;
         String s = stmt.trim();
 
         if (s.startsWith("var ")) {
             String rest = s.substring(4).trim();
             int eqIdx = rest.indexOf('=');
             if (eqIdx < 0) {
-                throw new AnalysisException("Action variable binding in " + context + " must have '=' assignment (e.g. 'var x = create Model { ... }')", srcFile, srcLine, 1);
+                throw new AnalysisException(
+                        "Action variable binding in " + context
+                                + " must have '=' assignment (e.g. 'var x = create Model { ... }')",
+                        srcFile, srcLine, 1);
             }
             String varName = rest.substring(0, eqIdx).trim();
             if (varName.isEmpty()) {
                 throw new AnalysisException("Missing variable name after 'var' in " + context, srcFile, srcLine, 1);
             }
             if (RESERVED_ACTION_VARS.contains(varName)) {
-                throw new AnalysisException("Variable name '" + varName + "' in " + context + " collides with a reserved keyword", srcFile, srcLine, 1);
+                throw new AnalysisException(
+                        "Variable name '" + varName + "' in " + context + " collides with a reserved keyword", srcFile,
+                        srcLine, 1);
             }
             if (localVars.containsKey(varName)) {
-                throw new AnalysisException("Duplicate variable declaration '" + varName + "' in " + context, srcFile, srcLine, 1);
+                throw new AnalysisException("Duplicate variable declaration '" + varName + "' in " + context, srcFile,
+                        srcLine, 1);
             }
             String rightExpr = rest.substring(eqIdx + 1).trim();
             String targetModel = null;
@@ -451,15 +494,19 @@ public class SemanticAnalyzer {
                     targetModel = targetModel.substring(0, targetModel.indexOf(" on ")).trim();
                 }
             } else {
-                throw new AnalysisException("Variable binding '" + varName + "' in " + context + " must be initialized with 'create' or 'update' expression", srcFile, srcLine, 1);
+                throw new AnalysisException("Variable binding '" + varName + "' in " + context
+                        + " must be initialized with 'create' or 'update' expression", srcFile, srcLine, 1);
             }
             if (!modelNames.contains(targetModel)) {
-                throw new AnalysisException("Action '" + (rightExpr.startsWith("create") ? "create" : "update") + "' in " + context + " references unknown model '" + targetModel + "'", srcFile, srcLine, 1);
+                throw new AnalysisException("Action '" + (rightExpr.startsWith("create") ? "create" : "update")
+                        + "' in " + context + " references unknown model '" + targetModel + "'", srcFile, srcLine, 1);
             }
 
             // Check for self-referential initialization in the right-hand expression
             if (rightExpr.matches(".*\\b" + java.util.regex.Pattern.quote(varName) + "\\b.*")) {
-                throw new AnalysisException("Self-referential or circular reference to variable '" + varName + "' in " + context, srcFile, srcLine, 1);
+                throw new AnalysisException(
+                        "Self-referential or circular reference to variable '" + varName + "' in " + context, srcFile,
+                        srcLine, 1);
             }
 
             validatePropertyAccesses(rightExpr, localVars, file, context, srcFile, srcLine);
@@ -472,7 +519,9 @@ public class SemanticAnalyzer {
             int brace = rest.indexOf('{');
             String targetModel = brace > 0 ? rest.substring(0, brace).trim() : rest;
             if (!modelNames.contains(targetModel)) {
-                throw new AnalysisException("Action 'create' in " + context + " references unknown model '" + targetModel + "'", srcFile, srcLine, 1);
+                throw new AnalysisException(
+                        "Action 'create' in " + context + " references unknown model '" + targetModel + "'", srcFile,
+                        srcLine, 1);
             }
             return;
         }
@@ -485,7 +534,9 @@ public class SemanticAnalyzer {
                 targetModel = targetModel.substring(0, targetModel.indexOf(" on ")).trim();
             }
             if (!modelNames.contains(targetModel)) {
-                throw new AnalysisException("Action 'update' in " + context + " references unknown model '" + targetModel + "'", srcFile, srcLine, 1);
+                throw new AnalysisException(
+                        "Action 'update' in " + context + " references unknown model '" + targetModel + "'", srcFile,
+                        srcLine, 1);
             }
             return;
         }
@@ -519,6 +570,11 @@ public class SemanticAnalyzer {
             return;
         }
 
+        if (s.startsWith("broadcast ") || s.matches("^broadcast\\s+.*")) {
+            validateExpressionFunctions(s, context, srcFile, srcLine);
+            return;
+        }
+
         if (s.contains("=") && !s.contains("==") && !s.contains("!=") && !s.contains("<=") && !s.contains(">=")) {
             String[] parts = s.split("=", 2);
             String left = parts[0].trim().replaceAll("\\s+", "");
@@ -530,7 +586,8 @@ public class SemanticAnalyzer {
                     left = left.substring(model.getName().length() + 1);
                 }
                 if (model.findField(left) == null && model.findRelation(left) == null) {
-                    throw new AnalysisException("Assignment in " + context + " targets unknown field or relation '" + left + "' on model '" + model.getName() + "'", srcFile, srcLine, 1);
+                    throw new AnalysisException("Assignment in " + context + " targets unknown field or relation '"
+                            + left + "' on model '" + model.getName() + "'", srcFile, srcLine, 1);
                 }
             }
             validatePropertyAccesses(parts[1], localVars, file, context, srcFile, srcLine);
@@ -540,44 +597,53 @@ public class SemanticAnalyzer {
         }
 
         throw new AnalysisException("Unsupported action statement in " + context + ": '" + s + "'. "
-                + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'send MailName(...)', 'notify(to, message)', or 'return ...'.", srcFile, srcLine, 1);
+                + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'send MailName(...)', 'notify(to, message)', or 'return ...'.",
+                srcFile, srcLine, 1);
     }
 
     private void validateExpressionFunctions(String expr, String context, String srcFile, int srcLine) {
-        if (expr == null) return;
+        if (expr == null)
+            return;
         java.util.regex.Pattern fnPattern = java.util.regex.Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(");
         java.util.regex.Matcher m = fnPattern.matcher(expr);
         Set<String> supportedFns = Set.of(
-            "now", "today",
-            "daysago", "daysfromnow",
-            "hoursago", "hoursfromnow",
-            "minutesago", "minutesfromnow",
-            "monthsago", "monthsfromnow",
-            "yearsago", "yearsfromnow",
-            "notify"
-        );
+                "now", "today",
+                "daysago", "daysfromnow",
+                "hoursago", "hoursfromnow",
+                "minutesago", "minutesfromnow",
+                "monthsago", "monthsfromnow",
+                "yearsago", "yearsfromnow",
+                "notify");
         while (m.find()) {
             String fnName = m.group(1);
-            if (fnName.startsWith("___STR_")) continue;
-            if (fnName.equalsIgnoreCase("if") || fnName.equalsIgnoreCase("for") || fnName.equalsIgnoreCase("while")) continue;
+            if (fnName.startsWith("___STR_"))
+                continue;
+            if (fnName.equalsIgnoreCase("if") || fnName.equalsIgnoreCase("for") || fnName.equalsIgnoreCase("while"))
+                continue;
             if (!supportedFns.contains(fnName.toLowerCase())) {
-                throw new AnalysisException("Unsupported function '" + fnName + "(...)' in " + context + " expression: '" + expr.trim() + "'. "
-                        + "Supported date/time functions: now(), today(), daysAgo(n), daysFromNow(n), hoursAgo(n), hoursFromNow(n), minutesAgo(n), minutesFromNow(n). Supported operations: notify(recipient, message).", srcFile, srcLine, 1);
+                throw new AnalysisException("Unsupported function '" + fnName + "(...)' in " + context
+                        + " expression: '" + expr.trim() + "'. "
+                        + "Supported date/time functions: now(), today(), daysAgo(n), daysFromNow(n), hoursAgo(n), hoursFromNow(n), minutesAgo(n), minutesFromNow(n). Supported operations: notify(recipient, message).",
+                        srcFile, srcLine, 1);
             }
         }
     }
 
-    private void validateEnumConstants(String targetField, String rightExpr, ModelDef model, ZenithFile file, String context, String srcFile, int srcLine) {
-        if (rightExpr == null || file == null || file.getEnums().isEmpty()) return;
+    private void validateEnumConstants(String targetField, String rightExpr, ModelDef model, ZenithFile file,
+            String context, String srcFile, int srcLine) {
+        if (rightExpr == null || file == null || file.getEnums().isEmpty())
+            return;
 
         FieldDef fDef = model != null ? model.findField(targetField) : null;
         String fieldTypeName = fDef != null ? fDef.getType().getName() : null;
 
-        // Normalize whitespace around dots so "OrderStatus . PAIDs" becomes "OrderStatus.PAIDs"
+        // Normalize whitespace around dots so "OrderStatus . PAIDs" becomes
+        // "OrderStatus.PAIDs"
         String normalizedExpr = rightExpr.replaceAll("\\s*\\.\\s*", ".");
 
         // 1. Matches EnumName.CONSTANT_NAME (e.g. OrderStatus.PAIDd)
-        java.util.regex.Pattern enumDotPattern = java.util.regex.Pattern.compile("\\b([A-Z][a-zA-Z0-9_]*)\\.([a-zA-Z0-9_]+)\\b");
+        java.util.regex.Pattern enumDotPattern = java.util.regex.Pattern
+                .compile("\\b([A-Z][a-zA-Z0-9_]*)\\.([a-zA-Z0-9_]+)\\b");
         java.util.regex.Matcher m = enumDotPattern.matcher(normalizedExpr);
         while (m.find()) {
             String enumName = m.group(1);
@@ -600,8 +666,10 @@ public class SemanticAnalyzer {
                     }
                 }
                 if (!validConstant) {
-                    throw new AnalysisException("Unknown enum constant '" + constantName + "' for enum '" + enumDef.getName()
-                            + "' in " + context + ". Available values: " + String.join(", ", enumDef.getValues()),
+                    throw new AnalysisException(
+                            "Unknown enum constant '" + constantName + "' for enum '" + enumDef.getName()
+                                    + "' in " + context + ". Available values: "
+                                    + String.join(", ", enumDef.getValues()),
                             srcFile, srcLine, 1);
                 }
             }
@@ -628,7 +696,8 @@ public class SemanticAnalyzer {
                     }
                     if (!validConstant) {
                         throw new AnalysisException("Invalid enum value '" + token + "' for enum field '" + targetField
-                                + "' of type '" + targetEnum.getName() + "' in " + context + ". Available values: " + String.join(", ", targetEnum.getValues()),
+                                + "' of type '" + targetEnum.getName() + "' in " + context + ". Available values: "
+                                + String.join(", ", targetEnum.getValues()),
                                 srcFile, srcLine, 1);
                     }
                 }
@@ -640,11 +709,14 @@ public class SemanticAnalyzer {
     // Spec #02: Database Indexes (@index / @uniqueIndex)
     // ---------------------------------------------------------------------
 
-    private static final java.util.regex.Pattern SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
+    private static final java.util.regex.Pattern SQL_IDENTIFIER = java.util.regex.Pattern
+            .compile("^[A-Za-z_][A-Za-z0-9_]*$");
 
     /**
-     * Validates every index declared on a model: referenced fields exist, types are indexable,
-     * no duplicated columns, no redundant duplicate indexes, and explicit names are valid identifiers
+     * Validates every index declared on a model: referenced fields exist, types are
+     * indexable,
+     * no duplicated columns, no redundant duplicate indexes, and explicit names are
+     * valid identifiers
      * within the 63-character database limit.
      */
     private void validateModelIndexes(ModelDef model, Set<String> enumNames) {
@@ -659,7 +731,8 @@ public class SemanticAnalyzer {
                     : (idx.isUnique() ? "@uniqueIndex" : "@index") + idx.getFields();
 
             if (idx.getFields().isEmpty()) {
-                throw new AnalysisException("Index " + label + " in model '" + model.getName() + "' must reference at least one field",
+                throw new AnalysisException(
+                        "Index " + label + " in model '" + model.getName() + "' must reference at least one field",
                         srcFile, srcLine, 1);
             }
 
@@ -678,9 +751,11 @@ public class SemanticAnalyzer {
                 }
                 if (f == null && rel == null) {
                     List<String> available = new ArrayList<>();
-                    for (FieldDef af : model.getFields()) available.add(af.getName());
+                    for (FieldDef af : model.getFields())
+                        available.add(af.getName());
                     for (RelationDef r : model.getRelations()) {
-                        if (r.getRelationType() == RelationType.MANY_TO_ONE || r.getRelationType() == RelationType.ONE_TO_ONE) {
+                        if (r.getRelationType() == RelationType.MANY_TO_ONE
+                                || r.getRelationType() == RelationType.ONE_TO_ONE) {
                             available.add(r.getFieldName());
                         }
                     }
@@ -694,7 +769,8 @@ public class SemanticAnalyzer {
                 if (rel != null && rel.getRelationType() != RelationType.MANY_TO_ONE
                         && rel.getRelationType() != RelationType.ONE_TO_ONE) {
                     throw new AnalysisException("Index " + label + " in model '" + model.getName()
-                            + "' cannot index collection relation '" + rel.getFieldName() + "' (" + rel.getRelationType()
+                            + "' cannot index collection relation '" + rel.getFieldName() + "' ("
+                            + rel.getRelationType()
                             + "). Only manyToOne / oneToOne relations (foreign key columns) are indexable.",
                             srcFile, srcLine, 1);
                 }
@@ -726,7 +802,8 @@ public class SemanticAnalyzer {
             IndexDef previous = signatures.put(sig, idx);
             if (previous != null) {
                 throw new AnalysisException("Redundant duplicate index in model '" + model.getName() + "': " + label
-                        + " covers the same columns " + idx.getFields() + " as an earlier index declaration. Remove one of them.",
+                        + " covers the same columns " + idx.getFields()
+                        + " as an earlier index declaration. Remove one of them.",
                         srcFile, srcLine, 1);
             }
 
@@ -738,16 +815,20 @@ public class SemanticAnalyzer {
                             srcFile, srcLine, 1);
                 }
                 if (n.length() > dev.zenith.generator.IndexResolver.MAX_IDENTIFIER_LENGTH) {
-                    throw new AnalysisException("Index name '" + n + "' in model '" + model.getName() + "' is " + n.length()
-                            + " characters long; database identifiers are limited to "
-                            + dev.zenith.generator.IndexResolver.MAX_IDENTIFIER_LENGTH + " characters",
+                    throw new AnalysisException(
+                            "Index name '" + n + "' in model '" + model.getName() + "' is " + n.length()
+                                    + " characters long; database identifiers are limited to "
+                                    + dev.zenith.generator.IndexResolver.MAX_IDENTIFIER_LENGTH + " characters",
                             srcFile, srcLine, 1);
                 }
             }
         }
     }
 
-    /** Index names are schema-global in PostgreSQL, so they must be unique across all models. */
+    /**
+     * Index names are schema-global in PostgreSQL, so they must be unique across
+     * all models.
+     */
     private void validateIndexNameCollisions(List<ModelDef> models) {
         Map<String, String> owners = new HashMap<>();
         for (ModelDef m : models) {
@@ -756,8 +837,9 @@ public class SemanticAnalyzer {
                 String owner = owners.put(key, m.getName());
                 if (owner != null) {
                     IndexDef src = idx.source;
-                    throw new AnalysisException("Index name '" + idx.name + "' is declared more than once (models '" + owner
-                            + "' and '" + m.getName() + "'). Index names must be unique across the schema.",
+                    throw new AnalysisException(
+                            "Index name '" + idx.name + "' is declared more than once (models '" + owner
+                                    + "' and '" + m.getName() + "'). Index names must be unique across the schema.",
                             src.getSourceFile() != null ? src.getSourceFile() : m.getSourceFile(),
                             src.getSourceLine() > 0 ? src.getSourceLine() : m.getSourceLine(), 1);
                 }
@@ -781,7 +863,8 @@ public class SemanticAnalyzer {
     private static int levenshtein(String a, String b) {
         int[] prev = new int[b.length() + 1];
         int[] cur = new int[b.length() + 1];
-        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int j = 0; j <= b.length(); j++)
+            prev[j] = j;
         for (int i = 1; i <= a.length(); i++) {
             cur[0] = i;
             for (int j = 1; j <= b.length(); j++) {
@@ -804,16 +887,20 @@ public class SemanticAnalyzer {
         return null;
     }
 
-    private void validatePropertyAccesses(String expr, Map<String, String> localVars, ZenithFile file, String context, String srcFile, int srcLine) {
-        if (expr == null || localVars == null || file == null) return;
+    private void validatePropertyAccesses(String expr, Map<String, String> localVars, ZenithFile file, String context,
+            String srcFile, int srcLine) {
+        if (expr == null || localVars == null || file == null)
+            return;
         // Strip string literals before analyzing dots
         String stripped = expr.replaceAll("\"(\\\\.|[^\"])*\"", "\"\"");
         stripped = stripped.replaceAll("\\s*\\.\\s*", ".");
-        java.util.regex.Pattern dotPattern = java.util.regex.Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z0-9_.]+)\\b");
+        java.util.regex.Pattern dotPattern = java.util.regex.Pattern
+                .compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z0-9_.]+)\\b");
         java.util.regex.Matcher m = dotPattern.matcher(stripped);
         while (m.find()) {
             String root = m.group(1);
-            if (root.equals("entity") || root.equals("currentUser") || root.equals("body") || root.equals("java") || root.equals("Math") || root.equals("ShipmentStatus")) {
+            if (root.equals("entity") || root.equals("currentUser") || root.equals("body") || root.equals("java")
+                    || root.equals("Math") || root.equals("ShipmentStatus")) {
                 continue;
             }
             if (file.findEnum(root) != null) {
@@ -830,9 +917,12 @@ public class SemanticAnalyzer {
                     for (int i = 0; i < segments.length; i++) {
                         String seg = segments[i];
                         if (currentModel == null) {
-                            throw new AnalysisException("Cannot navigate property '" + seg + "' on non-model in " + context, srcFile, srcLine, 1);
+                            throw new AnalysisException(
+                                    "Cannot navigate property '" + seg + "' on non-model in " + context, srcFile,
+                                    srcLine, 1);
                         }
-                        if (seg.equalsIgnoreCase("id") || seg.equalsIgnoreCase("createdAt") || seg.equalsIgnoreCase("updatedAt")) {
+                        if (seg.equalsIgnoreCase("id") || seg.equalsIgnoreCase("createdAt")
+                                || seg.equalsIgnoreCase("updatedAt")) {
                             currentModel = null;
                             continue;
                         }
@@ -846,12 +936,15 @@ public class SemanticAnalyzer {
                             currentModel = file.findModel(r.getTargetModel());
                             continue;
                         }
-                        throw new AnalysisException("Property '" + seg + "' does not exist on model '" + currentModel.getName() + "' in " + context, srcFile, srcLine, 1);
+                        throw new AnalysisException("Property '" + seg + "' does not exist on model '"
+                                + currentModel.getName() + "' in " + context, srcFile, srcLine, 1);
                     }
                 }
             } else if (!root.matches("^[A-Z].*")) {
                 // Undeclared variable reference
-                throw new AnalysisException("Undefined variable '" + root + "' referenced before declaration in " + context, srcFile, srcLine, 1);
+                throw new AnalysisException(
+                        "Undefined variable '" + root + "' referenced before declaration in " + context, srcFile,
+                        srcLine, 1);
             }
         }
     }
@@ -870,7 +963,8 @@ public class SemanticAnalyzer {
     }
 
     private String findMatchIgnoreCase(Set<String> set, String target) {
-        if (target == null) return null;
+        if (target == null)
+            return null;
         for (String s : set) {
             if (s.equalsIgnoreCase(target)) {
                 return s;
@@ -880,7 +974,8 @@ public class SemanticAnalyzer {
     }
 
     private boolean isAutoGeneratedModelDto(String typeName, Set<String> modelNames) {
-        if (typeName == null) return false;
+        if (typeName == null)
+            return false;
         for (String m : modelNames) {
             if (typeName.equalsIgnoreCase(m + "Response")
                     || typeName.equalsIgnoreCase("Create" + m + "Request")
@@ -901,7 +996,8 @@ public class SemanticAnalyzer {
             }
 
             if (mail.getParameters().isEmpty()) {
-                throw new AnalysisException("Mail contract '" + mail.getName() + "' must declare at least one parameter.",
+                throw new AnalysisException(
+                        "Mail contract '" + mail.getName() + "' must declare at least one parameter.",
                         mail.getSourceFile(), mail.getSourceLine(), 1);
             }
 
@@ -909,7 +1005,8 @@ public class SemanticAnalyzer {
             Set<String> paramNames = new HashSet<>();
             for (FieldDef param : mail.getParameters()) {
                 if (!paramNames.add(param.getName().toLowerCase())) {
-                    throw new AnalysisException("Duplicate parameter '" + param.getName() + "' in mail '" + mail.getName() + "'",
+                    throw new AnalysisException(
+                            "Duplicate parameter '" + param.getName() + "' in mail '" + mail.getName() + "'",
                             mail.getSourceFile(), mail.getSourceLine(), 1);
                 }
                 String tName = param.getType().getName();
@@ -926,30 +1023,43 @@ public class SemanticAnalyzer {
 
             // Validate 'to' expression
             if (mail.getToExpression() == null || mail.getToExpression().trim().isEmpty()) {
-                throw new AnalysisException("Mail contract '" + mail.getName() + "' must define a non-empty recipient 'to:' expression.",
+                throw new AnalysisException(
+                        "Mail contract '" + mail.getName() + "' must define a non-empty recipient 'to:' expression.",
                         mail.getSourceFile(), mail.getSourceLine(), 1);
             }
 
             // Validate 'subject' expression
             if (mail.getSubjectExpression() == null || mail.getSubjectExpression().trim().isEmpty()) {
-                throw new AnalysisException("Mail contract '" + mail.getName() + "' must define a non-empty 'subject:' expression.",
+                throw new AnalysisException(
+                        "Mail contract '" + mail.getName() + "' must define a non-empty 'subject:' expression.",
+                        mail.getSourceFile(), mail.getSourceLine(), 1);
+            }
+
+            // Validate that either 'content' or 'template' is specified
+            if (!mail.hasContent() && !mail.hasTemplate()) {
+                throw new AnalysisException(
+                        "Mail contract '" + mail.getName() + "' must define either 'content:' (inline expression) or 'template:' (file path).",
                         mail.getSourceFile(), mail.getSourceLine(), 1);
             }
         }
     }
 
-    private void validateSendActionStatement(String stmt, ZenithFile file, String context, String srcFile, int srcLine) {
+    private void validateSendActionStatement(String stmt, ZenithFile file, String context, String srcFile,
+            int srcLine) {
         String s = stmt.trim();
         // format: send MailName(param1 = value1, param2 = value2)
         int parenOpen = s.indexOf('(');
         int parenClose = s.lastIndexOf(')');
         if (parenOpen < 0 || parenClose < parenOpen) {
-            throw new AnalysisException("Malformed 'send' statement in " + context + ": expected 'send MailName(arg = val, ...)'", srcFile, srcLine, 1);
+            throw new AnalysisException(
+                    "Malformed 'send' statement in " + context + ": expected 'send MailName(arg = val, ...)'", srcFile,
+                    srcLine, 1);
         }
         String mailName = s.substring(4, parenOpen).trim();
         MailDef mailDef = file.findMail(mailName);
         if (mailDef == null) {
-            throw new AnalysisException("Referenced mail contract '" + mailName + "' does not exist in " + context, srcFile, srcLine, 1);
+            throw new AnalysisException("Referenced mail contract '" + mailName + "' does not exist in " + context,
+                    srcFile, srcLine, 1);
         }
 
         String argsBlock = s.substring(parenOpen + 1, parenClose).trim();
@@ -958,7 +1068,8 @@ public class SemanticAnalyzer {
             String[] parts = argsBlock.split(",");
             for (String part : parts) {
                 String p = part.trim();
-                if (p.isEmpty()) continue;
+                if (p.isEmpty())
+                    continue;
                 String[] kv = p.split("=", 2);
                 if (kv.length == 2) {
                     passedArgs.put(kv[0].trim().toLowerCase(), kv[1].trim());
@@ -979,12 +1090,12 @@ public class SemanticAnalyzer {
     }
 
     private boolean isScalarReturnType(String typeName) {
-        if (typeName == null) return false;
+        if (typeName == null)
+            return false;
         Set<String> scalars = Set.of(
-            "string", "int", "integer", "long", "boolean", "bool",
-            "double", "float", "decimal", "bigdecimal", "uuid",
-            "datetime", "date", "void"
-        );
+                "string", "int", "integer", "long", "boolean", "bool",
+                "double", "float", "decimal", "bigdecimal", "uuid",
+                "datetime", "date", "void");
         return scalars.contains(typeName.toLowerCase());
     }
 }

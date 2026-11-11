@@ -18,18 +18,25 @@ public class MailDef {
     private final String toExpression;
     private final String subjectExpression;
     private final String templatePath;
+    private final String contentExpression;
     private final String fromOverride;
     private String sourceFile;
     private int sourceLine;
 
     public MailDef(String name, List<FieldDef> parameters, String toExpression,
-                   String subjectExpression, String templatePath, String fromOverride) {
+                   String subjectExpression, String templatePath, String contentExpression, String fromOverride) {
         this.name = name;
         this.parameters = parameters != null ? parameters : new ArrayList<>();
         this.toExpression = toExpression != null ? toExpression : "";
         this.subjectExpression = subjectExpression != null ? subjectExpression : "";
         this.templatePath = templatePath != null ? templatePath : "";
+        this.contentExpression = contentExpression != null ? contentExpression : "";
         this.fromOverride = fromOverride;
+    }
+
+    public MailDef(String name, List<FieldDef> parameters, String toExpression,
+                   String subjectExpression, String templatePath, String fromOverride) {
+        this(name, parameters, toExpression, subjectExpression, templatePath, "", fromOverride);
     }
 
     public String getName() {
@@ -58,6 +65,18 @@ public class MailDef {
 
     public String getTemplatePath() {
         return templatePath;
+    }
+
+    public String getContentExpression() {
+        return contentExpression;
+    }
+
+    public boolean hasContent() {
+        return contentExpression != null && !contentExpression.trim().isEmpty();
+    }
+
+    public boolean hasTemplate() {
+        return templatePath != null && !templatePath.trim().isEmpty();
     }
 
     public String getFromOverride() {

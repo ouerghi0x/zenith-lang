@@ -211,8 +211,33 @@ public class AppConfig {
         return from;
     }
 
+    public String getMailHost() {
+        String h = getString("mailHost", null);
+        if (h == null) h = getString("mail_host", "localhost");
+        return h;
+    }
+
+    public int getMailPort() {
+        int p = getInt("mailPort", -1);
+        if (p <= 0) p = getInt("mail_port", 587);
+        return p;
+    }
+
+    public String getMailUsername() {
+        String u = getString("mailUsername", null);
+        if (u == null) u = getString("mail_username", "");
+        return u;
+    }
+
+    public String getMailPassword() {
+        String pass = getString("mailPassword", null);
+        if (pass == null) pass = getString("mail_password", "");
+        return pass;
+    }
+
     public boolean hasMail() {
-        return properties.containsKey("mail") || properties.containsKey("mailProvider") || properties.containsKey("mailFrom");
+        return properties.containsKey("mail") || properties.containsKey("mailProvider") || properties.containsKey("mailFrom")
+                || properties.containsKey("mailHost") || properties.containsKey("mailUsername");
     }
 
     public String getCacheProvider() {

@@ -126,6 +126,13 @@ public class PomGenerator {
             sb.append("        </dependency>\n");
         }
 
+        if (file.hasSockets()) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>org.springframework.boot</groupId>\n");
+            sb.append("            <artifactId>spring-boot-starter-websocket</artifactId>\n");
+            sb.append("        </dependency>\n");
+        }
+
         if (file.hasCache()) {
             sb.append("        <dependency>\n");
             sb.append("            <groupId>org.springframework.boot</groupId>\n");

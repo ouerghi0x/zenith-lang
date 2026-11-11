@@ -152,7 +152,8 @@ require(['vs/editor/editor.main'], function () {
       'import', 'config', 'model', 'enum', 'dto', 'body', 'seed', 'relations', 'endpoints',
       'crud', 'guard', 'action', 'true', 'false', 'auth', 'public',
       'and', 'or', 'paginate', 'search', 'filter', 'sort', 'params', 'query', 'where', 'find',
-      'create', 'update', 'notify', 'minio', 's3', 'storage', 'storageBucket', 'job', 'cron', 'fixedRate'
+      'create', 'update', 'notify', 'minio', 's3', 'storage', 'storageBucket', 'job', 'cron', 'fixedRate',
+      'mail', 'send', 'to', 'subject', 'template', 'content', 'from'
     ],
     httpKeywords: ['get', 'post', 'put', 'delete', 'patch'],
     typeKeywords: ['Long', 'String', 'Int', 'Decimal', 'DateTime', 'Date', 'Boolean', 'UUID', 'Text', 'List', 'Void'],
@@ -1453,6 +1454,10 @@ function switchPreviewTab(tabKey) {
     requestAnimationFrame(redrawErdIfActive);
   } else if (tabKey === 'notes') {
     renderNotesPreview();
+  } else if (tabKey === 'typescript') {
+    if (typeof renderTypescriptSdkPreview === 'function') renderTypescriptSdkPreview();
+  } else if (tabKey === 'docker') {
+    if (typeof renderDockerPreview === 'function') renderDockerPreview();
   }
 }
 
@@ -2180,7 +2185,7 @@ function renderApiExplorer(models, config) {
                           models[0];
     const registerPayload = authUserModel ? generateSamplePayload(authUserModel) : JSON.stringify({ email: "developer@example.com", password: "Password123!" }, null, 2);
 
-    const authGroup = createEndpointGroup('🔐 Authentication', [
+    const authGroup = createEndpointGroup('Authentication', [
       {
         method: 'POST',
         pathDisplay: '/auth/login',
@@ -2208,7 +2213,7 @@ function renderApiExplorer(models, config) {
   );
 
   if (isStorageEnabled) {
-    const storageGroup = createEndpointGroup('📁 Storage & Media', [
+    const storageGroup = createEndpointGroup('Storage & Media', [
       {
         method: 'POST',
         pathDisplay: '/files/upload',
@@ -2263,33 +2268,33 @@ function renderApiExplorer(models, config) {
         method: 'GET',
         pathDisplay: `/${slug}`,
         fullUrl: `${basePath}/${slug}`,
-        desc: 'List & Search' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : '')
+        desc: 'List & Search' + (modelRateLimit ? ` [${modelRateLimit}]` : '')
       });
       routes.push({
         method: 'POST',
         pathDisplay: `/${slug}`,
         fullUrl: `${basePath}/${slug}`,
-        desc: 'Create new' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : ''),
+        desc: 'Create new' + (modelRateLimit ? ` [${modelRateLimit}]` : ''),
         sampleBody: modelSample
       });
       routes.push({
         method: 'GET',
         pathDisplay: `/${slug}/{id}`,
         fullUrl: `${basePath}/${slug}/{id}`,
-        desc: 'Find by ID' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : '')
+        desc: 'Find by ID' + (modelRateLimit ? ` [${modelRateLimit}]` : '')
       });
       routes.push({
         method: 'PUT',
         pathDisplay: `/${slug}/{id}`,
         fullUrl: `${basePath}/${slug}/{id}`,
-        desc: 'Update' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : ''),
+        desc: 'Update' + (modelRateLimit ? ` [${modelRateLimit}]` : ''),
         sampleBody: modelSample
       });
       routes.push({
         method: 'DELETE',
         pathDisplay: `/${slug}/{id}`,
         fullUrl: `${basePath}/${slug}/{id}`,
-        desc: 'Delete' + (modelRateLimit ? ` ⚡ [${modelRateLimit}]` : '')
+        desc: 'Delete' + (modelRateLimit ? ` [${modelRateLimit}]` : '')
       });
     }
 
@@ -2332,16 +2337,20 @@ function renderApiExplorer(models, config) {
       }
       const fullPath = `/${slug}${cep.path.startsWith('/') ? cep.path : '/' + cep.path}`;
       const cepRateLimit = cep.rateLimit || modelRateLimit;
+      const isCustomAction = Boolean(cep.hasLogic || cep.endpointPath || (cep.path && (cep.path.includes('checkout') || cep.path.includes('pay'))));
       routes.push({
+        modelName: m.name,
+        endpointPath: cep.path,
         method: cep.method.toUpperCase(),
         pathDisplay: fullPath,
         fullUrl: `${basePath}${fullPath}`,
-        desc: (cep.description || (cep.bodyType ? `body: ${cep.bodyType}` : 'Action')) + (cepRateLimit ? ` ⚡ [${cepRateLimit}]` : ''),
-        sampleBody: customSample
+        desc: (cep.description || (cep.bodyType ? `body: ${cep.bodyType}` : 'Action')) + (cepRateLimit ? ` [${cepRateLimit}]` : ''),
+        sampleBody: customSample,
+        isCustomAction: isCustomAction
       });
     });
 
-    const modelGroup = createEndpointGroup(`📦 ${m.name}`, routes);
+    const modelGroup = createEndpointGroup(m.name, routes);
     container.appendChild(modelGroup.el);
     if (!firstItem && modelGroup.first) firstItem = modelGroup.first;
   });
@@ -2363,10 +2372,11 @@ function createEndpointGroup(title, routes) {
 
   const header = document.createElement('div');
   header.className = 'endpoint-group-header';
+  const chevron = '<svg class="group-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>';
   header.innerHTML = `
     <span class="endpoint-group-title">
-      <span class="endpoint-group-chevron">▾</span>
-      ${title}
+      ${chevron}
+      <span>${title}</span>
     </span>
     <span class="endpoint-group-badge">${routes.length}</span>
   `;
@@ -2488,6 +2498,50 @@ function selectEndpoint(route, el) {
     bodyEl.value = route.sampleBody || '';
   }
 
+  // Smart Simulate Button & Mock State Bar Toggle
+  const simBtn = document.getElementById('btnSimulateAction');
+  const simEntityBar = document.getElementById('simEntityStateContainer');
+  const simMockInput = document.getElementById('simMockEntityJson');
+
+  if (simBtn) {
+    if (route.isCustomAction || Boolean(route.endpointPath)) {
+      simBtn.style.display = 'inline-flex';
+      if (simEntityBar) {
+        simEntityBar.style.display = 'flex';
+        // Auto-seed mock input for this endpoint
+        const defaultState = buildDefaultEntityState(route.modelName || detectModelFromUrl(route.fullUrl), route.endpointPath || route.pathDisplay);
+        if (simMockInput && (!simMockInput.value || simMockInput.dataset.forRoute !== key)) {
+          simMockInput.value = JSON.stringify(defaultState);
+          simMockInput.dataset.forRoute = key;
+        }
+      }
+    } else {
+      simBtn.style.display = 'none';
+      if (simEntityBar) simEntityBar.style.display = 'none';
+      closeSimulationTrace();
+    }
+  }
+
+  // Real-Time WebSocket Console Drawer Auto-Check (Spec #18)
+  const wsContainer = document.getElementById('wsConsoleContainer');
+  if (wsContainer) {
+    const hasSocketsInConfig = Boolean(currentCompilation && currentCompilation.sockets && currentCompilation.sockets.length > 0);
+    const isBroadcastAction = Boolean(route.isCustomAction && (route.endpointPath || '').includes('send'));
+    if (hasSocketsInConfig || isBroadcastAction) {
+      wsContainer.style.display = 'block';
+      if (currentCompilation.sockets && currentCompilation.sockets[0]) {
+        const sock = currentCompilation.sockets[0];
+        const port = (currentCompilation.config && currentCompilation.config.port) || 8080;
+        const endpointInput = document.getElementById('wsEndpointInput');
+        const topicInput = document.getElementById('wsTopicInput');
+        const topicBadge = document.getElementById('wsTopicBadge');
+        if (endpointInput) endpointInput.value = `http://localhost:${port}${sock.endpoint || '/ws'}`;
+        if (topicInput) topicInput.value = sock.topic || '/topic/chat';
+        if (topicBadge) topicBadge.innerText = sock.topic || '/topic/chat';
+      }
+    }
+  }
+
   // Response status, time, and body: restore saved if previously executed
   const statusEl = document.getElementById('runnerResponseStatus');
   const timeEl = document.getElementById('runnerResponseTime');
@@ -2502,7 +2556,7 @@ function selectEndpoint(route, el) {
     statusEl.innerText = '-';
     statusEl.style.color = '';
     timeEl.innerText = '';
-    resEl.innerText = 'Click "Send ⚡" to test endpoint...';
+    resEl.innerText = 'Click "Send" to test endpoint...';
   }
 }
 
@@ -2773,6 +2827,337 @@ async function sendApiRequest() {
   }
 }
 
+// ⚡ Instant In-Memory Action Simulator (dev.zenith.engine)
+async function simulateEndpointAction() {
+  const method = document.getElementById('runnerMethod').innerText;
+  const url = document.getElementById('runnerUrl').value;
+  const bodyText = document.getElementById('runnerRequestBody').value;
+  const resBox = document.getElementById('runnerResponseBody');
+  const statusSpan = document.getElementById('runnerResponseStatus');
+  const timeSpan = document.getElementById('runnerResponseTime');
+  const simContainer = document.getElementById('simulationTraceContainer');
+  const simTraceList = document.getElementById('simTraceList');
+  const simDiffBox = document.getElementById('simStateDiff');
+  const simEffectsBox = document.getElementById('simDispatchedEffects');
+  const simBadge = document.getElementById('simExecutionBadge');
+
+  resBox.innerText = 'Running in-memory AST Micro-Engine simulation...';
+  statusSpan.innerText = 'Simulating...';
+  statusSpan.style.color = '#38bdf8';
+  timeSpan.innerText = '';
+
+  const modelName = activeEndpointTemplate && activeEndpointTemplate.modelName ? activeEndpointTemplate.modelName : detectModelFromUrl(url);
+  const endpointPath = activeEndpointTemplate && activeEndpointTemplate.endpointPath ? activeEndpointTemplate.endpointPath : extractEndpointPathFromUrl(url);
+
+  let requestBody = {};
+  try {
+    if (bodyText.trim()) {
+      requestBody = JSON.parse(bodyText);
+    }
+  } catch (_) {
+    requestBody = {};
+  }
+
+  // User-specified or auto-seeded mock entity state
+  const simMockInput = document.getElementById('simMockEntityJson');
+  let entityState = null;
+  if (simMockInput && simMockInput.value.trim()) {
+    try {
+      entityState = JSON.parse(simMockInput.value.trim());
+    } catch (_) {}
+  }
+  if (!entityState) {
+    entityState = buildDefaultEntityState(modelName, endpointPath);
+    if (simMockInput) simMockInput.value = JSON.stringify(entityState);
+  }
+
+  const payload = {
+    model: modelName,
+    endpoint: endpointPath,
+    method: method,
+    entityState: entityState,
+    requestBody: requestBody,
+    currentUser: {
+      id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      email: "werghia.1@gmail.com",
+      role: "CUSTOMER"
+    }
+  };
+
+  try {
+    const res = await fetch('/api/simulate/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    const duration = data.executionTimeMs || 1;
+    const ok = data.success;
+
+    statusSpan.innerText = `${data.status || (ok ? 200 : 400)} ${ok ? 'OK (Simulated)' : 'FAILED'}`;
+    statusSpan.style.color = ok ? '#10b981' : '#f43f5e';
+    timeSpan.innerText = `${duration}ms (in-memory)`;
+
+    resBox.innerText = JSON.stringify(data.finalEntityState && Object.keys(data.finalEntityState).length > 0 ? data.finalEntityState : data, null, 2);
+
+    // Display the simulation trace drawer
+    if (simContainer) {
+      simContainer.style.display = 'block';
+      simBadge.innerText = `${duration}ms`;
+      simBadge.style.color = ok ? '#10b981' : '#f43f5e';
+
+      // 1. Render Trace Steps
+      simTraceList.innerHTML = '';
+      if (data.trace && data.trace.length > 0) {
+        data.trace.forEach(step => {
+          const div = document.createElement('div');
+          div.className = 'sim-trace-item';
+          if (step.includes('failed') || step.includes('error')) div.classList.add('error');
+          else if (step.includes('passed') || step.includes('Mutated') || step.includes('completed')) div.classList.add('success');
+          // Clean emojis from step text for a clean IDE log look
+          div.innerText = step.replace(/^[▶✔❌✉\s]+/, '');
+          simTraceList.appendChild(div);
+        });
+      } else {
+        simTraceList.innerHTML = '<div class="sim-empty-item">No trace logs recorded</div>';
+      }
+
+      // 2. Render State Diffs
+      simDiffBox.innerHTML = '';
+      if (data.stateDiff && Object.keys(data.stateDiff).length > 0) {
+        const table = document.createElement('table');
+        table.className = 'sim-diff-table';
+        table.innerHTML = '<thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody></tbody>';
+        const tbody = table.querySelector('tbody');
+        for (const [fName, diff] of Object.entries(data.stateDiff)) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="diff-field">${escapeHtml(fName)}</td><td class="diff-before">${escapeHtml(String(diff.before))}</td><td class="diff-after">${escapeHtml(String(diff.after))}</td>`;
+          tbody.appendChild(tr);
+        }
+        simDiffBox.appendChild(table);
+      } else {
+        simDiffBox.innerHTML = '<div class="sim-empty-item">No fields mutated on entity</div>';
+      }
+
+      // 3. Render Dispatched Side-Effects
+      simEffectsBox.innerHTML = '';
+      if (data.dispatchedEffects && data.dispatchedEffects.length > 0) {
+        data.dispatchedEffects.forEach(eff => {
+          const card = document.createElement('div');
+          card.className = 'sim-effect-card';
+          card.innerHTML = `<div class="effect-title"><span class="effect-pill">${eff.type}</span> <strong>${escapeHtml(eff.contract)}</strong></div><pre class="effect-args">${escapeHtml(JSON.stringify(eff.arguments, null, 2))}</pre>`;
+          simEffectsBox.appendChild(card);
+        });
+      } else {
+        simEffectsBox.innerHTML = '<div class="sim-empty-item">No side effects (emails / events) triggered</div>';
+      }
+    }
+  } catch (err) {
+    statusSpan.innerText = 'Simulation Error';
+    statusSpan.style.color = '#f43f5e';
+    resBox.innerText = `Micro-Engine simulation failed:\n${err.message}`;
+  }
+}
+
+// Real-Time WebSocket Tester Client (Spec #18)
+let activeWsClient = null;
+let activeWsSubId = null;
+
+function toggleWebSocketConnection() {
+  if (activeWsClient && activeWsClient.readyState === WebSocket.OPEN) {
+    disconnectWebSocket();
+  } else {
+    connectWebSocket();
+  }
+}
+
+function connectWebSocket() {
+  const endpoint = document.getElementById('wsEndpointInput').value.trim();
+  const topic = document.getElementById('wsTopicInput').value.trim();
+  const btn = document.getElementById('btnWsConnect');
+  const dot = document.getElementById('wsStatusDot');
+  const framesList = document.getElementById('wsFramesList');
+
+  // Convert http/https to ws/wss
+  let wsUrl = endpoint.replace(/^http/, 'ws');
+  // STOMP over raw WebSocket endpoint (Spring Boot SimpleBroker)
+  if (!wsUrl.endsWith('/websocket')) {
+    wsUrl = wsUrl + '/websocket';
+  }
+
+  appendWsFrame(`[WS] Connecting to ${wsUrl}...`, 'info');
+  btn.innerText = 'Connecting...';
+  dot.style.background = '#eab308';
+
+  try {
+    const ws = new WebSocket(wsUrl);
+    activeWsClient = ws;
+
+    ws.onopen = () => {
+      dot.style.background = '#10b981';
+      btn.innerText = 'Disconnect';
+      btn.className = 'btn btn-secondary btn-xs';
+      appendWsFrame(`[STOMP] Connected to ${wsUrl}`, 'success');
+
+      // Send STOMP CONNECT frame
+      const connectFrame = "CONNECT\naccept-version:1.1,1.0\nheart-beat:10000,10000\n\n\0";
+      ws.send(connectFrame);
+
+      // Subscribe to topic
+      setTimeout(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          activeWsSubId = 'sub-' + Math.floor(Math.random() * 100000);
+          const subFrame = `SUBSCRIBE\nid:${activeWsSubId}\ndestination:${topic}\n\n\0`;
+          ws.send(subFrame);
+          appendWsFrame(`[STOMP] Subscribed to ${topic}`, 'info');
+        }
+      }, 150);
+    };
+
+    ws.onmessage = (event) => {
+      const data = event.data;
+      if (typeof data === 'string') {
+        if (data.startsWith('CONNECTED')) {
+          appendWsFrame(`[STOMP] Handshake established with message broker`, 'info');
+        } else if (data.startsWith('MESSAGE')) {
+          // Extract body after double newline
+          const bodyIdx = data.indexOf('\n\n');
+          const body = bodyIdx !== -1 ? data.substring(bodyIdx + 2).replace(/\0$/, '') : data;
+          let formatted = body;
+          try {
+            formatted = JSON.stringify(JSON.parse(body), null, 2);
+          } catch (_) {}
+          appendWsFrame(`[BROADCAST \u2190 ${topic}]\n${formatted}`, 'frame');
+        } else {
+          // Heartbeat or receipt
+          if (data.trim().length > 0) {
+            appendWsFrame(data.replace(/\0/g, ''), 'raw');
+          }
+        }
+      }
+    };
+
+    ws.onerror = (err) => {
+      dot.style.background = '#f43f5e';
+      btn.innerText = 'Connect';
+      btn.className = 'btn btn-primary btn-xs';
+      appendWsFrame(`[WS Error] Connection failed or refused (is Spring Boot running?)`, 'error');
+    };
+
+    ws.onclose = () => {
+      dot.style.background = '#71717a';
+      btn.innerText = 'Connect';
+      btn.className = 'btn btn-primary btn-xs';
+      appendWsFrame(`[WS] Connection closed`, 'info');
+      activeWsClient = null;
+    };
+  } catch (err) {
+    appendWsFrame(`[WS Exception] ${err.message}`, 'error');
+    btn.innerText = 'Connect';
+  }
+}
+
+function disconnectWebSocket() {
+  if (activeWsClient) {
+    if (activeWsSubId && activeWsClient.readyState === WebSocket.OPEN) {
+      activeWsClient.send(`UNSUBSCRIBE\nid:${activeWsSubId}\n\n\0`);
+    }
+    activeWsClient.close();
+    activeWsClient = null;
+  }
+}
+
+function appendWsFrame(text, type = 'info') {
+  const list = document.getElementById('wsFramesList');
+  if (!list) return;
+
+  const empty = list.querySelector('.sim-empty-item');
+  if (empty) empty.remove();
+
+  const time = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  div.className = 'sim-trace-item';
+  if (type === 'error') div.classList.add('error');
+  if (type === 'success' || type === 'frame') div.classList.add('success');
+  
+  const spanTime = `<span style="color:#71717a; margin-right:6px;">[${time}]</span>`;
+  div.innerHTML = `${spanTime}<span>${escapeHtml(text)}</span>`;
+  list.appendChild(div);
+  list.scrollTop = list.scrollHeight;
+}
+
+function clearWebSocketFrames() {
+  const list = document.getElementById('wsFramesList');
+  if (list) list.innerHTML = '<div class="sim-empty-item">Frame monitor cleared. Waiting for broadcasts...</div>';
+}
+
+function closeWebSocketDrawer() {
+  const wsContainer = document.getElementById('wsConsoleContainer');
+  if (wsContainer) wsContainer.style.display = 'none';
+  disconnectWebSocket();
+}
+
+function detectModelFromUrl(url) {
+  if (!url) return 'Order';
+  const match = url.match(/\/api\/v[0-9]+\/([^/?]+)/);
+  if (match) {
+    const slug = match[1];
+    if (currentCompilation && currentCompilation.models) {
+      const m = currentCompilation.models.find(x => x.name.toLowerCase() === slug.toLowerCase() || (x.name.toLowerCase() + 's') === slug.toLowerCase());
+      if (m) return m.name;
+    }
+  }
+  return 'Order';
+}
+
+function extractEndpointPathFromUrl(url) {
+  if (!url) return '/{id}/checkout';
+  const clean = url.replace(/https?:\/\/[^/]+/, '');
+  const match = clean.match(/\/api\/v[0-9]+\/[^/]+(.*)/);
+  return match && match[1] ? match[1] : clean;
+}
+
+function buildDefaultEntityState(modelName, endpointPath) {
+  // If endpoint is pay or requires confirmed, pre-seed status appropriately if needed
+  let initialStatus = "PENDING";
+  if (endpointPath && (endpointPath.includes('pay') || endpointPath.includes('ship'))) {
+    initialStatus = "CONFIRMED";
+  }
+
+  const state = {
+    id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    status: initialStatus,
+    orderNumber: "ORD-94821",
+    totalAmount: 149.99
+  };
+  if (currentCompilation && currentCompilation.models) {
+    const m = currentCompilation.models.find(x => x.name.toLowerCase() === (modelName||'').toLowerCase());
+    if (m && m.fields) {
+      m.fields.forEach(f => {
+        if (!state[f.name]) {
+          if (f.type.includes('Status')) state[f.name] = initialStatus;
+          else if (f.type === 'String') state[f.name] = 'Sample ' + f.name;
+          else if (f.type === 'Int' || f.type === 'Long') state[f.name] = 10;
+          else if (f.type === 'Decimal') state[f.name] = 99.99;
+          else if (f.type === 'Boolean') state[f.name] = true;
+        }
+      });
+    }
+  }
+  return state;
+}
+
+function resetMockEntityState() {
+  const modelName = activeEndpointTemplate && activeEndpointTemplate.modelName ? activeEndpointTemplate.modelName : 'Order';
+  const endpointPath = activeEndpointTemplate && activeEndpointTemplate.endpointPath ? activeEndpointTemplate.endpointPath : '/';
+  const def = buildDefaultEntityState(modelName, endpointPath);
+  const simMockInput = document.getElementById('simMockEntityJson');
+  if (simMockInput) {
+    simMockInput.value = JSON.stringify(def);
+  }
+}
+
 function quickLoginDemo() {
   const token = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTk5OTk5OTk5OX0.sample_zenith_jwt_token';
   const el = document.getElementById('runnerAuthToken');
@@ -2795,7 +3180,7 @@ async function sendBurstApiRequests(count = 10) {
   const rlBadge = document.getElementById('runnerRateLimitBadge');
 
   resBox.innerText = `Firing burst test of ${count} requests to evaluate rate limits...\n`;
-  timeSpan.innerText = '⚡ Burst in progress...';
+  timeSpan.innerText = 'Burst in progress...';
   if (rlBadge) rlBadge.style.display = 'none';
 
   const startTime = performance.now();
@@ -3167,14 +3552,530 @@ function copyTsCode() {
   navigator.clipboard.writeText(code);
 }
 
-// Render Docker
+// --- IDE Code-First Docker Workspace (Monaco Editors, Draggable Split & CodeLens) ---
+let dockerfileEditor = null;
+let dockerComposeEditor = null;
+let dockerCodeLensProviderDisposable = null;
+let currentDockerServiceStates = {};
+let currentDockerComposeContent = '';
+let currentDockerfileContent = '';
+let isDockerSplitInitialized = false;
+
+function initDockerIdeEditors() {
+  if (typeof monaco === 'undefined') return;
+
+  const dfContainer = document.getElementById('dockerfileMonacoContainer');
+  const dcContainer = document.getElementById('dockerComposeMonacoContainer');
+
+  if (dfContainer && !dockerfileEditor) {
+    dockerfileEditor = monaco.editor.create(dfContainer, {
+      value: currentDockerfileContent || '# Multi-stage Dockerfile\n',
+      language: 'dockerfile',
+      theme: 'zenith-dark',
+      readOnly: true,
+      automaticLayout: true,
+      fontSize: 12,
+      fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, monospace",
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      renderLineHighlight: 'all',
+      lineNumbers: 'on',
+      folding: true,
+      glyphMargin: true
+    });
+
+    registerDockerfileCodeLens();
+  }
+
+  if (dcContainer && !dockerComposeEditor) {
+    dockerComposeEditor = monaco.editor.create(dcContainer, {
+      value: currentDockerComposeContent || "version: '3.8'\n",
+      language: 'yaml',
+      theme: 'zenith-dark',
+      readOnly: true,
+      automaticLayout: true,
+      fontSize: 12,
+      fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, monospace",
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      renderLineHighlight: 'all',
+      lineNumbers: 'on',
+      folding: true,
+      glyphMargin: true
+    });
+
+    registerDockerComposeCodeLens();
+  }
+
+  initDockerSplitResizer();
+}
+
+// Draggable Split Pane Resizer between Dockerfile and docker-compose.yml
+function initDockerSplitResizer() {
+  if (isDockerSplitInitialized) return;
+  const resizer = document.getElementById('dockerSplitResizer');
+  const container = document.getElementById('dockerSplitContainer');
+  const leftPane = document.getElementById('dockerPaneLeft');
+  const rightPane = document.getElementById('dockerPaneRight');
+  if (!resizer || !container || !leftPane || !rightPane) return;
+
+  isDockerSplitInitialized = true;
+  let isDragging = false;
+
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isDragging = true;
+    resizer.classList.add('is-dragging');
+    document.body.style.cursor = 'col-resize';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const rect = container.getBoundingClientRect();
+    const rawX = e.clientX - rect.left;
+    const minW = 160;
+    const maxW = rect.width - 160;
+    const clampedX = Math.max(minW, Math.min(maxW, rawX));
+    const leftPercent = (clampedX / rect.width) * 100;
+    const rightPercent = 100 - leftPercent;
+
+    leftPane.style.flex = `0 0 ${leftPercent}%`;
+    leftPane.style.width = `${leftPercent}%`;
+    rightPane.style.flex = `0 0 ${rightPercent}%`;
+    rightPane.style.width = `${rightPercent}%`;
+
+    if (dockerfileEditor) dockerfileEditor.layout();
+    if (dockerComposeEditor) dockerComposeEditor.layout();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      resizer.classList.remove('is-dragging');
+      document.body.style.cursor = '';
+      if (dockerfileEditor) dockerfileEditor.layout();
+      if (dockerComposeEditor) dockerComposeEditor.layout();
+    }
+  });
+
+  resizer.addEventListener('dblclick', () => {
+    // Reset to 50/50 split
+    leftPane.style.flex = '0 0 50%';
+    leftPane.style.width = '50%';
+    rightPane.style.flex = '0 0 50%';
+    rightPane.style.width = '50%';
+    if (dockerfileEditor) dockerfileEditor.layout();
+    if (dockerComposeEditor) dockerComposeEditor.layout();
+  });
+}
+
+// Register CodeLens actions directly in Dockerfile and docker-compose.yml
+let dockerfileCodeLensProviderDisposable = null;
+
+function registerDockerfileCodeLens() {
+  if (dockerfileCodeLensProviderDisposable) {
+    dockerfileCodeLensProviderDisposable.dispose();
+  }
+
+  dockerfileCodeLensProviderDisposable = monaco.languages.registerCodeLensProvider('dockerfile', {
+    provideCodeLenses: function (model, token) {
+      const lenses = [];
+      // Build Image Action on Line 1 of Dockerfile
+      lenses.push({
+        range: new monaco.Range(1, 1, 1, 1),
+        command: {
+          id: dockerfileEditor ? dockerfileEditor.addCommand(0, () => {
+            runDockerAction('build');
+          }) : '',
+          title: '⚡ Build Image'
+        }
+      });
+      return { lenses: lenses, dispose: () => {} };
+    },
+    resolveCodeLens: function (model, codeLens, token) {
+      return codeLens;
+    }
+  });
+}
+
+function registerDockerComposeCodeLens() {
+  if (dockerCodeLensProviderDisposable) {
+    dockerCodeLensProviderDisposable.dispose();
+  }
+
+  // Register command handlers on window so CodeLens callbacks can execute
+  window.__dockerServiceAction = (action, service) => {
+    runDockerServiceAction(action, service);
+  };
+  window.__dockerGlobalAction = (action) => {
+    runDockerAction(action);
+  };
+
+  dockerCodeLensProviderDisposable = monaco.languages.registerCodeLensProvider('yaml', {
+    provideCodeLenses: function (model, token) {
+      const lenses = [];
+      const lines = model.getLinesContent();
+      let inServices = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // 1. Global Compose Control Line directly above "services:"
+        if (line.match(/^services:/)) {
+          inServices = true;
+          const servicesLine = i + 1;
+
+          lenses.push({
+            range: new monaco.Range(servicesLine, 1, servicesLine, 1),
+            command: {
+              id: dockerComposeEditor.addCommand(0, () => {
+                window.__dockerGlobalAction('up');
+              }),
+              title: '▶ Start All'
+            }
+          });
+
+          lenses.push({
+            range: new monaco.Range(servicesLine, 1, servicesLine, 1),
+            command: {
+              id: dockerComposeEditor.addCommand(0, () => {
+                window.__dockerGlobalAction('up');
+              }),
+              title: '↺ Restart All'
+            }
+          });
+
+          lenses.push({
+            range: new monaco.Range(servicesLine, 1, servicesLine, 1),
+            command: {
+              id: dockerComposeEditor.addCommand(0, () => {
+                window.__dockerGlobalAction('logs');
+              }),
+              title: '📄 Logs (All)'
+            }
+          });
+
+          lenses.push({
+            range: new monaco.Range(servicesLine, 1, servicesLine, 1),
+            command: {
+              id: dockerComposeEditor.addCommand(0, () => {
+                window.__dockerGlobalAction('down');
+              }),
+              title: '🗑️ Delete All (Down)'
+            }
+          });
+
+          continue;
+        }
+
+        // 2. Individual Per-Service CodeLens Controls
+        if (inServices) {
+          if (line.match(/^[a-zA-Z0-9_-]+:/) && !line.startsWith(' ') && !line.startsWith('\t')) {
+            break; // Exited services section
+          }
+          const match = line.match(/^ {2}([a-zA-Z0-9_-]+):/);
+          if (match) {
+            const serviceName = match[1];
+            const lineNumber = i + 1;
+            const rawState = currentDockerServiceStates[serviceName] || 'stopped';
+            const isRunning = rawState.toLowerCase().includes('running') || rawState.toLowerCase().includes('up');
+
+            const statusDot = isRunning ? '●' : '○';
+            const statusLabel = isRunning ? 'Running' : 'Stopped';
+
+            // Status Indicator CodeLens
+            lenses.push({
+              range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+              command: {
+                id: '',
+                title: `${statusDot} ${serviceName} (${statusLabel})`
+              }
+            });
+
+            // Start / Stop toggle CodeLens
+            const toggleAction = isRunning ? 'stop' : 'start';
+            const toggleTitle = isRunning ? '■ Stop' : '▶ Start';
+            lenses.push({
+              range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+              command: {
+                id: dockerComposeEditor.addCommand(0, () => {
+                  window.__dockerServiceAction(toggleAction, serviceName);
+                }),
+                title: toggleTitle
+              }
+            });
+
+            // Restart CodeLens
+            lenses.push({
+              range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+              command: {
+                id: dockerComposeEditor.addCommand(0, () => {
+                  window.__dockerServiceAction('restart', serviceName);
+                }),
+                title: '↺ Restart'
+              }
+            });
+
+            // View Logs CodeLens
+            lenses.push({
+              range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+              command: {
+                id: dockerComposeEditor.addCommand(0, () => {
+                  window.__dockerServiceAction('logs', serviceName);
+                }),
+                title: '📄 Logs'
+              }
+            });
+
+            // Delete Container CodeLens
+            lenses.push({
+              range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+              command: {
+                id: dockerComposeEditor.addCommand(0, () => {
+                  window.__dockerServiceAction('rm', serviceName);
+                }),
+                title: '🗑️ Delete'
+              }
+            });
+          }
+        }
+      }
+
+      return { lenses: lenses, dispose: () => {} };
+    },
+    resolveCodeLens: function (model, codeLens, token) {
+      return codeLens;
+    }
+  });
+}
+
+// Render Docker Preview & Monaco models
 function renderDocker(files) {
   if (!files) return;
   const df = files.find(f => f.path.endsWith('Dockerfile'));
   const dc = files.find(f => f.path.endsWith('docker-compose.yml'));
 
-  if (df) document.getElementById('dockerfilePreview').innerText = df.content;
-  if (dc) document.getElementById('dockerComposePreview').innerText = dc.content;
+  if (df) {
+    currentDockerfileContent = df.content;
+    if (dockerfileEditor) {
+      const model = dockerfileEditor.getModel();
+      if (model && model.getValue() !== df.content) {
+        model.setValue(df.content);
+      }
+    }
+  }
+
+  if (dc) {
+    currentDockerComposeContent = dc.content;
+    if (dockerComposeEditor) {
+      const model = dockerComposeEditor.getModel();
+      if (model && model.getValue() !== dc.content) {
+        model.setValue(dc.content);
+      }
+    }
+  }
+
+  // Ensure editors are mounted if container is visible
+  initDockerIdeEditors();
+  checkDockerDaemonStatus();
+}
+
+// Render Docker Hook called when Docker Tab is clicked
+function renderDockerPreview() {
+  initDockerIdeEditors();
+  setTimeout(() => {
+    if (dockerfileEditor) dockerfileEditor.layout();
+    if (dockerComposeEditor) dockerComposeEditor.layout();
+    initDockerSplitResizer();
+  }, 50);
+}
+
+// Check Docker status and refresh service states
+async function checkDockerDaemonStatus() {
+  const dot = document.getElementById('dockerDaemonDot');
+  try {
+    const res = await fetch('/api/docker/status');
+    const data = await res.json();
+
+    if (dot) {
+      if (!data.installed) {
+        dot.className = 'docker-daemon-dot offline';
+        dot.title = 'Docker CLI not found on system PATH';
+      } else if (!data.daemonRunning) {
+        dot.className = 'docker-daemon-dot offline';
+        dot.title = 'Docker daemon is offline / unreachable';
+      } else {
+        dot.className = 'docker-daemon-dot online';
+        dot.title = `Docker Engine Active (${data.dockerVersion || 'Ready'})`;
+      }
+    }
+
+    if (data.serviceStates) {
+      currentDockerServiceStates = data.serviceStates;
+      // Re-trigger CodeLens computation in Monaco
+      if (dockerComposeEditor && dockerComposeEditor.getModel()) {
+        const val = dockerComposeEditor.getModel().getValue();
+        dockerComposeEditor.getModel().setValue(val);
+      }
+    }
+  } catch (err) {
+    if (dot) {
+      dot.className = 'docker-daemon-dot';
+      dot.title = 'Docker Engine status unavailable';
+    }
+  }
+}
+
+// Collapsible Terminal Drawer Operations
+function toggleDockerLogDrawer(show) {
+  const drawer = document.getElementById('dockerTerminalDrawer');
+  const btn = document.getElementById('toggleDockerLogsBtn');
+  if (!drawer) return;
+
+  const isVisible = drawer.style.display !== 'none';
+  const target = (typeof show === 'boolean') ? show : !isVisible;
+
+  drawer.style.display = target ? 'flex' : 'none';
+  if (btn) {
+    if (target) btn.classList.add('active');
+    else btn.classList.remove('active');
+  }
+
+  // Relayout editors when drawer opens/closes
+  setTimeout(() => {
+    if (dockerfileEditor) dockerfileEditor.layout();
+    if (dockerComposeEditor) dockerComposeEditor.layout();
+  }, 40);
+}
+
+function appendDockerTerminalLine(text, type = '') {
+  const body = document.getElementById('dockerTerminalOutput');
+  if (!body) return;
+
+  // Clear initial placeholder
+  const placeholder = body.querySelector('.terminal-placeholder');
+  if (placeholder) placeholder.remove();
+
+  const lineEl = document.createElement('div');
+  lineEl.className = 'terminal-line ' + type;
+  lineEl.textContent = text;
+  body.appendChild(lineEl);
+  body.scrollTop = body.scrollHeight;
+}
+
+function clearDockerLogs() {
+  const body = document.getElementById('dockerTerminalOutput');
+  if (body) {
+    body.innerHTML = '<div class="terminal-placeholder">Terminal cleared.</div>';
+  }
+}
+
+// Execute Docker Actions (Build, Compose Up, Compose Down)
+async function runDockerAction(action) {
+  toggleDockerLogDrawer(true);
+  const pill = document.getElementById('terminalFilterPill');
+  if (pill) pill.textContent = action.toUpperCase();
+
+  appendDockerTerminalLine(`$ docker ${action}`, 'cmd');
+
+  try {
+    const res = await fetch('/api/docker/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      appendDockerTerminalLine(`✖ Error: ${data.error}`, 'error');
+    } else {
+      appendDockerTerminalLine(`[executing: ${data.command}]`);
+      pollDockerLogsToTerminal();
+    }
+  } catch (e) {
+    appendDockerTerminalLine(`✖ Network error: ${e.message}`, 'error');
+  }
+}
+
+// Execute granular service actions (Start, Stop, Restart, RM, Logs)
+async function runDockerServiceAction(action, serviceName) {
+  if (action === 'rm') {
+    if (!confirm(`Are you sure you want to stop and remove container '${serviceName}'?`)) {
+      return;
+    }
+  }
+
+  toggleDockerLogDrawer(true);
+  const pill = document.getElementById('terminalFilterPill');
+  if (pill) pill.textContent = `${serviceName} : ${action}`;
+
+  appendDockerTerminalLine(`$ docker compose ${action} ${serviceName}`, 'cmd');
+
+  try {
+    const res = await fetch('/api/docker/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action, service: serviceName })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      appendDockerTerminalLine(`✖ Error: ${data.error}`, 'error');
+    } else {
+      appendDockerTerminalLine(`[executing: ${data.command}]`);
+      pollDockerLogsToTerminal();
+    }
+  } catch (e) {
+    appendDockerTerminalLine(`✖ Network error: ${e.message}`, 'error');
+  }
+}
+
+// Poll logs from Zenith Studio Server and stream them to the Docker terminal drawer
+let dockerTerminalPollInterval = null;
+let lastDockerLogCount = 0;
+
+function pollDockerLogsToTerminal() {
+  clearInterval(dockerTerminalPollInterval);
+
+  // Keep streaming logs continuously until closed or switched (like VS Code terminal)
+  dockerTerminalPollInterval = setInterval(async () => {
+    // If drawer is closed, pause polling
+    const drawer = document.getElementById('dockerTerminalDrawer');
+    if (drawer && drawer.style.display === 'none') {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/logs');
+      const data = await res.json();
+      const logs = data.logs || [];
+
+      if (logs.length > lastDockerLogCount) {
+        for (let i = lastDockerLogCount; i < logs.length; i++) {
+          const l = logs[i];
+          let lineType = '';
+          if (l.includes('✖') || l.toLowerCase().includes('error') || l.toLowerCase().includes('failed')) {
+            lineType = 'error';
+          } else if (l.includes('✔') || l.toLowerCase().includes('success') || l.includes('Started')) {
+            lineType = 'success';
+          }
+          appendDockerTerminalLine(l, lineType);
+        }
+        lastDockerLogCount = logs.length;
+      }
+    } catch (_) {}
+  }, 350);
+}
+
+function copyCodeFromModel(which) {
+  let content = '';
+  if (which === 'dockerfile' && dockerfileEditor) {
+    content = dockerfileEditor.getValue();
+  } else if (which === 'compose' && dockerComposeEditor) {
+    content = dockerComposeEditor.getValue();
+  } else {
+    content = which === 'dockerfile' ? currentDockerfileContent : currentDockerComposeContent;
+  }
+  navigator.clipboard.writeText(content);
+  appendConsoleLog(`[Zenith Studio] Copied ${which} to clipboard.`);
 }
 
 // Initialize Console & Scroll Listeners
@@ -3307,6 +4208,103 @@ async function resetDevDatabase() {
   }
 }
 
+// --- Execution Action Split Dropdown (Run / Test) State ---
+let currentExecutionAction = 'run'; // 'run' | 'test'
+
+function toggleExecutionDropdown(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('executionDropdownMenu');
+  const group = document.getElementById('executionActionGroup');
+  if (!menu || !group) return;
+  const isShown = menu.classList.contains('show');
+  if (isShown) {
+    menu.classList.remove('show');
+    group.classList.remove('open');
+  } else {
+    menu.classList.add('show');
+    group.classList.add('open');
+  }
+}
+
+function closeExecutionDropdown() {
+  const menu = document.getElementById('executionDropdownMenu');
+  const group = document.getElementById('executionActionGroup');
+  if (menu) menu.classList.remove('show');
+  if (group) group.classList.remove('open');
+}
+
+window.addEventListener('click', (e) => {
+  const group = document.getElementById('executionActionGroup');
+  if (group && !group.contains(e.target)) {
+    closeExecutionDropdown();
+  }
+});
+
+function selectExecutionAction(action) {
+  currentExecutionAction = action;
+  closeExecutionDropdown();
+
+  const runBtnText = document.getElementById('runBtnText');
+  const runBtn = document.getElementById('runBtn');
+  const runIcon = document.getElementById('runIcon');
+  const itemRun = document.getElementById('actionItemRun');
+  const itemTest = document.getElementById('actionItemTest');
+  const badgeRun = document.getElementById('badgeActiveRun');
+  const badgeTest = document.getElementById('badgeActiveTest');
+
+  if (action === 'run') {
+    if (itemRun) itemRun.classList.add('active');
+    if (itemTest) itemTest.classList.remove('active');
+    if (badgeRun) badgeRun.style.display = 'inline-block';
+    if (badgeTest) badgeTest.style.display = 'none';
+
+    if (runBtn) {
+      runBtn.title = 'Run Spring Boot application';
+      if (!isSpringRunning) {
+        runBtn.className = 'btn btn-primary execution-main-btn';
+        if (runBtnText) runBtnText.innerText = 'Run';
+        if (runIcon) {
+          runIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+          runIcon.setAttribute('fill', 'currentColor');
+          runIcon.removeAttribute('stroke');
+        }
+      } else {
+        runBtn.className = 'btn btn-primary execution-main-btn running-state';
+        if (runBtnText) runBtnText.innerText = 'Stop';
+      }
+    }
+  } else if (action === 'test') {
+    if (itemRun) itemRun.classList.remove('active');
+    if (itemTest) itemTest.classList.add('active');
+    if (badgeRun) badgeRun.style.display = 'none';
+    if (badgeTest) badgeTest.style.display = 'inline-block';
+
+    if (runBtn) {
+      runBtn.title = 'Execute automated Maven JUnit 5 test suite (mvn test)';
+      if (!isTestRunning) {
+        runBtn.className = 'btn btn-primary execution-main-btn';
+        if (runBtnText) runBtnText.innerText = 'Test';
+        if (runIcon) {
+          runIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>';
+          runIcon.setAttribute('fill', 'currentColor');
+          runIcon.removeAttribute('stroke');
+        }
+      } else {
+        runBtn.className = 'btn btn-primary execution-main-btn running-state';
+        if (runBtnText) runBtnText.innerText = 'Stop';
+      }
+    }
+  }
+}
+
+async function executeCurrentAction() {
+  if (currentExecutionAction === 'test') {
+    await toggleRunTests();
+  } else {
+    await toggleRunApp();
+  }
+}
+
 // Toggle Run / Stop Spring Boot Process
 async function toggleRunApp() {
   const runBtn = document.getElementById('runBtn');
@@ -3319,8 +4317,10 @@ async function toggleRunApp() {
     try {
       await fetch('/api/stop', { method: 'POST' });
       isSpringRunning = false;
-      runBtnText.innerText = 'Run';
-      runBtn.className = 'btn btn-primary';
+      if (currentExecutionAction === 'run') {
+        runBtnText.innerText = 'Run';
+        runBtn.className = 'btn btn-primary execution-main-btn';
+      }
       swaggerBtn.style.display = 'none';
       if (badge) {
         badge.textContent = 'Stopped';
@@ -3346,8 +4346,10 @@ async function toggleRunApp() {
 
       if (data.success) {
         isSpringRunning = true;
-        runBtnText.innerText = 'Stop';
-        runBtn.className = 'btn btn-primary running-state';
+        if (currentExecutionAction === 'run') {
+          runBtnText.innerText = 'Stop';
+          runBtn.className = 'btn btn-primary execution-main-btn running-state';
+        }
         swaggerBtn.style.display = 'inline-flex';
         if (badge) {
           badge.textContent = 'Running';
@@ -3714,3 +4716,457 @@ function showStudioNotification(message, type = 'info') {
     toast.className = 'studio-toast';
   }, 4500);
 }
+
+// ========================================================
+// Spec #04: Zenith Studio Interactive Test Runner (mvn test)
+// Connected with Spec #27 (Traceability & Diagnostics)
+// ========================================================
+let isTestRunning = false;
+let testPollInterval = null;
+let testStopwatchInterval = null;
+let testStartTime = 0;
+let currentTestSummary = null;
+let selectedTestCase = null;
+
+async function toggleRunTests() {
+  if (isTestRunning) {
+    await stopTests();
+  } else {
+    await startTests();
+  }
+}
+
+async function startTests() {
+  const testBtn = document.getElementById('testBtn');
+  const testBtnText = document.getElementById('testBtnText');
+  const toolbarBtn = document.getElementById('testToolbarRunBtn');
+  const toolbarText = document.getElementById('testToolbarText');
+  const badge = document.getElementById('testStatusBadge');
+  const stopwatch = document.getElementById('testStopwatch');
+  const progressBar = document.getElementById('testProgressBar');
+
+  // Switch to tests tab immediately
+  switchPreviewTab('tests');
+
+  // Update UI to running state
+  isTestRunning = true;
+  if (currentExecutionAction === 'test') {
+    const mainBtnText = document.getElementById('runBtnText');
+    const mainBtn = document.getElementById('runBtn');
+    if (mainBtnText) mainBtnText.innerText = 'Stop';
+    if (mainBtn) {
+      mainBtn.className = 'btn btn-primary execution-main-btn running-state';
+      mainBtn.title = 'Stop active test execution';
+    }
+  }
+  if (testBtnText) testBtnText.innerText = 'Stop';
+  if (testBtn) {
+    testBtn.className = 'btn btn-danger';
+    testBtn.title = 'Stop active test execution';
+  }
+  if (toolbarText) toolbarText.innerText = 'Stop Tests';
+  if (toolbarBtn) toolbarBtn.className = 'btn btn-danger btn-sm';
+
+  if (badge) {
+    badge.textContent = 'Running';
+    badge.className = 'test-status-badge running';
+  }
+
+  if (progressBar) {
+    progressBar.style.width = '20%';
+    progressBar.className = 'test-progress-bar';
+  }
+
+  // Start stopwatch
+  testStartTime = Date.now();
+  if (stopwatch) {
+    stopwatch.style.display = 'inline-block';
+    stopwatch.textContent = '0.0s';
+  }
+  clearInterval(testStopwatchInterval);
+  testStopwatchInterval = setInterval(() => {
+    const elapsed = ((Date.now() - testStartTime) / 1000).toFixed(1);
+    if (stopwatch) stopwatch.textContent = `${elapsed}s`;
+    const durEl = document.getElementById('testMetricDuration');
+    if (durEl) durEl.textContent = `${elapsed}s`;
+  }, 100);
+
+  try {
+    const res = await fetch('/api/test/run', { method: 'POST' });
+    const data = await res.json();
+    if (!data.success && data.message !== 'Test suite already running') {
+      showStudioNotification(`Failed to start tests: ${data.error || 'Unknown error'}`, 'error');
+      resetTestUI();
+      return;
+    }
+
+    // Start polling test results
+    pollTestResults();
+
+  } catch (err) {
+    console.error('Error starting tests:', err);
+    showStudioNotification('Error starting test runner: ' + err.message, 'error');
+    resetTestUI();
+  }
+}
+
+async function stopTests() {
+  try {
+    await fetch('/api/test/stop', { method: 'POST' });
+    showStudioNotification('Test execution stopped by user.', 'info');
+  } catch (err) {
+    console.error('Error stopping tests:', err);
+  } finally {
+    resetTestUI();
+    const badge = document.getElementById('testStatusBadge');
+    if (badge) {
+      badge.textContent = 'Stopped';
+      badge.className = 'test-status-badge';
+    }
+  }
+}
+
+function pollTestResults() {
+  clearInterval(testPollInterval);
+  testPollInterval = setInterval(async () => {
+    try {
+      const res = await fetch('/api/test/results');
+      const data = await res.json();
+      currentTestSummary = data;
+
+      renderTestMetrics(data);
+
+      if (!data.running) {
+        // Test run finished
+        clearInterval(testPollInterval);
+        clearInterval(testStopwatchInterval);
+        isTestRunning = false;
+        resetTestButtons();
+
+        const badge = document.getElementById('testStatusBadge');
+        const progressBar = document.getElementById('testProgressBar');
+
+        if (data.status === 'PASSED') {
+          if (badge) {
+            badge.textContent = 'Passed';
+            badge.className = 'test-status-badge passed';
+          }
+          if (progressBar) {
+            progressBar.style.width = '100%';
+            progressBar.className = 'test-progress-bar success';
+          }
+          showStudioNotification(`🎉 All ${data.totalTests} tests passed cleanly in ${data.totalDuration.toFixed(2)}s!`, 'success');
+        } else if (data.status === 'FAILED') {
+          if (badge) {
+            badge.textContent = 'Failed';
+            badge.className = 'test-status-badge failed';
+          }
+          if (progressBar) {
+            progressBar.style.width = '100%';
+            progressBar.className = 'test-progress-bar danger';
+          }
+          showStudioNotification(`❌ Test suite failed with ${data.failedTests} failure(s).`, 'error');
+
+          // Highlight first failed test in editor if connected to schema (Spec #27)
+          highlightFirstFailedTestInMonaco(data);
+
+        } else if (data.status === 'STOPPED') {
+          if (badge) {
+            badge.textContent = 'Stopped';
+            badge.className = 'test-status-badge';
+          }
+        } else {
+          if (badge) {
+            badge.textContent = 'Build Error';
+            badge.className = 'test-status-badge failed';
+          }
+          if (progressBar) {
+            progressBar.style.width = '100%';
+            progressBar.className = 'test-progress-bar danger';
+          }
+        }
+
+        renderTestSuitesTree(data);
+      }
+    } catch (e) {
+      console.warn('Error polling test results:', e);
+    }
+  }, 800);
+}
+
+function resetTestButtons() {
+  const testBtn = document.getElementById('testBtn');
+  const testBtnText = document.getElementById('testBtnText');
+  const toolbarBtn = document.getElementById('testToolbarRunBtn');
+  const toolbarText = document.getElementById('testToolbarText');
+
+  if (currentExecutionAction === 'test') {
+    const mainBtnText = document.getElementById('runBtnText');
+    const mainBtn = document.getElementById('runBtn');
+    if (mainBtnText) mainBtnText.innerText = 'Test';
+    if (mainBtn) {
+      mainBtn.className = 'btn btn-primary execution-main-btn';
+      mainBtn.title = 'Execute automated Maven JUnit 5 test suite (mvn test)';
+    }
+  }
+
+  if (testBtnText) testBtnText.innerText = 'Test';
+  if (testBtn) {
+    testBtn.className = 'btn btn-secondary';
+    testBtn.title = 'Execute automated Maven JUnit 5 test suite (mvn test)';
+  }
+  if (toolbarText) toolbarText.innerText = 'Run Tests';
+  if (toolbarBtn) toolbarBtn.className = 'btn btn-secondary btn-sm';
+}
+
+function resetTestUI() {
+  isTestRunning = false;
+  clearInterval(testPollInterval);
+  clearInterval(testStopwatchInterval);
+  resetTestButtons();
+}
+
+function renderTestMetrics(data) {
+  const totalEl = document.getElementById('testMetricTotal');
+  const passedEl = document.getElementById('testMetricPassed');
+  const failedEl = document.getElementById('testMetricFailed');
+  const skippedEl = document.getElementById('testMetricSkipped');
+  const durationEl = document.getElementById('testMetricDuration');
+
+  if (totalEl) totalEl.textContent = data.totalTests || 0;
+  if (passedEl) passedEl.textContent = data.passedTests || 0;
+  if (failedEl) failedEl.textContent = data.failedTests || 0;
+  if (skippedEl) skippedEl.textContent = data.skippedTests || 0;
+  if (durationEl && !isTestRunning) durationEl.textContent = `${(data.totalDuration || 0).toFixed(2)}s`;
+}
+
+function renderTestSuitesTree(data) {
+  const treeContainer = document.getElementById('testSuitesTree');
+  if (!treeContainer) return;
+
+  if (!data.suites || data.suites.length === 0) {
+    treeContainer.innerHTML = `
+      <div class="test-empty-state">
+        <div class="test-empty-icon">${data.status === 'ERROR' ? '⚠️' : '🧪'}</div>
+        <div class="test-empty-title">${data.status === 'ERROR' ? 'Build or Compilation Error' : 'No test results'}</div>
+        <div class="test-empty-desc">${data.status === 'ERROR' ? 'Maven build failed before test execution. Check the Console tab for compiler output.' : 'Run tests to populate results.'}</div>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '';
+  data.suites.forEach((suite, sIdx) => {
+    const isPass = suite.failures === 0 && suite.errors === 0;
+    const simpleSuiteName = suite.name.substring(suite.name.lastIndexOf('.') + 1);
+
+    html += `
+      <div class="test-suite-group" id="suite-group-${sIdx}">
+        <div class="test-suite-header" onclick="toggleSuiteGroup(${sIdx})">
+          <div class="test-suite-left">
+            <svg class="test-suite-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            <span class="test-suite-name" title="${suite.name}">${simpleSuiteName}</span>
+          </div>
+          <div class="test-suite-meta">
+            <span class="test-suite-badge ${isPass ? 'pass' : 'fail'}">${isPass ? 'PASS' : suite.failures + suite.errors + ' FAIL'}</span>
+            <span>${suite.time.toFixed(2)}s</span>
+          </div>
+        </div>
+        <div class="test-suite-cases">
+    `;
+
+    suite.testCases.forEach((tc, cIdx) => {
+      const tcPassed = tc.status === 'PASSED';
+      const tcSkipped = tc.status === 'SKIPPED';
+      const icon = tcPassed
+        ? '<svg class="test-case-icon pass" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+        : (tcSkipped
+          ? '<svg class="test-case-icon skip" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>'
+          : '<svg class="test-case-icon fail" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>');
+
+      html += `
+        <div class="test-case-item" id="tc-item-${sIdx}-${cIdx}" onclick="selectTestCase(${sIdx}, ${cIdx})">
+          <div class="test-case-left">
+            ${icon}
+            <span class="test-case-name" title="${escapeHtml(tc.name)}">${escapeHtml(tc.name)}</span>
+          </div>
+          <span class="test-case-time">${tc.time.toFixed(3)}s</span>
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+  });
+
+  treeContainer.innerHTML = html;
+
+  // Auto-select first failed test or first test case
+  let firstFailed = null;
+  for (let sIdx = 0; sIdx < data.suites.length; sIdx++) {
+    for (let cIdx = 0; cIdx < data.suites[sIdx].testCases.length; cIdx++) {
+      const tc = data.suites[sIdx].testCases[cIdx];
+      if (tc.status === 'FAILED' || tc.status === 'ERROR') {
+        selectTestCase(sIdx, cIdx);
+        return;
+      }
+      if (!firstFailed) firstFailed = { sIdx, cIdx };
+    }
+  }
+  if (firstFailed) {
+    selectTestCase(firstFailed.sIdx, firstFailed.cIdx);
+  }
+}
+
+function toggleSuiteGroup(sIdx) {
+  const group = document.getElementById(`suite-group-${sIdx}`);
+  if (group) group.classList.toggle('collapsed');
+}
+
+function selectTestCase(sIdx, cIdx) {
+  if (!currentTestSummary || !currentTestSummary.suites[sIdx]) return;
+  const tc = currentTestSummary.suites[sIdx].testCases[cIdx];
+  selectedTestCase = tc;
+
+  // Active state in tree
+  document.querySelectorAll('.test-case-item').forEach(el => el.classList.remove('active'));
+  const item = document.getElementById(`tc-item-${sIdx}-${cIdx}`);
+  if (item) item.classList.add('active');
+
+  const placeholder = document.getElementById('testInspectorPlaceholder');
+  const detail = document.getElementById('testInspectorDetail');
+  if (placeholder) placeholder.style.display = 'none';
+  if (detail) detail.style.display = 'block';
+
+  // Populate Inspector
+  const badge = document.getElementById('testDetailBadge');
+  const nameEl = document.getElementById('testDetailName');
+  const classEl = document.getElementById('testDetailClass');
+  const msgEl = document.getElementById('testFailureMessage');
+  const traceEl = document.getElementById('testStackTrace');
+
+  if (badge) {
+    badge.textContent = tc.status;
+    badge.className = `test-detail-badge ${tc.status === 'PASSED' ? 'passed' : ''}`;
+  }
+  if (nameEl) nameEl.textContent = tc.name;
+  if (classEl) classEl.textContent = tc.className;
+
+  if (msgEl) {
+    msgEl.textContent = tc.failureMessage || (tc.status === 'PASSED' ? 'Test passed successfully with no errors.' : 'No assertion message recorded.');
+    msgEl.style.color = tc.status === 'PASSED' ? '#4ade80' : '#f87171';
+    msgEl.style.borderColor = tc.status === 'PASSED' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+    msgEl.style.background = tc.status === 'PASSED' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(239, 68, 68, 0.08)';
+  }
+
+  if (traceEl) {
+    traceEl.textContent = tc.stackTrace || (tc.status === 'PASSED' ? 'No exceptions thrown.' : 'No stack trace captured.');
+  }
+
+  // Traceability Card (Spec #27)
+  const originCard = document.getElementById('testSchemaOriginCard');
+  if (tc.sourceOrigin && tc.sourceOrigin.file && tc.sourceOrigin.line > 0) {
+    if (originCard) originCard.style.display = 'block';
+    const fileEl = document.getElementById('testOriginFile');
+    const lineEl = document.getElementById('testOriginLine');
+    const snippetEl = document.getElementById('testOriginSnippet');
+
+    if (fileEl) fileEl.textContent = tc.sourceOrigin.file;
+    if (lineEl) lineEl.textContent = tc.sourceOrigin.line;
+    if (snippetEl) snippetEl.textContent = tc.sourceOrigin.snippet || tc.sourceOrigin.context || 'Schema declaration';
+  } else {
+    if (originCard) originCard.style.display = 'none';
+  }
+}
+
+function jumpToSchemaFromTest() {
+  if (!selectedTestCase || !selectedTestCase.sourceOrigin) return;
+  const orig = selectedTestCase.sourceOrigin;
+  const targetLine = orig.line || 1;
+
+  if (window.editor) {
+    const model = window.editor.getModel();
+    if (model) {
+      const maxCol = targetLine <= model.getLineCount() ? model.getLineMaxColumn(targetLine) : 80;
+      monaco.editor.setModelMarkers(model, 'zenith-test-failure', [{
+        startLineNumber: targetLine,
+        startColumn: 1,
+        endLineNumber: targetLine,
+        endColumn: maxCol,
+        message: `Test Failure: ${selectedTestCase.name} -> ${selectedTestCase.failureMessage || 'Assertion failed'}`,
+        severity: monaco.MarkerSeverity.Error
+      }]);
+
+      window.errorLineDecorations = window.editor.deltaDecorations(window.errorLineDecorations || [], [{
+        range: new monaco.Range(targetLine, 1, targetLine, 1),
+        options: {
+          isWholeLine: true,
+          className: 'zenith-error-line-highlight',
+          linesDecorationsClassName: 'zenith-error-line-gutter'
+        }
+      }]);
+
+      window.editor.revealLineInCenter(targetLine);
+      showStudioNotification(`🔍 Navigated to schema line ${targetLine} (${orig.snippet || 'model'})`, 'info');
+    }
+  }
+}
+
+function highlightFirstFailedTestInMonaco(data) {
+  if (!data.suites) return;
+  for (const suite of data.suites) {
+    for (const tc of suite.testCases) {
+      if ((tc.status === 'FAILED' || tc.status === 'ERROR') && tc.sourceOrigin && tc.sourceOrigin.line > 0) {
+        selectedTestCase = tc;
+        jumpToSchemaFromTest();
+        return;
+      }
+    }
+  }
+}
+
+function copyTestResults() {
+  if (!currentTestSummary) {
+    showStudioNotification('No test summary to copy', 'info');
+    return;
+  }
+  const summary = `Zenith Test Suite Results:
+Status: ${currentTestSummary.status}
+Total: ${currentTestSummary.totalTests} | Passed: ${currentTestSummary.passedTests} | Failed: ${currentTestSummary.failedTests} | Skipped: ${currentTestSummary.skippedTests}
+Duration: ${currentTestSummary.totalDuration.toFixed(2)}s`;
+
+  navigator.clipboard.writeText(summary).then(() => {
+    showStudioNotification('📋 Test results copied to clipboard', 'success');
+  });
+}
+
+function clearTestOutput() {
+  currentTestSummary = null;
+  selectedTestCase = null;
+  renderTestMetrics({ totalTests: 0, passedTests: 0, failedTests: 0, skippedTests: 0, totalDuration: 0 });
+  const treeContainer = document.getElementById('testSuitesTree');
+  if (treeContainer) {
+    treeContainer.innerHTML = `
+      <div class="test-empty-state">
+        <div class="test-empty-icon">🧪</div>
+        <div class="test-empty-title">No test runs executed yet</div>
+        <div class="test-empty-desc">Click <strong>▶ Test</strong> in the top header to execute automated JUnit 5 tests.</div>
+      </div>
+    `;
+  }
+  const placeholder = document.getElementById('testInspectorPlaceholder');
+  const detail = document.getElementById('testInspectorDetail');
+  if (placeholder) placeholder.style.display = 'flex';
+  if (detail) detail.style.display = 'none';
+
+  const badge = document.getElementById('testStatusBadge');
+  if (badge) {
+    badge.textContent = 'Idle';
+    badge.className = 'test-status-badge';
+  }
+  const progressBar = document.getElementById('testProgressBar');
+  if (progressBar) progressBar.style.width = '0%';
+}
+

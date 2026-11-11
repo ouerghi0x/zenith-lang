@@ -13,7 +13,9 @@ public class Parser {
 
     private static final Set<String> ALLOWED_CONFIG_KEYS = Set.of(
             "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket",
-            "usermodel", "jwtsecret", "jwtexpiration", "ratelimit", "mail", "mailprovider", "mailfrom", "cache", "cacheprovider", "cachettl"
+            "usermodel", "jwtsecret", "jwtexpiration", "ratelimit", "mail", "mailprovider", "mailfrom", "cache",
+            "cacheprovider", "cachettl",
+            "mailport", "mailhost", "mailusername", "mailpassword"
     );
 
     public Parser(List<Token> tokens) {
@@ -34,6 +36,7 @@ public class Parser {
         List<ImportDef> imports = new ArrayList<>();
         List<JobDef> jobs = new ArrayList<>();
         List<MailDef> mails = new ArrayList<>();
+        List<SocketDef> sockets = new ArrayList<>();
         while (!isAtEnd()) {
             Token tok = peek();
             if (tok.getType() == TokenType.CONFIG) {
@@ -57,9 +60,11 @@ public class Parser {
                 jobs.add(parseJob());
             } else if (tok.getType() == TokenType.MAIL) {
                 mails.add(parseMail());
+            } else if (tok.getType() == TokenType.SOCKET) {
+                sockets.add(parseSocket());
             } else {
                 throw error(tok,
-                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', 'job', or 'mail' but found '"
+                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', 'job', 'mail', or 'socket' but found '"
                                 + tok.getValue()
                                 + "'");
             }
@@ -70,7 +75,57 @@ public class Parser {
             config = AppConfig.defaults();
         }
 
-        return new ZenithFile(config, enums, models, dtos, seeds, jobs, mails, imports, explicitConfig);
+        return new ZenithFile(config, enums, models, dtos, seeds, jobs, mails, sockets, imports, explicitConfig);
+    }
+
+    private SocketDef parseSocket() {
+        Token sockTok = consume(TokenType.SOCKET, "Expected 'socket'");
+        Token nameTok = consume(TokenType.IDENTIFIER, "Expected socket name after 'socket'");
+        consume(TokenType.LBRACE, "Expected '{' to start socket block");
+
+        String endpoint = "/ws";
+        String topic = "/topic/messages";
+        String broker = "simple";
+        String payload = "";
+        Map<String, String> properties = new LinkedHashMap<>();
+
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+            Token keyTok = peek();
+            if (keyTok.getType() == TokenType.IDENTIFIER || keyTok.getType() == TokenType.STRING_LITERAL) {
+                advance();
+                consume(TokenType.COLON, "Expected ':' after socket property '" + keyTok.getValue() + "'");
+                Token valTok = peek();
+                String val = "";
+                if (valTok.getType() == TokenType.STRING_LITERAL) {
+                    val = advance().getValue();
+                } else if (valTok.getType() == TokenType.IDENTIFIER) {
+                    val = advance().getValue();
+                } else {
+                    val = parseLiteralOrIdentifier().toString();
+                }
+
+                String propName = keyTok.getValue().toLowerCase();
+                if ("endpoint".equals(propName)) {
+                    endpoint = val;
+                } else if ("topic".equals(propName)) {
+                    topic = val;
+                } else if ("broker".equals(propName)) {
+                    broker = val;
+                } else if ("payload".equals(propName)) {
+                    payload = val;
+                } else {
+                    properties.put(keyTok.getValue(), val);
+                }
+            } else {
+                throw error(peek(), "Expected socket property key, found " + peek().getType());
+            }
+        }
+        consume(TokenType.RBRACE, "Expected '}' closing socket block");
+
+        SocketDef def = new SocketDef(nameTok.getValue(), endpoint, topic, broker, payload, properties);
+        def.setSourceFile(sourceFile);
+        def.setSourceLine(sockTok.getLine());
+        return def;
     }
 
     private JobDef parseJob() {
@@ -130,7 +185,11 @@ public class Parser {
                         parenDepth++;
                     else if (t.getType() == TokenType.RPAREN)
                         parenDepth--;
-                    expr.append(t.getValue()).append(" ");
+                    if (t.getType() == TokenType.STRING_LITERAL) {
+                        expr.append("\"").append(t.getValue().replace("\"", "\\\"")).append("\" ");
+                    } else {
+                        expr.append(t.getValue()).append(" ");
+                    }
                 }
                 String errMessage = "Guard condition failed";
                 if (match(TokenType.COMMA)) {
@@ -188,22 +247,26 @@ public class Parser {
         String toExpr = "";
         String subjectExpr = "";
         String templatePath = "";
+        String contentExpr = "";
         String fromOverride = null;
 
         while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
-            Token keyTok = consume(TokenType.IDENTIFIER, "Expected mail property ('to', 'subject', 'template', 'from')");
+            Token keyTok = consume(TokenType.IDENTIFIER,
+                    "Expected mail property ('to', 'subject', 'template', 'content', 'from')");
             consume(TokenType.COLON, "Expected ':' after mail property");
             String k = keyTok.getValue().toLowerCase();
             int line = keyTok.getLine();
             if ("to".equals(k)) {
                 StringBuilder sb = new StringBuilder();
-                while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == line) {
+                while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE
+                        && peek().getLine() == line) {
                     sb.append(advance().getValue());
                 }
                 toExpr = sb.toString().trim();
             } else if ("subject".equals(k)) {
                 StringBuilder sb = new StringBuilder();
-                while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == line) {
+                while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE
+                        && peek().getLine() == line) {
                     Token t = advance();
                     if (t.getType() == TokenType.STRING_LITERAL) {
                         sb.append("\"").append(t.getValue()).append("\"");
@@ -212,6 +275,18 @@ public class Parser {
                     }
                 }
                 subjectExpr = sb.toString().trim();
+            } else if ("content".equals(k) || "body".equals(k)) {
+                StringBuilder sb = new StringBuilder();
+                while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE
+                        && peek().getLine() == line) {
+                    Token t = advance();
+                    if (t.getType() == TokenType.STRING_LITERAL) {
+                        sb.append("\"").append(t.getValue()).append("\"");
+                    } else {
+                        sb.append(t.getValue());
+                    }
+                }
+                contentExpr = sb.toString().trim();
             } else if ("template".equals(k)) {
                 templatePath = consume(TokenType.STRING_LITERAL, "Expected template file path string").getValue();
             } else if ("from".equals(k)) {
@@ -223,7 +298,7 @@ public class Parser {
         }
         consume(TokenType.RBRACE, "Expected '}' closing mail block");
 
-        MailDef mailDef = new MailDef(nameTok.getValue(), parameters, toExpr, subjectExpr, templatePath, fromOverride);
+        MailDef mailDef = new MailDef(nameTok.getValue(), parameters, toExpr, subjectExpr, templatePath, contentExpr, fromOverride);
         mailDef.setSourceFile(sourceFile);
         mailDef.setSourceLine(mailTok.getLine());
         return mailDef;
@@ -357,7 +432,7 @@ public class Parser {
 
             if (!ALLOWED_CONFIG_KEYS.contains(keyLower)) {
                 throw error(keyToken, "Invalid configuration key '" + key + "'. Supported configuration keys are: "
-                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration, rateLimit, mail, mailProvider, mailFrom, cache, cacheProvider, cacheTtl.");
+                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration, rateLimit, mail, mailProvider, mailFrom, mailHost, mailPort, mailUsername, mailPassword, cache, cacheProvider, cacheTtl.");
             }
 
             boolean isDuplicate = props.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(key));
@@ -415,7 +490,9 @@ public class Parser {
                 } else if ("jwtexpiration".equals(keyLower)) {
                     long exp = AppConfig.parseDurationMs(valStr, -1L);
                     if (exp <= 0) {
-                        throw error(keyToken, "jwtExpiration must be a positive duration (e.g. 24h, 30m, 7d, 60s) or milliseconds (e.g. 86400000), found: '" + valStr + "'");
+                        throw error(keyToken,
+                                "jwtExpiration must be a positive duration (e.g. 24h, 30m, 7d, 60s) or milliseconds (e.g. 86400000), found: '"
+                                        + valStr + "'");
                     }
                 } else if ("jwtsecret".equals(keyLower)) {
                     if (valStr.isEmpty()) {
@@ -430,12 +507,15 @@ public class Parser {
                 } else if ("mail".equals(keyLower) || "mailprovider".equals(keyLower)) {
                     String p = valStr.toLowerCase();
                     if (!p.equals("smtp") && !p.equals("sendgrid") && !p.equals("ses") && !p.equals("console")) {
-                        throw error(keyToken, "Invalid mail provider '" + valStr + "'. Supported options: smtp, sendgrid, ses, console.");
+                        throw error(keyToken, "Invalid mail provider '" + valStr
+                                + "'. Supported options: smtp, sendgrid, ses, console.");
                     }
                 } else if ("cache".equals(keyLower) || "cacheprovider".equals(keyLower)) {
                     String c = valStr.toLowerCase();
-                    if (!c.equals("redis") && !c.equals("caffeine") && !c.equals("memory") && !c.equals("none") && !c.equals("true") && !c.equals("false")) {
-                        throw error(keyToken, "Invalid cache provider '" + valStr + "'. Supported options: redis, caffeine, memory, none.");
+                    if (!c.equals("redis") && !c.equals("caffeine") && !c.equals("memory") && !c.equals("none")
+                            && !c.equals("true") && !c.equals("false")) {
+                        throw error(keyToken, "Invalid cache provider '" + valStr
+                                + "'. Supported options: redis, caffeine, memory, none.");
                     }
                 }
             }
@@ -534,8 +614,10 @@ public class Parser {
 
     /**
      * Parses a model-level composite index declaration:
-     * {@code @index([fieldA, fieldB])}, {@code @index([a, b], name = "idx_custom")},
-     * {@code @index(fields = [a, b], unique = true)} or {@code @uniqueIndex([a, b])}.
+     * {@code @index([fieldA, fieldB])},
+     * {@code @index([a, b], name = "idx_custom")},
+     * {@code @index(fields = [a, b], unique = true)} or
+     * {@code @uniqueIndex([a, b])}.
      */
     private IndexDef parseModelIndexDeclaration() {
         Token atTok = peek();
@@ -550,9 +632,11 @@ public class Parser {
         AnnotationDef ann = parseAnnotation();
 
         Object fieldsArg = ann.getArgument("fields");
-        if (fieldsArg == null) fieldsArg = ann.getArgument("0");
+        if (fieldsArg == null)
+            fieldsArg = ann.getArgument("0");
         if (fieldsArg == null) {
-            throw error(nameTok, "Model-level '@" + annName + "' requires a field list, e.g. '@" + annName + "([fieldA, fieldB])'");
+            throw error(nameTok,
+                    "Model-level '@" + annName + "' requires a field list, e.g. '@" + annName + "([fieldA, fieldB])'");
         }
         List<String> fieldNames = new ArrayList<>();
         if (fieldsArg instanceof List) {
@@ -607,9 +691,12 @@ public class Parser {
     }
 
     /**
-     * Returns true when the upcoming {@code @} token begins a model-level composite index
-     * declaration (e.g. {@code @index([a, b])} or {@code @index(fields = [a, b])}) on a new line,
-     * so that {@link #parseField()} does not greedily attach it to the preceding field.
+     * Returns true when the upcoming {@code @} token begins a model-level composite
+     * index
+     * declaration (e.g. {@code @index([a, b])} or {@code @index(fields = [a, b])})
+     * on a new line,
+     * so that {@link #parseField()} does not greedily attach it to the preceding
+     * field.
      */
     private boolean isModelLevelIndexAhead(int fieldLine) {
         Token atTok = peek();
@@ -626,7 +713,8 @@ public class Parser {
             if (cursor + 3 < tokens.size()) {
                 Token firstArg = tokens.get(cursor + 3);
                 if (firstArg.getType() == TokenType.LBRACKET
-                        || (firstArg.getType() == TokenType.IDENTIFIER && "fields".equalsIgnoreCase(firstArg.getValue()))) {
+                        || (firstArg.getType() == TokenType.IDENTIFIER
+                                && "fields".equalsIgnoreCase(firstArg.getValue()))) {
                     return true;
                 }
             }
@@ -760,7 +848,8 @@ public class Parser {
             Token cur = peek();
             RateLimitSpec endpointDecoratorLimit = null;
             if (cur.getType() == TokenType.AT && peekNext().getType() == TokenType.IDENTIFIER
-                    && ("ratelimit".equalsIgnoreCase(peekNext().getValue()) || "rate_limit".equalsIgnoreCase(peekNext().getValue()))) {
+                    && ("ratelimit".equalsIgnoreCase(peekNext().getValue())
+                            || "rate_limit".equalsIgnoreCase(peekNext().getValue()))) {
                 AnnotationDef ann = parseAnnotation();
                 endpointDecoratorLimit = parseRateLimitAnnotation(ann);
                 cur = peek();
@@ -888,7 +977,8 @@ public class Parser {
         // Handle unquoted e.g. 10/minute or 5 / second
         int keyLine = keyToken.getLine();
         StringBuilder sb = new StringBuilder();
-        while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == keyLine) {
+        while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE
+                && peek().getLine() == keyLine) {
             sb.append(advance().getValue());
         }
         return sb.toString().trim();
@@ -909,7 +999,8 @@ public class Parser {
         // Check if raw token like 15m, 1h, 30s
         int keyLine = keyToken.getLine();
         StringBuilder sb = new StringBuilder();
-        while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE && peek().getLine() == keyLine) {
+        while (!isAtEnd() && peek().getType() != TokenType.COMMA && peek().getType() != TokenType.RBRACE
+                && peek().getLine() == keyLine) {
             sb.append(advance().getValue());
         }
         String val = sb.toString().trim();
@@ -918,21 +1009,27 @@ public class Parser {
     }
 
     public static void validateCacheDuration(Token token, String durationStr) {
-        if (durationStr == null || durationStr.isEmpty()) return;
+        if (durationStr == null || durationStr.isEmpty())
+            return;
         String s = durationStr.trim().toLowerCase();
-        if ("true".equals(s) || "false".equals(s)) return;
+        if ("true".equals(s) || "false".equals(s))
+            return;
         if (!s.matches("^\\d+(s|m|h|d|ms)$")) {
-            throw new ParseException("Invalid cache duration format: '" + durationStr + "'. Expected format e.g. '15m', '1h', '300s', '30s'.",
+            throw new ParseException(
+                    "Invalid cache duration format: '" + durationStr
+                            + "'. Expected format e.g. '15m', '1h', '300s', '30s'.",
                     token.getLine(), token.getColumn());
         }
     }
 
     public static java.time.Duration parseCacheDuration(String durationStr) {
-        if (durationStr == null || durationStr.trim().isEmpty() || "false".equalsIgnoreCase(durationStr) || "0s".equalsIgnoreCase(durationStr)) {
+        if (durationStr == null || durationStr.trim().isEmpty() || "false".equalsIgnoreCase(durationStr)
+                || "0s".equalsIgnoreCase(durationStr)) {
             return java.time.Duration.ZERO;
         }
         String s = durationStr.trim().toLowerCase();
-        if ("true".equals(s)) return java.time.Duration.ofMinutes(10);
+        if ("true".equals(s))
+            return java.time.Duration.ofMinutes(10);
         if (s.endsWith("ms")) {
             long ms = Long.parseLong(s.substring(0, s.length() - 2));
             return java.time.Duration.ofMillis(ms);
@@ -955,10 +1052,12 @@ public class Parser {
 
     private RateLimitSpec parseRateLimitAnnotation(AnnotationDef ann) {
         // Formats:
-        // @rateLimit("10/minute") or @rateLimit(requests = 10, per = "1m") or @rateLimit(10, "1m")
+        // @rateLimit("10/minute") or @rateLimit(requests = 10, per = "1m") or
+        // @rateLimit(10, "1m")
         Map<String, Object> args = ann.getArguments();
         if (args.isEmpty()) {
-            throw new ParseException("@rateLimit decorator requires arguments, e.g. @rateLimit(\"10/minute\") or @rateLimit(10, \"1m\")",
+            throw new ParseException(
+                    "@rateLimit decorator requires arguments, e.g. @rateLimit(\"10/minute\") or @rateLimit(10, \"1m\")",
                     ann.getSourceLine(), 1, sourceFile);
         }
         if (args.containsKey("0") && args.get("0") instanceof String && ((String) args.get("0")).contains("/")) {
@@ -986,7 +1085,8 @@ public class Parser {
         if (args.containsKey("0")) {
             return RateLimitSpec.parse(args.get("0").toString());
         }
-        throw new ParseException("Invalid @rateLimit declaration. Expected format: @rateLimit(\"10/minute\") or @rateLimit(requests = 10, per = \"1m\")",
+        throw new ParseException(
+                "Invalid @rateLimit declaration. Expected format: @rateLimit(\"10/minute\") or @rateLimit(requests = 10, per = \"1m\")",
                 ann.getSourceLine(), 1, sourceFile);
     }
 
@@ -1107,7 +1207,11 @@ public class Parser {
                             parenDepth++;
                         else if (t.getType() == TokenType.RPAREN)
                             parenDepth--;
-                        expr.append(t.getValue()).append(" ");
+                        if (t.getType() == TokenType.STRING_LITERAL) {
+                            expr.append("\"").append(t.getValue().replace("\"", "\\\"")).append("\" ");
+                        } else {
+                            expr.append(t.getValue()).append(" ");
+                        }
                     }
                     String errMessage = "Guard condition failed";
                     if (match(TokenType.COMMA)) {
@@ -1125,7 +1229,8 @@ public class Parser {
                         String a = parseActionStatement();
                         if (!a.isEmpty()) {
                             actions.add(a);
-                            actionDefs.add(new ActionStatementDef(a, new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
+                            actionDefs.add(new ActionStatementDef(a,
+                                    new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
                         }
                         match(TokenType.COMMA);
                     }
@@ -1134,12 +1239,14 @@ public class Parser {
                     Token startTok = peek();
                     String a = parseCreateAction();
                     actions.add(a);
-                    actionDefs.add(new ActionStatementDef(a, new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
+                    actionDefs.add(new ActionStatementDef(a,
+                            new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
                 } else if (key.getType() == TokenType.UPDATE) {
                     Token startTok = peek();
                     String a = parseUpdateAction();
                     actions.add(a);
-                    actionDefs.add(new ActionStatementDef(a, new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
+                    actionDefs.add(new ActionStatementDef(a,
+                            new SourceLocation(sourceFile, startTok.getLine(), startTok.getColumn())));
                 } else if (key.getType() == TokenType.IDENTIFIER || key.getType() == TokenType.AUTH
                         || key.getType() == TokenType.PUBLIC) {
                     Token idTok = advance();
@@ -1164,10 +1271,12 @@ public class Parser {
                         List<String> rList = parseRoleListOrSingle();
                         for (String rItem : rList) {
                             if ("public".equalsIgnoreCase(rItem)) {
-                                throw error(idTok, "Invalid role 'public' in endpoint 'roles'. For unauthenticated public access, use 'auth: false'.");
+                                throw error(idTok,
+                                        "Invalid role 'public' in endpoint 'roles'. For unauthenticated public access, use 'auth: false'.");
                             }
                             if ("authenticated".equalsIgnoreCase(rItem) || "auth".equalsIgnoreCase(rItem)) {
-                                throw error(idTok, "Invalid role '" + rItem + "' in endpoint 'roles'. To require an authenticated user, use 'auth: true'.");
+                                throw error(idTok, "Invalid role '" + rItem
+                                        + "' in endpoint 'roles'. To require an authenticated user, use 'auth: true'.");
                             }
                         }
                         roles.addAll(rList);
@@ -1251,7 +1360,8 @@ public class Parser {
             } else if (peek().getType() == TokenType.UPDATE) {
                 rightExpr = parseUpdateAction();
             } else {
-                throw error(peek(), "Expected 'create' or 'update' expression after 'var " + varName.getValue() + " ='");
+                throw error(peek(),
+                        "Expected 'create' or 'update' expression after 'var " + varName.getValue() + " ='");
             }
             return "var " + varName.getValue() + " = " + rightExpr;
         } else if (peek().getType() == TokenType.CREATE) {
@@ -1269,7 +1379,8 @@ public class Parser {
                     if (p.getType() == TokenType.RBRACE || p.getType() == TokenType.COMMA) {
                         break;
                     }
-                    if (stmt.length() > 0 && (p.getType() == TokenType.CREATE || p.getType() == TokenType.UPDATE || p.getType() == TokenType.VAR)) {
+                    if (stmt.length() > 0 && (p.getType() == TokenType.CREATE || p.getType() == TokenType.UPDATE
+                            || p.getType() == TokenType.VAR)) {
                         break;
                     }
                     if (stmt.length() > 0 && lastToken != null && p.getLine() > lastToken.getLine()

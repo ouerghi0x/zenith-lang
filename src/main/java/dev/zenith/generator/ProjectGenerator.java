@@ -58,6 +58,11 @@ public class ProjectGenerator {
             files.add(CacheConfigGenerator.generate(file));
         }
 
+        // 4.10. Real-Time WebSockets & STOMP Broker (Spec #18)
+        if (file.hasSockets()) {
+            files.addAll(WebSocketGenerator.generate(file));
+        }
+
         // 5. Enums
         for (EnumDef e : file.getEnums()) {
             files.add(EnumGenerator.generate(e, file));

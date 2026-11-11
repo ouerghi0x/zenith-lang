@@ -28,6 +28,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -49,6 +50,14 @@ public class ZenithStudioServer {
     private final List<CompilerDiagnostic> activeDiagnostics = new CopyOnWriteArrayList<>();
     private ZenithFile latestCompiledFile = null;
 
+    // Interactive Test Runner State (Spec #04 & Spec #27)
+    private Process runningTestProcess = null;
+    private final List<String> testLogs = new CopyOnWriteArrayList<>();
+    private SurefireReportParser.TestRunSummary latestTestSummary = new SurefireReportParser.TestRunSummary();
+
+    // Active Docker Process Tracker (for continuous streaming)
+    private Process activeDockerProcess = null;
+
     public ZenithStudioServer(int port, Path initialFilePath) {
         this.port = port;
         this.schemaPath = initialFilePath != null ? initialFilePath.toAbsolutePath().normalize()
@@ -68,6 +77,12 @@ public class ZenithStudioServer {
         server.createContext("/api/reset-db", new ResetDbHandler());
         server.createContext("/api/logs", new LogsHandler());
         server.createContext("/api/logs/clear", new ClearLogsHandler());
+        server.createContext("/api/test/run", new TestRunHandler());
+        server.createContext("/api/test/stop", new TestStopHandler());
+        server.createContext("/api/test/results", new TestResultsHandler());
+        server.createContext("/api/docker/status", new DockerStatusHandler());
+        server.createContext("/api/docker/command", new DockerCommandHandler());
+        server.createContext("/api/simulate/action", new SimulateActionHandler());
         server.createContext("/api/export", new ExportHandler());
         server.createContext("/api/schema", new SchemaHandler());
         server.createContext("/download/desktop", new DesktopDownloadHandler());
@@ -274,6 +289,7 @@ public class ZenithStudioServer {
                                 .append(escape(cep.getBodyType() != null ? cep.getBodyType() : "")).append("\",\n");
                         json.append("          \"rateLimit\": \"")
                                 .append(escape(cep.hasRateLimit() ? cep.getRateLimit().toDslString() : "")).append("\",\n");
+                        json.append("          \"hasLogic\": ").append(cep.hasLogic()).append(",\n");
                         json.append("          \"description\": \"").append(escape(cep.getDescription()))
                                 .append("\"\n");
                         json.append("        }");
@@ -344,6 +360,21 @@ public class ZenithStudioServer {
                             .append(escape(j.getFixedRate() != null ? j.getFixedRate() : "")).append("\",\n");
                     json.append("      \"description\": \"")
                             .append(escape(j.getDescription() != null ? j.getDescription() : "")).append("\"\n");
+                    json.append("    }");
+                }
+                json.append("\n  ],\n");
+
+                // Sockets (Spec #18 Real-Time WebSockets)
+                json.append("  \"sockets\": [\n");
+                for (int i = 0; i < analyzed.getSockets().size(); i++) {
+                    var s = analyzed.getSockets().get(i);
+                    if (i > 0)
+                        json.append(",\n");
+                    json.append("    {\n");
+                    json.append("      \"name\": \"").append(escape(s.getName())).append("\",\n");
+                    json.append("      \"endpoint\": \"").append(escape(s.getEndpoint())).append("\",\n");
+                    json.append("      \"topic\": \"").append(escape(s.getTopic())).append("\",\n");
+                    json.append("      \"broker\": \"").append(escape(s.getBroker())).append("\"\n");
                     json.append("    }");
                 }
                 json.append("\n  ],\n");
@@ -626,6 +657,379 @@ public class ZenithStudioServer {
             processLogs.clear();
             activeDiagnostics.clear();
             sendResponse(exchange, 200, "application/json", "{\"success\": true}");
+        }
+    }
+
+    // Interactive Test Runner - Trigger mvn test (Spec #04)
+    private class TestRunHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (runningTestProcess != null && runningTestProcess.isAlive()) {
+                sendResponse(exchange, 200, "application/json",
+                        "{\"success\": true, \"message\": \"Test suite already running\"}");
+                return;
+            }
+
+            testLogs.clear();
+            latestTestSummary = new SurefireReportParser.TestRunSummary();
+            latestTestSummary.running = true;
+            latestTestSummary.status = "RUNNING";
+            testLogs.add("[Zenith Test Runner] Initializing automated Maven test suite...");
+
+            try {
+                if (latestCompiledFile == null) {
+                    if (schemaPath != null && Files.exists(schemaPath)) {
+                        latestCompiledFile = new SemanticAnalyzer().analyze(new SchemaResolver().resolve(schemaPath));
+                    }
+                }
+
+                Path runDir = Paths.get("target/studio-run");
+                if (latestCompiledFile != null) {
+                    ProjectGenerator.writeToDirectory(latestCompiledFile, runDir);
+                }
+
+                // Delete previous surefire reports before new test run
+                Path surefireDir = runDir.resolve("target/surefire-reports");
+                if (Files.exists(surefireDir)) {
+                    try (var stream = Files.walk(surefireDir)) {
+                        stream.sorted(Comparator.reverseOrder())
+                                .map(Path::toFile)
+                                .forEach(File::delete);
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+                String mavenCmd = resolveMavenCommand(isWindows);
+                testLogs.add("[Zenith Test Runner] Using Maven executable: " + mavenCmd);
+
+                ProcessBuilder pb;
+                if (isWindows) {
+                    pb = new ProcessBuilder("cmd.exe", "/c", mavenCmd + " test -B");
+                } else {
+                    pb = new ProcessBuilder("sh", "-c", mavenCmd + " test -B");
+                }
+                pb.directory(runDir.toFile());
+                pb.redirectErrorStream(true);
+
+                runningTestProcess = pb.start();
+
+                // Background stream thread for test logs and report parsing
+                new Thread(() -> {
+                    long startTime = System.currentTimeMillis();
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(runningTestProcess.getInputStream()))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            testLogs.add(line);
+                            if (testLogs.size() > 1000) {
+                                testLogs.remove(0);
+                            }
+                        }
+                    } catch (IOException ignored) {
+                    }
+
+                    try {
+                        int exitCode = runningTestProcess.waitFor();
+                        double elapsedSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                        testLogs.add("[Zenith Test Runner] Test run completed in " + String.format(Locale.US, "%.2f", elapsedSec) + "s with exit code " + exitCode);
+
+                        // Parse Surefire XML Reports and connect to GenerationManifest (Spec #27)
+                        GenerationManifest manifest = null;
+                        if (latestCompiledFile != null) {
+                            List<JavaSourceFile> sources = ProjectGenerator.generateAll(latestCompiledFile);
+                            manifest = ProjectGenerator.buildManifest(latestCompiledFile, sources);
+                        } else {
+                            Path manifestPath = runDir.resolve(".zenith/generation-manifest.json");
+                            if (Files.exists(manifestPath)) {
+                                try {
+                                    // Fallback if cached on disk
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        latestTestSummary = SurefireReportParser.parseReports(runDir.resolve("target/surefire-reports").toFile(), manifest);
+                        latestTestSummary.running = false;
+                        latestTestSummary.totalDuration = elapsedSec;
+                        latestTestSummary.rawLogs.addAll(testLogs);
+
+                        if (latestTestSummary.totalTests == 0) {
+                            // Maven might have failed during compilation or early build
+                            latestTestSummary.status = exitCode == 0 ? "PASSED" : "ERROR";
+                        } else {
+                            latestTestSummary.status = latestTestSummary.failedTests > 0 ? "FAILED" : "PASSED";
+                        }
+
+                    } catch (Exception e) {
+                        latestTestSummary.running = false;
+                        latestTestSummary.status = "ERROR";
+                        testLogs.add("[Zenith Test Runner] Exception: " + e.getMessage());
+                    } finally {
+                        runningTestProcess = null;
+                    }
+                }).start();
+
+                sendResponse(exchange, 200, "application/json", "{\"success\": true, \"message\": \"Tests started\"}");
+
+            } catch (Exception e) {
+                if (latestTestSummary != null) {
+                    latestTestSummary.running = false;
+                    latestTestSummary.status = "ERROR";
+                }
+                runningTestProcess = null;
+                sendResponse(exchange, 500, "application/json",
+                        "{\"success\": false, \"error\": \"" + escape(e.getMessage()) + "\"}");
+            }
+        }
+    }
+
+    // Stop active test execution
+    private class TestStopHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (runningTestProcess != null) {
+                runningTestProcess.destroyForcibly();
+                runningTestProcess = null;
+                testLogs.add("[Zenith Test Runner] Test run aborted by user.");
+            }
+            if (latestTestSummary != null) {
+                latestTestSummary.running = false;
+                latestTestSummary.status = "STOPPED";
+                latestTestSummary.rawLogs.clear();
+                latestTestSummary.rawLogs.addAll(testLogs);
+            }
+            sendResponse(exchange, 200, "application/json", "{\"success\": true, \"message\": \"Tests stopped\"}");
+        }
+    }
+
+    // Get parsed test results and live status
+    private class TestResultsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (latestTestSummary == null) {
+                latestTestSummary = new SurefireReportParser.TestRunSummary();
+            }
+            boolean isRunning = runningTestProcess != null && runningTestProcess.isAlive();
+            latestTestSummary.running = isRunning;
+            if (isRunning) {
+                latestTestSummary.rawLogs.clear();
+                latestTestSummary.rawLogs.addAll(testLogs);
+            }
+            sendResponse(exchange, 200, "application/json", latestTestSummary.toJson());
+        }
+    }
+
+    // Docker Status Handler
+    private class DockerStatusHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+            boolean installed = false;
+            boolean daemonRunning = false;
+            String dockerVersion = "Unknown";
+            String composeVersion = "Unknown";
+
+            try {
+                Process p = new ProcessBuilder(isWindows ? "docker.exe" : "docker", "--version").start();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    String line = r.readLine();
+                    if (line != null) {
+                        dockerVersion = line.trim();
+                        installed = true;
+                    }
+                }
+                p.waitFor();
+            } catch (Exception ignored) {}
+
+            if (installed) {
+                try {
+                    Process p = new ProcessBuilder(isWindows ? "docker.exe" : "docker", "compose", "version").start();
+                    try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                        String line = r.readLine();
+                        if (line != null) composeVersion = line.trim();
+                    }
+                    p.waitFor();
+                } catch (Exception ignored) {}
+
+                try {
+                    Process p = new ProcessBuilder(isWindows ? "docker.exe" : "docker", "info").start();
+                    boolean finished = p.waitFor(3, TimeUnit.SECONDS);
+                    if (finished && p.exitValue() == 0) {
+                        daemonRunning = true;
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // Inspect running containers for active project if available
+            Map<String, String> serviceStatus = new HashMap<>();
+            if (daemonRunning) {
+                try {
+                    Path runDir = Paths.get("target/studio-run");
+                    if (Files.exists(runDir.resolve("docker-compose.yml"))) {
+                        ProcessBuilder pb = new ProcessBuilder(isWindows ? "docker.exe" : "docker", "compose", "ps", "--format", "{{.Service}}:{{.State}}");
+                        pb.directory(runDir.toFile());
+                        Process p = pb.start();
+                        try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                            String line;
+                            while ((line = r.readLine()) != null) {
+                                line = line.trim();
+                                if (line.contains(":")) {
+                                    String[] parts = line.split(":", 2);
+                                    serviceStatus.put(parts[0].trim(), parts[1].trim());
+                                }
+                            }
+                        }
+                        p.waitFor(3, TimeUnit.SECONDS);
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            StringBuilder sb = new StringBuilder("{");
+            sb.append("\"installed\": ").append(installed).append(",");
+            sb.append("\"daemonRunning\": ").append(daemonRunning).append(",");
+            sb.append("\"dockerVersion\": \"").append(escape(dockerVersion)).append("\",");
+            sb.append("\"composeVersion\": \"").append(escape(composeVersion)).append("\",");
+            sb.append("\"serviceStates\": {");
+            int i = 0;
+            for (Map.Entry<String, String> e : serviceStatus.entrySet()) {
+                if (i++ > 0) sb.append(",");
+                sb.append("\"").append(escape(e.getKey())).append("\": \"").append(escape(e.getValue())).append("\"");
+            }
+            sb.append("}}");
+
+            sendResponse(exchange, 200, "application/json", sb.toString());
+        }
+    }
+
+    // Docker Command Handler (build, up, down, start, stop, rm, logs)
+    private class DockerCommandHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendResponse(exchange, 405, "application/json", "{\"success\": false, \"error\": \"Method not allowed\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String action = extractJsonField(body, "action"); // 'build' | 'up' | 'down' | 'start' | 'stop' | 'rm' | 'logs'
+            String service = extractJsonField(body, "service"); // optional
+
+            if (action == null || action.isBlank()) {
+                sendResponse(exchange, 400, "application/json", "{\"success\": false, \"error\": \"Missing action\"}");
+                return;
+            }
+
+            // Ensure project files exist in target/studio-run
+            Path runDir = Paths.get("target/studio-run");
+            try {
+                if (latestCompiledFile != null) {
+                    ProjectGenerator.writeToDirectory(latestCompiledFile, runDir);
+                }
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "application/json", "{\"success\": false, \"error\": \"Failed to generate docker files: " + escape(e.getMessage()) + "\"}");
+                return;
+            }
+
+            boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+            String dockerExe = isWindows ? "docker.exe" : "docker";
+
+            List<String> cmd = new ArrayList<>();
+            cmd.add(dockerExe);
+
+            switch (action.toLowerCase()) {
+                case "build":
+                    cmd.add("build");
+                    cmd.add("-t");
+                    String appName = (latestCompiledFile != null && latestCompiledFile.getConfig() != null && latestCompiledFile.getConfig().getApp() != null)
+                            ? latestCompiledFile.getConfig().getApp().toLowerCase().replaceAll("[^a-z0-9_-]", "")
+                            : "zenith-app";
+                    cmd.add(appName + ":latest");
+                    cmd.add(".");
+                    break;
+                case "up":
+                    cmd.add("compose");
+                    cmd.add("up");
+                    cmd.add("-d");
+                    if (service != null && !service.isBlank()) {
+                        cmd.add(service.trim());
+                    }
+                    break;
+                case "down":
+                    cmd.add("compose");
+                    cmd.add("down");
+                    break;
+                case "start":
+                    cmd.add("compose");
+                    cmd.add("start");
+                    if (service != null && !service.isBlank()) cmd.add(service.trim());
+                    break;
+                case "stop":
+                    cmd.add("compose");
+                    cmd.add("stop");
+                    if (service != null && !service.isBlank()) cmd.add(service.trim());
+                    break;
+                case "rm":
+                    cmd.add("compose");
+                    cmd.add("rm");
+                    cmd.add("-s");
+                    cmd.add("-f");
+                    if (service != null && !service.isBlank()) cmd.add(service.trim());
+                    break;
+                case "logs":
+                    cmd.add("compose");
+                    cmd.add("logs");
+                    cmd.add("-f");
+                    cmd.add("--tail=150");
+                    if (service != null && !service.isBlank()) cmd.add(service.trim());
+                    break;
+                default:
+                    sendResponse(exchange, 400, "application/json", "{\"success\": false, \"error\": \"Unsupported action: " + escape(action) + "\"}");
+                    return;
+            }
+
+            // Terminate any previous active Docker process (e.g. prior log follow or build)
+            if (activeDockerProcess != null && activeDockerProcess.isAlive()) {
+                activeDockerProcess.destroyForcibly();
+                activeDockerProcess = null;
+            }
+
+            // Route process output directly to Studio console
+            String fullCommandStr = String.join(" ", cmd);
+            processLogs.add("");
+            processLogs.add("[Zenith Docker] ========================================================");
+            processLogs.add("[Zenith Docker] Executing: " + fullCommandStr);
+            processLogs.add("[Zenith Docker] ========================================================");
+
+            // Run process asynchronously so HTTP call returns immediately
+            new Thread(() -> {
+                try {
+                    ProcessBuilder pb = new ProcessBuilder(cmd);
+                    pb.directory(runDir.toFile());
+                    pb.redirectErrorStream(true);
+                    Process p = pb.start();
+                    activeDockerProcess = p;
+
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            processLogs.add(line);
+                        }
+                    }
+
+                    int exitCode = p.waitFor();
+                    if (exitCode == 0) {
+                        processLogs.add("[Zenith Docker] ✔ Command completed successfully (exit code 0).");
+                    } else {
+                        processLogs.add("[Zenith Docker] ✖ Command exited with code " + exitCode + ".");
+                    }
+                } catch (Exception err) {
+                    processLogs.add("[Zenith Docker] ✖ Execution error: " + err.getMessage());
+                } finally {
+                    activeDockerProcess = null;
+                }
+            }).start();
+
+            sendResponse(exchange, 200, "application/json", "{\"success\": true, \"command\": \"" + escape(fullCommandStr) + "\"}");
         }
     }
 
@@ -1017,6 +1421,233 @@ public class ZenithStudioServer {
                 p.waitFor();
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    // Action Simulation Handler (dev.zenith.engine)
+    private class SimulateActionHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendResponse(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+                return;
+            }
+
+            try {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                // Parse incoming simulation JSON request
+                String model = extractJsonStringField(body, "model");
+                String endpoint = extractJsonStringField(body, "endpoint");
+                String method = extractJsonStringField(body, "method");
+                if (method == null || method.isEmpty()) {
+                    method = "POST";
+                    if (endpoint != null && endpoint.contains(" ")) {
+                        String[] parts = endpoint.split(" ", 2);
+                        method = parts[0];
+                        endpoint = parts[1];
+                    }
+                }
+
+                Map<String, Object> entityState = extractJsonObjectField(body, "entityState");
+                Map<String, Object> requestBody = extractJsonObjectField(body, "requestBody");
+                Map<String, Object> currentUser = extractJsonObjectField(body, "currentUser");
+
+                if (latestCompiledFile == null) {
+                    if (Files.exists(schemaPath)) {
+                        String source = Files.readString(schemaPath);
+                        SchemaResolver resolver = new SchemaResolver();
+                        latestCompiledFile = new dev.zenith.analyzer.SemanticAnalyzer()
+                                .analyze(resolver.resolveSource(source, schemaPath));
+                    }
+                }
+
+                if (latestCompiledFile == null) {
+                    sendResponse(exchange, 400, "application/json", "{\"success\":false,\"error\":\"No compiled schema available for simulation\"}");
+                    return;
+                }
+
+                dev.zenith.engine.SimulationResult res = dev.zenith.engine.ZenithEngine.getInstance().simulate(
+                        latestCompiledFile, model, endpoint, method, entityState, requestBody, currentUser
+                );
+
+                StringBuilder json = new StringBuilder();
+                json.append("{");
+                json.append("\"success\":").append(res.isSuccess()).append(",");
+                json.append("\"status\":").append(res.getStatus()).append(",");
+                json.append("\"message\":\"").append(escape(res.getMessage())).append("\",");
+                json.append("\"executionTimeMs\":").append(res.getExecutionTimeMs()).append(",");
+
+                // stateDiff
+                json.append("\"stateDiff\":{");
+                boolean first = true;
+                for (Map.Entry<String, dev.zenith.engine.trace.StateDiff> d : res.getStateDiff().entrySet()) {
+                    if (!first) json.append(",");
+                    first = false;
+                    json.append("\"").append(escape(d.getKey())).append("\":{");
+                    json.append("\"before\":").append(formatJsonValue(d.getValue().getBeforeValue())).append(",");
+                    json.append("\"after\":").append(formatJsonValue(d.getValue().getAfterValue()));
+                    json.append("}");
+                }
+                json.append("},");
+
+                // boundVariables
+                json.append("\"boundVariables\":{");
+                first = true;
+                for (Map.Entry<String, Object> bv : res.getBoundVariables().entrySet()) {
+                    if (!first) json.append(",");
+                    first = false;
+                    json.append("\"").append(escape(bv.getKey())).append("\":").append(formatJsonValue(bv.getValue()));
+                }
+                json.append("},");
+
+                // finalEntityState
+                json.append("\"finalEntityState\":{");
+                first = true;
+                for (Map.Entry<String, Object> fe : res.getFinalEntityState().entrySet()) {
+                    if (!first) json.append(",");
+                    first = false;
+                    json.append("\"").append(escape(fe.getKey())).append("\":").append(formatJsonValue(fe.getValue()));
+                }
+                json.append("},");
+
+                // dispatchedEffects
+                json.append("\"dispatchedEffects\":[");
+                first = true;
+                for (dev.zenith.engine.trace.DispatchedEffect eff : res.getDispatchedEffects()) {
+                    if (!first) json.append(",");
+                    first = false;
+                    json.append("{");
+                    json.append("\"type\":\"").append(escape(eff.getType())).append("\",");
+                    json.append("\"contract\":\"").append(escape(eff.getContract())).append("\",");
+                    json.append("\"arguments\":{");
+                    boolean firstArg = true;
+                    for (Map.Entry<String, Object> arg : eff.getArguments().entrySet()) {
+                        if (!firstArg) json.append(",");
+                        firstArg = false;
+                        json.append("\"").append(escape(arg.getKey())).append("\":").append(formatJsonValue(arg.getValue()));
+                    }
+                    json.append("}}");
+                }
+                json.append("],");
+
+                // trace
+                json.append("\"trace\":[");
+                first = true;
+                for (String t : res.getTrace()) {
+                    if (!first) json.append(",");
+                    first = false;
+                    json.append("\"").append(escape(t)).append("\"");
+                }
+                json.append("]");
+
+                json.append("}");
+                sendResponse(exchange, 200, "application/json", json.toString());
+
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "application/json", "{\"success\":false,\"error\":\"" + escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private String extractJsonStringField(String json, String field) {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("\"" + java.util.regex.Pattern.quote(field) + "\"\\s*:\\s*\"([^\"]*)\"");
+            java.util.regex.Matcher m = p.matcher(json);
+            return m.find() ? m.group(1) : "";
+        }
+
+        private Map<String, Object> extractJsonObjectField(String json, String field) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            int idx = json.indexOf("\"" + field + "\"");
+            if (idx == -1) return map;
+            int openBrace = json.indexOf('{', idx);
+            if (openBrace == -1) return map;
+            int closeBrace = findMatchingBrace(json, openBrace);
+            if (closeBrace == -1) return map;
+            String objStr = json.substring(openBrace + 1, closeBrace).trim();
+            if (objStr.isEmpty()) return map;
+
+            // Simple key-value parser for flat/semi-flat JSON objects
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("\"([^\"]+)\"\\s*:\\s*([^,{}]+|\"[^\"]*\")");
+            java.util.regex.Matcher m = p.matcher(objStr);
+            while (m.find()) {
+                String k = m.group(1);
+                String v = m.group(2).trim();
+                if (v.startsWith("\"") && v.endsWith("\"")) {
+                    map.put(k, v.substring(1, v.length() - 1));
+                } else if ("true".equalsIgnoreCase(v)) {
+                    map.put(k, Boolean.TRUE);
+                } else if ("false".equalsIgnoreCase(v)) {
+                    map.put(k, Boolean.FALSE);
+                } else if ("null".equalsIgnoreCase(v)) {
+                    map.put(k, null);
+                } else {
+                    try {
+                        if (v.contains(".")) {
+                            map.put(k, Double.parseDouble(v));
+                        } else {
+                            map.put(k, Long.parseLong(v));
+                        }
+                    } catch (Exception ex) {
+                        map.put(k, v);
+                    }
+                }
+            }
+            return map;
+        }
+
+        private int findMatchingBrace(String s, int openIdx) {
+            int depth = 0;
+            boolean inQuote = false;
+            for (int i = openIdx; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c == '"' && (i == 0 || s.charAt(i - 1) != '\\')) {
+                    inQuote = !inQuote;
+                } else if (!inQuote) {
+                    if (c == '{') depth++;
+                    else if (c == '}') {
+                        depth--;
+                        if (depth == 0) return i;
+                    }
+                }
+            }
+            return -1;
+        }
+
+        private String formatJsonValue(Object val) {
+            if (val == null) return "null";
+            if (val instanceof Number || val instanceof Boolean) return val.toString();
+            if (val instanceof Map) {
+                StringBuilder sb = new StringBuilder("{");
+                boolean f = true;
+                for (Map.Entry<?, ?> e : ((Map<?, ?>) val).entrySet()) {
+                    if (!f) sb.append(",");
+                    f = false;
+                    sb.append("\"").append(escape(String.valueOf(e.getKey()))).append("\":")
+                      .append(formatJsonValue(e.getValue()));
+                }
+                sb.append("}");
+                return sb.toString();
+            }
+            if (val instanceof List) {
+                StringBuilder sb = new StringBuilder("[");
+                boolean f = true;
+                for (Object item : ((List<?>) val)) {
+                    if (!f) sb.append(",");
+                    f = false;
+                    sb.append(formatJsonValue(item));
+                }
+                sb.append("]");
+                return sb.toString();
+            }
+            return "\"" + escape(val.toString()) + "\"";
         }
     }
 

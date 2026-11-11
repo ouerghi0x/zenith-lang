@@ -211,6 +211,22 @@ public class ServiceGenerator {
             sb.append("import ").append(basePkg).append(".service.EmailService;\n");
         }
 
+        boolean usesWebSocket = false;
+        if (file.hasSockets()) {
+            for (CustomEndpointDef custom : model.getCustomEndpoints()) {
+                for (String stmt : custom.getActionStatements()) {
+                    if (stmt.trim().startsWith("broadcast ") || stmt.trim().matches("^broadcast\\s+.*")) {
+                        usesWebSocket = true;
+                        break;
+                    }
+                }
+                if (usesWebSocket) break;
+            }
+        }
+        if (usesWebSocket) {
+            sb.append("import org.springframework.messaging.simp.SimpMessagingTemplate;\n");
+        }
+
         CrudConfig crudConfig = model.getCrudConfig();
         boolean modelHasCache = (crudConfig != null && crudConfig.hasCache()) || model.getCustomEndpoints().stream().anyMatch(CustomEndpointDef::hasCache);
         if (modelHasCache) {
@@ -252,6 +268,9 @@ public class ServiceGenerator {
         if (usesEmail) {
             sb.append("    private final EmailService emailService;\n");
         }
+        if (usesWebSocket) {
+            sb.append("    private final SimpMessagingTemplate messagingTemplate;\n");
+        }
         sb.append("\n");
 
         // Constructor injection
@@ -274,6 +293,9 @@ public class ServiceGenerator {
         if (usesEmail) {
             sb.append(",\n        EmailService emailService");
         }
+        if (usesWebSocket) {
+            sb.append(",\n        SimpMessagingTemplate messagingTemplate");
+        }
         sb.append("\n    ) {\n");
         sb.append("        this.repository = repository;\n");
         sb.append("        this.mapper = mapper;\n");
@@ -292,6 +314,9 @@ public class ServiceGenerator {
         }
         if (usesEmail) {
             sb.append("        this.emailService = emailService;\n");
+        }
+        if (usesWebSocket) {
+            sb.append("        this.messagingTemplate = messagingTemplate;\n");
         }
         sb.append("    }\n\n");
 

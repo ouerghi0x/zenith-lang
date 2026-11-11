@@ -82,6 +82,51 @@ public class PropertiesGenerator {
         } else if ("postgres".equalsIgnoreCase(db) || "postgresql".equalsIgnoreCase(db)) {
             sb.append("        dialect: org.hibernate.dialect.PostgreSQLDialect\n");
         }
+        if (file.hasCache()) {
+            String provider = file.getConfig().getCacheProvider();
+            boolean isRedis = "redis".equalsIgnoreCase(provider);
+            String springCacheType = isRedis ? "redis" : "caffeine";
+
+            sb.append("  cache:\n");
+            sb.append("    type: ").append(springCacheType).append("\n");
+
+            if (isRedis) {
+                sb.append("  data:\n");
+                sb.append("    redis:\n");
+                sb.append("      host: ${REDIS_HOST:localhost}\n");
+                sb.append("      port: ${REDIS_PORT:6379}\n");
+                sb.append("      timeout: 2000ms\n");
+            }
+        }
+
+        if (file.hasMails()) {
+            String mailFrom = file.getConfig().getMailFrom();
+            String mailHost = file.getConfig().getMailHost();
+            int mailPort = file.getConfig().getMailPort();
+            String mailUser = file.getConfig().getMailUsername();
+            String mailPass = file.getConfig().getMailPassword();
+
+            sb.append("  mail:\n");
+            sb.append("    host: ${SPRING_MAIL_HOST:").append(mailHost).append("}\n");
+            sb.append("    port: ${SPRING_MAIL_PORT:").append(mailPort).append("}\n");
+            sb.append("    username: ${SPRING_MAIL_USERNAME:").append(mailUser).append("}\n");
+            if (mailPass != null && !mailPass.isEmpty()) {
+                String cleanPass = mailPass.trim();
+                if ((cleanPass.startsWith("\"") && cleanPass.endsWith("\"")) || (cleanPass.startsWith("'") && cleanPass.endsWith("'"))) {
+                    cleanPass = cleanPass.substring(1, cleanPass.length() - 1);
+                }
+                sb.append("    password: ${SPRING_MAIL_PASSWORD:").append(cleanPass).append("}\n");
+            } else {
+                sb.append("    password: ${SPRING_MAIL_PASSWORD:}\n");
+            }
+            sb.append("    from: ${SPRING_MAIL_FROM:").append(mailFrom).append("}\n");
+            sb.append("    properties:\n");
+            sb.append("      mail:\n");
+            sb.append("        smtp:\n");
+            sb.append("          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}\n");
+            sb.append("          starttls:\n");
+            sb.append("            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}\n");
+        }
         sb.append("\n");
 
         if (swagger) {
@@ -92,10 +137,12 @@ public class PropertiesGenerator {
             sb.append("  api-docs:\n");
             sb.append("    path: /v3/api-docs\n\n");
         }
+
         if (hasAuth) {
             sb.append("jwt:\n");
             sb.append("  secret: ${JWT_SECRET:\"").append(file.getConfig().getJwtSecret()).append("\"}\n");
-            sb.append("  expiration: ${JWT_EXPIRATION_MS:").append(file.getConfig().getJwtExpirationMs()).append("}\n\n");
+            sb.append("  expiration: ${JWT_EXPIRATION_MS:").append(file.getConfig().getJwtExpirationMs())
+                    .append("}\n\n");
         }
 
         if (file.hasStorage()) {
@@ -134,41 +181,9 @@ public class PropertiesGenerator {
 
         if (file.hasMails()) {
             String provider = file.getConfig().getMailProvider();
-            String mailFrom = file.getConfig().getMailFrom();
-            sb.append("\nspring:\n");
-            sb.append("  mail:\n");
-            sb.append("    host: ${SPRING_MAIL_HOST:localhost}\n");
-            sb.append("    port: ${SPRING_MAIL_PORT:587}\n");
-            sb.append("    username: ${SPRING_MAIL_USERNAME:}\n");
-            sb.append("    password: ${SPRING_MAIL_PASSWORD:}\n");
-            sb.append("    from: ${SPRING_MAIL_FROM:").append(mailFrom).append("}\n");
-            sb.append("    properties:\n");
-            sb.append("      mail:\n");
-            sb.append("        smtp:\n");
-            sb.append("          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}\n");
-            sb.append("          starttls:\n");
-            sb.append("            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}\n");
-            sb.append("zenith:\n");
+            sb.append("\nzenith:\n");
             sb.append("  mail:\n");
             sb.append("    provider: ${ZENITH_MAIL_PROVIDER:").append(provider).append("}\n");
-        }
-
-        if (file.hasCache()) {
-            String provider = file.getConfig().getCacheProvider();
-            boolean isRedis = "redis".equalsIgnoreCase(provider);
-            String springCacheType = isRedis ? "redis" : "caffeine";
-
-            sb.append("\nspring:\n");
-            sb.append("  cache:\n");
-            sb.append("    type: ").append(springCacheType).append("\n");
-
-            if (isRedis) {
-                sb.append("  data:\n");
-                sb.append("    redis:\n");
-                sb.append("      host: ${REDIS_HOST:localhost}\n");
-                sb.append("      port: ${REDIS_PORT:6379}\n");
-                sb.append("      timeout: 2000ms\n");
-            }
         }
 
         return new JavaSourceFile("src/main/resources/application.yml", sb.toString());

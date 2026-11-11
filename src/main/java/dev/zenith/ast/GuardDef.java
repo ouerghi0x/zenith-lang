@@ -84,7 +84,7 @@ public class GuardDef {
     public String getEntityCondition() {
         String cond = expression;
         cond = cond.replaceAll("(?i)\\brole\\s+in\\s*\\[[^\\]]+\\]", "");
-        cond = cond.replaceAll("(?i)\\brole\\s*==\\s*[a-zA-Z0-9_.\'\"]+", "");
+        cond = cond.replaceAll("(?i)\\brole\\s*==\\s*([a-zA-Z0-9_.]+|\"[^\"]*\"|'[^']*')", "");
 
         String prev;
         do {

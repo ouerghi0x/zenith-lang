@@ -43,6 +43,8 @@ public class Lexer {
         KEYWORDS.put("cron", TokenType.CRON);
         KEYWORDS.put("mail", TokenType.MAIL);
         KEYWORDS.put("send", TokenType.SEND);
+        KEYWORDS.put("socket", TokenType.SOCKET);
+        KEYWORDS.put("broadcast", TokenType.BROADCAST);
     }
 
     public Lexer(String source) {

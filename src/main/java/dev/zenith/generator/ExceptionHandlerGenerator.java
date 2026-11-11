@@ -63,6 +63,7 @@ public class ExceptionHandlerGenerator {
         sb.append("import org.springframework.web.bind.annotation.RestControllerAdvice;\n");
         if (hasAuth) {
             sb.append("import org.springframework.security.access.AccessDeniedException;\n");
+            sb.append("import org.springframework.security.core.AuthenticationException;\n");
         }
         sb.append("import java.util.HashMap;\n");
         sb.append("import java.util.Map;\n\n");
@@ -88,6 +89,11 @@ public class ExceptionHandlerGenerator {
         sb.append("        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);\n");
         sb.append("    }\n\n");
         if (hasAuth) {
+            sb.append("    @ExceptionHandler(AuthenticationException.class)\n");
+            sb.append("    public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex) {\n");
+            sb.append("        ErrorResponse error = ErrorResponse.of(HttpStatus.UNAUTHORIZED.value(), \"Authentication failed: \" + ex.getMessage());\n");
+            sb.append("        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);\n");
+            sb.append("    }\n\n");
             sb.append("    @ExceptionHandler(AccessDeniedException.class)\n");
             sb.append("    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {\n");
             sb.append("        ErrorResponse error = ErrorResponse.of(HttpStatus.FORBIDDEN.value(), \"Access Denied: Insufficient permissions\");\n");

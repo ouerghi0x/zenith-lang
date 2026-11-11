@@ -41,6 +41,10 @@ public class CacheConfigGenerator {
             }
         }
 
+        String defaultTtlStr = file.getConfig().getCacheTtl();
+        Duration defaultDuration = Parser.parseCacheDuration(defaultTtlStr);
+        long defaultSeconds = defaultDuration.getSeconds() > 0 ? defaultDuration.getSeconds() : 600;
+
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePkg).append(".config;\n\n");
         sb.append("import org.slf4j.Logger;\n");
@@ -72,7 +76,7 @@ public class CacheConfigGenerator {
             sb.append("    @Bean\n");
             sb.append("    public RedisCacheConfiguration defaultCacheConfiguration() {\n");
             sb.append("        return RedisCacheConfiguration.defaultCacheConfig()\n");
-            sb.append("            .entryTtl(Duration.ofMinutes(10))\n");
+            sb.append("            .entryTtl(Duration.ofSeconds(").append(defaultSeconds).append("L))\n");
             sb.append("            .disableCachingNullValues()\n");
             sb.append("            .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))\n");
             sb.append("            .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));\n");
@@ -118,8 +122,11 @@ public class CacheConfigGenerator {
             sb.append("}\n");
         } else {
             // Caffeine Cache
-            sb.append("import org.springframework.cache.caffeine.CaffeineCacheManager;\n");
+            sb.append("import org.springframework.cache.support.SimpleCacheManager;\n");
+            sb.append("import org.springframework.cache.caffeine.CaffeineCache;\n");
             sb.append("import com.github.benmanes.caffeine.cache.Caffeine;\n");
+            sb.append("import java.util.ArrayList;\n");
+            sb.append("import java.util.List;\n");
             sb.append("import java.util.concurrent.TimeUnit;\n\n");
 
             sb.append("@Configuration\n");
@@ -129,11 +136,31 @@ public class CacheConfigGenerator {
 
             sb.append("    @Bean\n");
             sb.append("    public CacheManager cacheManager() {\n");
-            sb.append("        CaffeineCacheManager cacheManager = new CaffeineCacheManager();\n");
-            sb.append("        cacheManager.setCaffeine(Caffeine.newBuilder()\n");
-            sb.append("            .initialCapacity(100)\n");
-            sb.append("            .maximumSize(5000)\n");
-            sb.append("            .expireAfterWrite(Duration.ofMinutes(10)));\n");
+            sb.append("        SimpleCacheManager cacheManager = new SimpleCacheManager();\n");
+            sb.append("        List<CaffeineCache> caches = new ArrayList<>();\n\n");
+
+            sb.append("        // Default cache configuration (TTL: ").append(defaultSeconds).append("s)\n");
+
+            for (Map.Entry<String, String> e : cacheTtls.entrySet()) {
+                Duration d = Parser.parseCacheDuration(e.getValue());
+                long seconds = d.getSeconds() > 0 ? d.getSeconds() : defaultSeconds;
+                sb.append("        caches.add(new CaffeineCache(\"").append(e.getKey()).append("\", Caffeine.newBuilder()\n");
+                sb.append("            .initialCapacity(100)\n");
+                sb.append("            .maximumSize(5000)\n");
+                sb.append("            .expireAfterWrite(Duration.ofSeconds(").append(seconds).append("L))\n");
+                sb.append("            .build()));\n");
+            }
+
+            // If no specific endpoint caches were registered, create a default 'default' cache
+            if (cacheTtls.isEmpty()) {
+                sb.append("        caches.add(new CaffeineCache(\"default\", Caffeine.newBuilder()\n");
+                sb.append("            .initialCapacity(100)\n");
+                sb.append("            .maximumSize(5000)\n");
+                sb.append("            .expireAfterWrite(Duration.ofSeconds(").append(defaultSeconds).append("L))\n");
+                sb.append("            .build()));\n");
+            }
+
+            sb.append("\n        cacheManager.setCaches(caches);\n");
             sb.append("        return cacheManager;\n");
             sb.append("    }\n\n");
 

@@ -18,36 +18,7 @@ public class LogicTranspiler {
 
     public static String transpileCondition(String expr, ModelDef model, ZenithFile file) {
         if (expr == null || expr.trim().isEmpty()) return "true";
-        String s = expr.trim();
-
-        // 0. Logical operator normalization (case-insensitive and/or -> &&/||)
-        s = s.replaceAll("(?i)\\b(and)\\b", "&&");
-        s = s.replaceAll("(?i)\\b(or)\\b", "||");
-
-        // 1. entity prefix (e.g. status == ProductStatus.ACTIVE or entity.status == ...)
-        String entityVar = "entity";
-        String modelLower = model != null ? model.getName().toLowerCase() : "entity";
-
-        // Convert body.field to body.field() for Java record accessor syntax
-        s = s.replaceAll("\\bbody\\.([a-zA-Z0-9_]+)(?!\\()", "body.$1()");
-
-        // Handle field references like `status ==` or `order.status ==` or `stock <= 0`
-        if (model != null) {
-            for (var field : model.getFields()) {
-                String fName = field.getName();
-                String cap = TypeHelper.capitalize(fName);
-
-                // Replace entity.fName with entity.getCap()
-                s = s.replaceAll("\\b" + entityVar + "\\." + fName + "\\b", "entity.get" + cap + "()");
-                s = s.replaceAll("\\b" + modelLower + "\\." + fName + "\\b", "entity.get" + cap + "()");
-
-                // If standalone field name appears: e.g. "status =="
-                s = s.replaceAll("(?<![a-zA-Z0-9_.])" + fName + "(?![a-zA-Z0-9_])", "entity.get" + cap + "()");
-            }
-        }
-
-        s = s.replaceAll("\\s*\\.\\s*", ".");
-        return s;
+        return transpileValueExpression(expr, model, file);
     }
 
     public static String transpileStatement(String stmt, ModelDef model) {
@@ -81,6 +52,11 @@ public class LogicTranspiler {
         // 3.5. Handle "send MailName(...)"
         if (s.startsWith("send ") || s.matches("^send\\s+[A-Za-z0-9_]+\\s*\\(.*")) {
             return transpileSendStatement(s, model, file);
+        }
+
+        // 3.6. Handle "broadcast topic payload" or "broadcast topic { ... }"
+        if (s.startsWith("broadcast ") || s.matches("^broadcast\\s+.*")) {
+            return transpileBroadcastStatement(s, model, file);
         }
 
         // 4. Handle "return DTO { ... }" or "return expr;"
@@ -448,6 +424,64 @@ public class LogicTranspiler {
             }
         }
         return value;
+    }
+
+    private static String transpileBroadcastStatement(String s, ModelDef model, ZenithFile file) {
+        // e.g. broadcast "/topic/chat" payload
+        // or   broadcast "/topic/chat" { message = entity.content, sender = entity.sender }
+        String rest = s.substring(9).trim();
+        if (rest.isEmpty()) return "// empty broadcast statement";
+
+        String topic = "/topic/messages";
+        String payloadExpr = "response";
+
+        // Check if destination topic is quoted
+        if (rest.startsWith("\"") || rest.startsWith("'")) {
+            char q = rest.charAt(0);
+            int closingQ = rest.indexOf(q, 1);
+            if (closingQ > 0) {
+                topic = rest.substring(1, closingQ);
+                rest = rest.substring(closingQ + 1).trim();
+            }
+        } else {
+            int spaceIdx = rest.indexOf(' ');
+            if (spaceIdx > 0) {
+                topic = rest.substring(0, spaceIdx).trim();
+                rest = rest.substring(spaceIdx + 1).trim();
+            }
+        }
+
+        if (rest.startsWith("{") && rest.endsWith("}")) {
+            // Map construction: Map.of("key", val, ...)
+            String inner = rest.substring(1, rest.length() - 1).trim();
+            if (inner.isEmpty()) {
+                payloadExpr = "java.util.Collections.emptyMap()";
+            } else {
+                StringBuilder mapSb = new StringBuilder("java.util.Map.of(");
+                String[] pairs = inner.split(",");
+                for (int i = 0; i < pairs.length; i++) {
+                    String p = pairs[i].trim();
+                    if (p.isEmpty()) continue;
+                    String[] kv = p.split("=", 2);
+                    if (i > 0) mapSb.append(", ");
+                    if (kv.length == 2) {
+                        mapSb.append("\"").append(kv[0].trim()).append("\", ")
+                             .append(transpileValueExpression(kv[1].trim(), model, file));
+                    } else {
+                        mapSb.append("\"").append(p).append("\", ")
+                             .append(transpileValueExpression(p, model, file));
+                    }
+                }
+                mapSb.append(")");
+                payloadExpr = mapSb.toString();
+            }
+        } else if (!rest.isEmpty()) {
+            payloadExpr = transpileValueExpression(rest, model, file);
+        } else {
+            payloadExpr = "response";
+        }
+
+        return "this.messagingTemplate.convertAndSend(\"" + topic + "\", " + payloadExpr + ");";
     }
 
     private static String transpileSendStatement(String s, ModelDef model, ZenithFile file) {

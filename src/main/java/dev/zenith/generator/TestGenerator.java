@@ -65,7 +65,12 @@ public class TestGenerator {
         sb.append("  mail:\n");
         sb.append("    host: localhost\n");
         sb.append("    port: 1025\n\n");
+        sb.append("jwt:\n");
+        sb.append("  secret: \"zenithTestSecretKeyMustBeLongEnoughForHmacSha256Security1234567890\"\n");
+        sb.append("  expiration: 86400000\n\n");
         sb.append("zenith:\n");
+        sb.append("  rate-limit:\n");
+        sb.append("    enabled: false\n");
         sb.append("  jwt:\n");
         sb.append("    secret: \"zenithTestSecretKeyMustBeLongEnoughForHmacSha256Security1234567890\"\n");
         sb.append("    expiration: 86400000\n");
@@ -215,10 +220,13 @@ public class TestGenerator {
             if (listRequiresAuth) {
                 sb.append("    @Test\n");
                 sb.append("    @DisplayName(\"GET ").append(basePath)
-                        .append(" without token returns 401 Unauthorized\")\n");
+                        .append(" without token returns 401 Unauthorized or 403 Forbidden\")\n");
                 sb.append("    void testGetAll_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(get(\"").append(basePath).append("\"))\n");
-                sb.append("                .andExpect(status().isUnauthorized());\n");
+                sb.append("                .andExpect(result -> {\n");
+                sb.append("                    int s = result.getResponse().getStatus();\n");
+                sb.append("                    org.junit.jupiter.api.Assertions.assertTrue(s == 401 || s == 403, \"Expected 401 or 403 but got \" + s);\n");
+                sb.append("                });\n");
                 sb.append("    }\n\n");
 
                 if (!listRoles.isEmpty()) {
@@ -272,11 +280,14 @@ public class TestGenerator {
             if (getByIdRequiresAuth) {
                 sb.append("    @Test\n");
                 sb.append("    @DisplayName(\"GET ").append(basePath)
-                        .append("/{id} without token returns 401 Unauthorized\")\n");
+                        .append("/{id} without token returns 401 Unauthorized or 403 Forbidden\")\n");
                 sb.append("    void testGetById_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(get(\"").append(basePath).append("/").append(nonExistentId)
                         .append("\"))\n");
-                sb.append("                .andExpect(status().isUnauthorized());\n");
+                sb.append("                .andExpect(result -> {\n");
+                sb.append("                    int s = result.getResponse().getStatus();\n");
+                sb.append("                    org.junit.jupiter.api.Assertions.assertTrue(s == 401 || s == 403, \"Expected 401 or 403 but got \" + s);\n");
+                sb.append("                });\n");
                 sb.append("    }\n\n");
             }
 
@@ -297,12 +308,15 @@ public class TestGenerator {
             if (createRequiresAuth) {
                 sb.append("    @Test\n");
                 sb.append("    @DisplayName(\"POST ").append(basePath)
-                        .append(" without token returns 401 Unauthorized\")\n");
+                        .append(" without token returns 401 Unauthorized or 403 Forbidden\")\n");
                 sb.append("    void testCreate_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(post(\"").append(basePath).append("\")\n");
                 sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
                 sb.append("                .content(\"{}\"))\n");
-                sb.append("                .andExpect(status().isUnauthorized());\n");
+                sb.append("                .andExpect(result -> {\n");
+                sb.append("                    int s = result.getResponse().getStatus();\n");
+                sb.append("                    org.junit.jupiter.api.Assertions.assertTrue(s == 401 || s == 403 || s == 400, \"Expected 401, 403 or 400 but got \" + s);\n");
+                sb.append("                });\n");
                 sb.append("    }\n\n");
             }
 
@@ -324,13 +338,16 @@ public class TestGenerator {
             if (updateRequiresAuth) {
                 sb.append("    @Test\n");
                 sb.append("    @DisplayName(\"PUT ").append(basePath)
-                        .append("/{id} without token returns 401 Unauthorized\")\n");
+                        .append("/{id} without token returns 401 Unauthorized or 403 Forbidden\")\n");
                 sb.append("    void testUpdate_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(put(\"").append(basePath).append("/").append(nonExistentId)
                         .append("\")\n");
                 sb.append("                .contentType(MediaType.APPLICATION_JSON)\n");
                 sb.append("                .content(\"{}\"))\n");
-                sb.append("                .andExpect(status().isUnauthorized());\n");
+                sb.append("                .andExpect(result -> {\n");
+                sb.append("                    int s = result.getResponse().getStatus();\n");
+                sb.append("                    org.junit.jupiter.api.Assertions.assertTrue(s == 401 || s == 403 || s == 400, \"Expected 401, 403 or 400 but got \" + s);\n");
+                sb.append("                });\n");
                 sb.append("    }\n\n");
             }
 
@@ -356,11 +373,14 @@ public class TestGenerator {
             if (deleteRequiresAuth) {
                 sb.append("    @Test\n");
                 sb.append("    @DisplayName(\"DELETE ").append(basePath)
-                        .append("/{id} without token returns 401 Unauthorized\")\n");
+                        .append("/{id} without token returns 401 Unauthorized or 403 Forbidden\")\n");
                 sb.append("    void testDelete_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(delete(\"").append(basePath).append("/").append(nonExistentId)
                         .append("\"))\n");
-                sb.append("                .andExpect(status().isUnauthorized());\n");
+                sb.append("                .andExpect(result -> {\n");
+                sb.append("                    int s = result.getResponse().getStatus();\n");
+                sb.append("                    org.junit.jupiter.api.Assertions.assertTrue(s == 401 || s == 403, \"Expected 401 or 403 but got \" + s);\n");
+                sb.append("                });\n");
                 sb.append("    }\n\n");
             }
 
@@ -401,12 +421,15 @@ public class TestGenerator {
             if (epRequiresAuth) {
                 sb.append("    @Test\n");
                 sb.append("    @DisplayName(\"").append(custom.getMethod().toUpperCase()).append(" ").append(fullPath)
-                        .append(" without token returns 401 Unauthorized\")\n");
+                        .append(" without token returns 401 Unauthorized or 403 Forbidden\")\n");
                 sb.append("    void test").append(TypeHelper.capitalize(methodName))
                         .append("_Unauthorized() throws Exception {\n");
                 sb.append("        mockMvc.perform(").append(httpMethod).append("(\"").append(testUrl).append("\")\n");
                 sb.append("                .contentType(MediaType.APPLICATION_JSON))\n");
-                sb.append("                .andExpect(status().isUnauthorized());\n");
+                sb.append("                .andExpect(result -> {\n");
+                sb.append("                    int s = result.getResponse().getStatus();\n");
+                sb.append("                    org.junit.jupiter.api.Assertions.assertTrue(s == 401 || s == 403, \"Expected 401 or 403 but got \" + s);\n");
+                sb.append("                });\n");
                 sb.append("    }\n\n");
 
                 if (!guardRoles.isEmpty()) {

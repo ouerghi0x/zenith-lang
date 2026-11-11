@@ -28,9 +28,11 @@ public class EmailGenerator {
         // 2. EmailServiceImpl.java implementation
         list.add(generateEmailServiceImpl(file, basePkg, pkgDir));
 
-        // 3. Default Thymeleaf HTML templates in src/main/resources/templates/
+        // 3. Default Thymeleaf HTML templates in src/main/resources/templates/ (only for contracts using templates)
         for (MailDef mail : file.getMails()) {
-            list.add(generateEmailTemplate(mail, file));
+            if (mail.hasTemplate()) {
+                list.add(generateEmailTemplate(mail, file));
+            }
         }
 
         return list;
@@ -134,18 +136,24 @@ public class EmailGenerator {
                     : "defaultFromAddress";
             sb.append("            String fromAddress = ").append(fromExpr).append(";\n");
 
-            // Prepare Thymeleaf Context
-            sb.append("            Context context = new Context();\n");
-            for (FieldDef param : mail.getParameters()) {
-                sb.append("            context.setVariable(\"").append(param.getName()).append("\", ").append(param.getName()).append(");\n");
-            }
+            // Body rendering: inline content vs Thymeleaf template
+            if (mail.hasContent()) {
+                String contentExpr = transpileMailFieldExpr(mail.getContentExpression(), mail.getParameters());
+                sb.append("            String htmlBody = ").append(contentExpr).append(";\n\n");
+            } else {
+                // Prepare Thymeleaf Context
+                sb.append("            Context context = new Context();\n");
+                for (FieldDef param : mail.getParameters()) {
+                    sb.append("            context.setVariable(\"").append(param.getName()).append("\", ").append(param.getName()).append(");\n");
+                }
 
-            // Template rendering
-            String tplPath = mail.getTemplatePath();
-            if (tplPath.endsWith(".html")) {
-                tplPath = tplPath.substring(0, tplPath.length() - 5);
+                // Template rendering
+                String tplPath = mail.getTemplatePath();
+                if (tplPath.endsWith(".html")) {
+                    tplPath = tplPath.substring(0, tplPath.length() - 5);
+                }
+                sb.append("            String htmlBody = templateEngine.process(\"").append(tplPath).append("\", context);\n\n");
             }
-            sb.append("            String htmlBody = templateEngine.process(\"").append(tplPath).append("\", context);\n\n");
 
             // Console provider vs JavaMailSender
             sb.append("            if (\"console\".equalsIgnoreCase(mailProvider) || mailSender == null) {\n");

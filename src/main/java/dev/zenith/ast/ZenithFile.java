@@ -14,11 +14,12 @@ public class ZenithFile {
     private final List<SeedDef> seeds;
     private final List<JobDef> jobs;
     private final List<MailDef> mails;
+    private final List<SocketDef> sockets;
     private final List<ImportDef> imports;
     private final boolean explicitConfig;
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
-            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<ImportDef> imports, boolean explicitConfig) {
+            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<SocketDef> sockets, List<ImportDef> imports, boolean explicitConfig) {
         this.config = config != null ? config : AppConfig.defaults();
         this.enums = enums != null ? enums : new ArrayList<>();
         this.models = models != null ? models : new ArrayList<>();
@@ -26,8 +27,14 @@ public class ZenithFile {
         this.seeds = seeds != null ? seeds : new ArrayList<>();
         this.jobs = jobs != null ? jobs : new ArrayList<>();
         this.mails = mails != null ? mails : new ArrayList<>();
+        this.sockets = sockets != null ? sockets : new ArrayList<>();
         this.imports = imports != null ? imports : new ArrayList<>();
         this.explicitConfig = explicitConfig;
+    }
+
+    public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
+            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<ImportDef> imports, boolean explicitConfig) {
+        this(config, enums, models, dtos, seeds, jobs, mails, Collections.emptyList(), imports, explicitConfig);
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
@@ -101,6 +108,22 @@ public class ZenithFile {
         if (name == null) return null;
         for (MailDef m : mails) {
             if (m.getName().equalsIgnoreCase(name)) return m;
+        }
+        return null;
+    }
+
+    public List<SocketDef> getSockets() {
+        return Collections.unmodifiableList(sockets);
+    }
+
+    public boolean hasSockets() {
+        return sockets != null && !sockets.isEmpty();
+    }
+
+    public SocketDef findSocket(String name) {
+        if (name == null) return null;
+        for (SocketDef s : sockets) {
+            if (s.getName().equalsIgnoreCase(name)) return s;
         }
         return null;
     }
