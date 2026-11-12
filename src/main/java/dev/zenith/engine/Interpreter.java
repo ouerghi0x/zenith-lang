@@ -78,6 +78,12 @@ public class Interpreter {
             return;
         }
 
+        // Pattern 2.6: WebSocket Peer-to-Peer Action: 'sendToUser (recipientId, "/queue/messages") { ... }'
+        if (stmt.startsWith("sendToUser ") || stmt.startsWith("sendToUser(")) {
+            executeSendToUserStatement(stmt, scope, effects, trace);
+            return;
+        }
+
         // Pattern 3: Assignment: 'target = expr' or 'entity.field = expr'
         int eqIdx = stmt.indexOf('=');
         if (eqIdx != -1 && !stmt.startsWith("==")) {
@@ -159,6 +165,65 @@ public class Interpreter {
         DispatchedEffect effect = new DispatchedEffect("WEBSOCKET", topic, payload);
         effects.add(effect);
         trace.addStep("Broadcast to WebSocket topic '" + topic + "' -> " + payload);
+    }
+
+    private void executeSendToUserStatement(String stmt, Scope scope, List<DispatchedEffect> effects, ExecutionTrace trace) {
+        // e.g. sendToUser (recipientId, "/queue/messages") { id = entity.id, content = entity.content }
+        int openParen = stmt.indexOf('(');
+        String recipientStr = "user";
+        String queue = "/queue/messages";
+        String rest = "";
+
+        if (openParen != -1) {
+            int closeParen = stmt.indexOf(')', openParen);
+            if (closeParen != -1) {
+                String header = stmt.substring(openParen + 1, closeParen).trim();
+                String[] parts = header.split(",", 2);
+                if (parts.length >= 1) {
+                    ZenithValue rVal = Evaluator.evaluate(parts[0].trim(), scope);
+                    recipientStr = rVal != null && rVal.getRawValue() != null ? String.valueOf(rVal.getRawValue()) : parts[0].trim();
+                }
+                if (parts.length >= 2) {
+                    String q = parts[1].trim();
+                    if ((q.startsWith("\"") && q.endsWith("\"")) || (q.startsWith("'") && q.endsWith("'"))) {
+                        queue = q.substring(1, q.length() - 1);
+                    } else {
+                        queue = q;
+                    }
+                }
+                rest = stmt.substring(closeParen + 1).trim();
+            }
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (rest.startsWith("{") && rest.endsWith("}")) {
+            String inner = rest.substring(1, rest.length() - 1).trim();
+            if (!inner.isEmpty()) {
+                List<String> pairs = Evaluator.splitTopLevel(inner, ',');
+                for (String p : pairs) {
+                    int eq = p.indexOf('=');
+                    if (eq != -1) {
+                        String k = p.substring(0, eq).trim();
+                        String vExpr = p.substring(eq + 1).trim();
+                        ZenithValue vVal = Evaluator.evaluate(vExpr, scope);
+                        payload.put(k, vVal != null ? vVal.getRawValue() : null);
+                    } else {
+                        ZenithValue vVal = Evaluator.evaluate(p.trim(), scope);
+                        payload.put(p.trim(), vVal != null ? vVal.getRawValue() : null);
+                    }
+                }
+            }
+        } else if (!rest.isEmpty()) {
+            ZenithValue evalPayload = Evaluator.evaluate(rest, scope);
+            payload.put("data", evalPayload != null ? evalPayload.getRawValue() : null);
+        } else {
+            ZenithValue entity = scope.resolve("entity");
+            payload.put("data", entity != null ? entity.getRawValue() : null);
+        }
+
+        DispatchedEffect effect = new DispatchedEffect("WEBSOCKET_USER", queue + " [user=" + recipientStr + "]", payload);
+        effects.add(effect);
+        trace.addStep("Sent peer-to-peer WebSocket message to user '" + recipientStr + "' at queue '" + queue + "' -> " + payload);
     }
 
     private void executeSendStatement(String stmt, Scope scope, List<DispatchedEffect> effects, ExecutionTrace trace) {

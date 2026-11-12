@@ -117,7 +117,19 @@ public class ZenithFile {
     }
 
     public boolean hasSockets() {
-        return sockets != null && !sockets.isEmpty();
+        if (sockets != null && !sockets.isEmpty()) return true;
+        for (ModelDef m : models) {
+            for (CustomEndpointDef ep : m.getCustomEndpoints()) {
+                for (String stmt : ep.getActionStatements()) {
+                    String trimmed = stmt.trim();
+                    if (trimmed.startsWith("broadcast ") || trimmed.startsWith("broadcast\"") || trimmed.startsWith("broadcast'")
+                            || trimmed.startsWith("sendToUser ") || trimmed.matches("^sendToUser\\s*\\(.*")) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     public SocketDef findSocket(String name) {

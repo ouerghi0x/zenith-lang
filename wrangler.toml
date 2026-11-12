@@ -1,0 +1,8 @@
+name = "zenith-studio"
+compatibility_date = "2026-11-01"
+pages_build_output_dir = "src/main/resources/studio"
+
+[vars]
+# Point this to your deployed Java container URL (e.g. Cloudflare Container, Railway, Fly.io, or Cloudflare Tunnel)
+BACKEND_API_URL = "http://localhost:3000"
+

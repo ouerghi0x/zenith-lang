@@ -10,7 +10,7 @@
   <!-- Monaco Editor Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
   <link rel="icon" type="image/png" href="logo.png" />
-  <link rel="stylesheet" href="/studio.css" />
+  <link rel="stylesheet" href="/studio.css?v=20261112_v9" />
 </head>
 <body>
   <!-- Header -->
@@ -29,6 +29,13 @@
     <div class="schema-status" id="schemaStatus">
       <span class="status-dot ready"></span>
       <span id="statusText">Compiler Ready</span>
+    </div>
+
+    <!-- Edition Switcher Pill (PRO vs Community) -->
+    <div class="edition-pill community" id="editionPill" onclick="toggleEditionSwitch()" title="Current Edition. Click to toggle Community / PRO.">
+      <span class="edition-icon" id="editionIcon">🌐</span>
+      <span id="editionLabel">Community</span>
+      <span class="edition-tag" id="editionTag">FREE</span>
     </div>
 
     <!-- Action Bar -->
@@ -199,6 +206,18 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             API Tester
           </button>
+          <!-- Spec #37: API Dependency Workflows (PRO Exclusive) -->
+          <button class="tab-btn pro-tab-btn" data-tab="workflows" id="tabBtnWorkflows" draggable="true" onclick="switchPreviewTab('workflows')" style="display: none;" title="API Dependency Workflows (PRO Exclusive)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="7" width="6" height="6" rx="1"></rect>
+              <rect x="16" y="2" width="6" height="6" rx="1"></rect>
+              <rect x="16" y="14" width="6" height="6" rx="1"></rect>
+              <path d="M8 10h4a2 2 0 0 1 2 2v4"></path>
+              <path d="M12 10V5a2 2 0 0 1 2-2h2"></path>
+            </svg>
+            <span>Workflows</span>
+            <span class="pro-tag">PRO</span>
+          </button>
           <button class="tab-btn" data-tab="java" draggable="true" onclick="switchPreviewTab('java')" title="Drag to reorder tab">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
             Repository Tree
@@ -272,107 +291,298 @@
               <div class="endpoint-search-box">
                 <input type="text" id="endpointSearchInput" class="endpoint-search-input" placeholder="Filter endpoints..." oninput="filterEndpoints(this.value)" />
               </div>
+              <div class="endpoint-method-filters" id="endpointMethodFilters">
+                <button class="method-filter-pill active" onclick="filterByMethod('ALL', this)">ALL <span class="count" id="countAllApis">0</span></button>
+                <button class="method-filter-pill get" onclick="filterByMethod('GET', this)">GET <span class="count" id="countGetApis">0</span></button>
+                <button class="method-filter-pill post" onclick="filterByMethod('POST', this)">POST <span class="count" id="countPostApis">0</span></button>
+                <button class="method-filter-pill put" onclick="filterByMethod('PUT', this)">PUT <span class="count" id="countPutApis">0</span></button>
+                <button class="method-filter-pill delete" onclick="filterByMethod('DELETE', this)">DEL <span class="count" id="countDeleteApis">0</span></button>
+              </div>
               <div id="endpointList" class="endpoint-accordion-list">
-                <!-- Dynamically populated routes grouped by Model -->
+                <!-- Dynamically populated routes grouped by Model & Sockets -->
               </div>
             </div>
-            <div class="endpoint-runner" id="endpointRunner">
-              <div class="runner-header">
-                <span class="http-badge" id="runnerMethod">GET</span>
-                <input type="text" id="runnerUrl" class="runner-input" />
-                <button class="btn btn-primary btn-sm" onclick="sendApiRequest()">Send</button>
-                <button class="btn btn-simulate btn-sm" id="btnSimulateAction" onclick="simulateEndpointAction()" title="Run instant in-memory action simulation (5ms) without Spring Boot boot">Simulate</button>
-                <button class="btn btn-secondary btn-sm" id="btnBurstTest" onclick="sendBurstApiRequests(10)" title="Rapidly send burst requests to test rate limiting & quota">Burst (10x)</button>
-              </div>
 
-              <!-- Path Variables Dynamic Bar -->
-              <div id="pathParamsContainer" class="params-bar" style="display: none;">
-                <span class="params-label">Path Params:</span>
-                <div id="pathParamsInputs" class="params-inputs"></div>
-              </div>
-
-              <!-- Mock Entity State for In-Memory Simulation -->
-              <div id="simEntityStateContainer" class="params-bar" style="display: none;">
-                <span class="params-label">Simulate Entity:</span>
-                <input type="text" id="simMockEntityJson" class="auth-input" style="font-family: var(--font-mono, monospace); font-size: 11px; color: #e4e4e7;" placeholder='{"status": "CONFIRMED", "totalAmount": 149.99}' />
-                <button class="btn btn-secondary btn-xs" onclick="resetMockEntityState()" title="Reset mock entity to default model values">Reset</button>
-              </div>
-
-              <!-- Auth Token Injector -->
-              <div class="auth-bar">
-                <span class="auth-label">JWT Token:</span>
-                <input type="text" id="runnerAuthToken" class="auth-input" placeholder="Bearer eyJhbGciOiJIUzI1NiIsIn..." />
-                <button class="btn btn-secondary btn-sm" onclick="quickLoginDemo()">Auto-Fill Admin JWT</button>
-              </div>
-
-              <div class="runner-body">
-                <div class="runner-section-header">
-                  <div class="runner-subheading">Request Body (JSON)</div>
-                  <button class="btn btn-link btn-xs" onclick="prettifyRequestBody()">Prettify JSON</button>
+            <div class="unified-tester-workspace">
+              <!-- Clean Top Action Bar -->
+              <div class="tester-top-bar">
+                <div class="tester-top-left">
+                  <button id="btnToggleSidebar" class="layout-btn active" onclick="toggleApiSidebar()" title="Toggle API Sidebar (Show / Hide)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <line x1="9" y1="3" x2="9" y2="21"/>
+                    </svg>
+                  </button>
+                  <button class="btn-proto-add btn-add-http" onclick="addRestTestWindow()" title="Add HTTP / REST Window">
+                    <span class="plus-glyph">+</span>
+                    <svg width="22" height="12" viewBox="0 0 32 18" fill="none" class="proto-svg">
+                      <path d="M3 4h24M22 1l5 3-5 3M29 14H5M10 11l-5 3 5 3" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <text x="16" y="11.5" fill="#38bdf8" font-size="8" font-weight="900" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, monospace" text-anchor="middle" letter-spacing="-0.5">HTTP</text>
+                    </svg>
+                  </button>
+                  <button class="btn-proto-add btn-add-ws" onclick="addWsTestWindow()" title="Add WebSocket Client Window">
+                    <span class="plus-glyph">+</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="proto-svg">
+                      <path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/>
+                    </svg>
+                  </button>
                 </div>
-                <textarea id="runnerRequestBody" class="runner-textarea" placeholder="{}"></textarea>
-
-                <div class="runner-section-header">
-                  <div class="runner-subheading">
-                    Response &middot; <span id="runnerResponseStatus" class="response-status-badge">-</span>
-                    <span id="runnerResponseTime" class="response-time-badge"></span>
-                    <span id="runnerRateLimitBadge" class="rate-limit-badge" style="display:none; margin-left: 8px; font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);"></span>
+                <div class="tester-top-right">
+                  <div class="layout-toggle-group">
+                    <button id="btnLayoutGrid" class="layout-btn active" onclick="setTesterLayout('grid')" title="Side-by-side Grid">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                      <span>Grid</span>
+                    </button>
+                    <button id="btnLayoutStack" class="layout-btn" onclick="setTesterLayout('stack')" title="Full-width Stack">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                      <span>Stack</span>
+                    </button>
                   </div>
-                  <button class="btn btn-secondary btn-xs" onclick="copyResponseBody()">Copy Response</button>
+                  <button class="btn-clean-link" onclick="clearAllTesterWindows()" title="Clear logs and responses">Clear All</button>
                 </div>
-                <pre id="runnerResponseBody" class="runner-response-box">Click "Send" to test endpoint...</pre>
+              </div>
 
-                <!-- In-Memory Simulation Trace Drawer -->
-                <div id="simulationTraceContainer" class="simulation-trace-container" style="display: none;">
-                  <div class="sim-header">
-                    <div class="sim-title">
-                      <span class="sim-status-dot"></span>
-                      <span>Simulation Trace</span>
-                      <span id="simExecutionBadge" class="sim-badge">3ms</span>
-                    </div>
-                    <button class="ide-icon-btn" onclick="closeSimulationTrace()" title="Dismiss simulation drawer">✕</button>
+              <!-- Unified Windows Canvas (REST & WS Coexistence) -->
+              <div id="testerWindowsCanvas" class="tester-windows-canvas layout-grid"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spec #37: API Dependency Workflows & Pipeline Runner (PRO Exclusive) -->
+        <div id="tab-workflows" class="preview-panel">
+          <div class="workflow-workspace">
+            <!-- Top Controls Bar -->
+            <div class="wf-top-bar">
+              <div class="wf-top-left">
+                <span class="wf-title-badge" title="Dependency Workflows">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="7" width="6" height="6" rx="1"></rect>
+                    <rect x="16" y="2" width="6" height="6" rx="1"></rect>
+                    <rect x="16" y="14" width="6" height="6" rx="1"></rect>
+                    <path d="M8 10h4a2 2 0 0 1 2 2v4"></path>
+                    <path d="M12 10V5a2 2 0 0 1 2-2h2"></path>
+                  </svg>
+                </span>
+                <select id="wfPresetSelect" class="wf-select" onchange="onWorkflowPresetChange(this.value)">
+                  <option value="commerce-e2e">Complete E2E Commerce Pipeline (Tree / DAG)</option>
+                </select>
+                <button class="btn btn-secondary wf-toolbar-btn" id="btnAddNodeBtn" onclick="toggleAddNodePalette()" title="Add an API Node to the canvas board">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <span>Add Node</span>
+                </button>
+              </div>
+
+              <div class="wf-top-center">
+                <button class="btn wf-magic-btn" id="btnAutoWireAst" onclick="triggerAstAutoWire()" title="Automatically deduce and connect dependencies using Zenith Schema AST relationships and Auth">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                  <span>Auto-Wire (Zenith AST)</span>
+                </button>
+                <button class="btn btn-secondary wf-toolbar-btn" onclick="clearAllWorkflowWires()" title="Disconnect all wires to manually connect APIs from scratch">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  <span>Unlink All</span>
+                </button>
+                <button class="btn btn-secondary wf-toolbar-btn" onclick="autoLayoutWorkflowCanvas()" title="Auto-align nodes on the board">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="21" y1="18" x2="3" y2="18"></line></svg>
+                  <span>Auto-Layout</span>
+                </button>
+                <div class="wf-zoom-controls">
+                  <button class="wf-zoom-btn" onclick="zoomWorkflowCanvas(-0.1)" title="Zoom Out">−</button>
+                  <span class="wf-zoom-level" id="wfZoomLabel" onclick="resetWorkflowCanvasZoom()" title="Reset Zoom">100%</span>
+                  <button class="wf-zoom-btn" onclick="zoomWorkflowCanvas(0.1)" title="Zoom In">+</button>
+                </div>
+                <button class="btn btn-secondary wf-toolbar-btn" id="btnToggleWfInspector" onclick="toggleWorkflowInspector()" title="Toggle Inspector Panel (hide or bring back)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+                  <span>Inspector</span>
+                </button>
+              </div>
+
+              <div class="wf-top-right">
+                <button class="btn btn-primary wf-action-btn" id="btnRunWorkflow" onclick="runWorkflowPipeline()" title="Run complete workflow pipeline">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  <span>Run</span>
+                </button>
+                <button class="btn btn-secondary wf-action-btn" id="btnStepWorkflow" onclick="stepWorkflowPipeline()" title="Execute next step">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 4 15 12 5 20"></polyline><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+                  <span>Step</span>
+                </button>
+                <button class="btn btn-secondary wf-action-btn" onclick="resetWorkflowPipeline()" title="Reset Pipeline">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                  <span>Reset</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Main Interactive Canvas & Inspector Split -->
+            <div class="wf-body-split">
+              <!-- Left: 2D Interactive Node Canvas Board -->
+              <div class="wf-dag-container" id="wfBoardWorkspace" onmousedown="handleBoardMouseDown(event)">
+                <!-- Floating Quick Palette for Adding API Nodes -->
+                <div id="wfAddNodePalette" class="wf-add-node-palette" style="display: none;" onclick="event.stopPropagation()">
+                  <div class="wf-palette-header">
+                    <span>Add API Node to Canvas</span>
+                    <button onclick="toggleAddNodePalette()" class="wf-palette-close">&times;</button>
                   </div>
-                  <div class="sim-content">
-                    <div class="sim-section">
-                      <div class="sim-subheading">Preconditions & Execution Steps</div>
-                      <div id="simTraceList" class="sim-trace-list"></div>
+                  <input type="text" id="wfPaletteSearch" class="wf-palette-search" placeholder="Search schema endpoints..." oninput="filterAddNodePalette(this.value)">
+                  <div class="wf-palette-list" id="wfPaletteList"></div>
+                </div>
+
+                <!-- Wire Hint Notification -->
+                <div id="wfWireHint" class="wf-wire-hint" style="display:none;">
+                  <span>Click and drag from any output dot (right) to an input dot (left) to link APIs</span>
+                </div>
+
+                <!-- Interactive Pan/Zoom Canvas Surface -->
+                <div class="wf-canvas-surface" id="wfCanvasSurface">
+                  <!-- SVG Connections Layer -->
+                  <svg class="wf-connections-svg" id="wfConnectionsSvg">
+                    <defs>
+                      <marker id="wfArrow" markerWidth="10" markerHeight="10" refX="5" refY="3.5" orient="auto">
+                        <polygon points="0 1, 6 3.5, 0 6" fill="#38bdf8" />
+                      </marker>
+                      <marker id="wfArrowPassed" markerWidth="10" markerHeight="10" refX="5" refY="3.5" orient="auto">
+                        <polygon points="0 1, 6 3.5, 0 6" fill="#34d399" />
+                      </marker>
+                      <filter id="wfGlow" x="-30%" y="-30%" width="160%" height="160%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                      <linearGradient id="wfWireGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#38bdf8" />
+                        <stop offset="100%" stop-color="#818cf8" />
+                      </linearGradient>
+                      <linearGradient id="wfWireGradPassed" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#38bdf8" />
+                        <stop offset="100%" stop-color="#34d399" />
+                      </linearGradient>
+                    </defs>
+                    <!-- Real-time SVG Wires rendered here -->
+                    <g id="wfWiresGroup"></g>
+                    <!-- Temporary wire when dragging -->
+                    <path id="wfTempWire" class="wf-temp-wire" d="" style="display:none;" />
+                  </svg>
+
+                  <!-- Interactive Nodes in 2D Space -->
+                  <div class="wf-nodes-layer" id="wfNodesLayer"></div>
+                </div>
+              </div>
+
+              <!-- Vertical Split Resizer between Board Canvas and Inspector -->
+              <div class="wf-split-resizer" id="wfSplitResizer" title="Drag to resize Inspector"></div>
+
+              <!-- Right: Structured Step Result & Expectation Inspector -->
+              <div class="wf-inspector-container" id="wfInspector">
+                <!-- Visual Status Banner -->
+                <div class="wf-status-banner pending" id="wfStatusBanner">
+                  <div class="wf-banner-left">
+                    <span class="wf-banner-icon" id="wfBannerIcon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </span>
+                    <div class="wf-banner-info">
+                      <span class="wf-banner-title" id="wfBannerTitle">Select a Node</span>
+                      <span class="wf-banner-subtitle" id="wfBannerSubtitle">Click any API node to configure inputs &amp; expectations</span>
                     </div>
-                    <div class="sim-grid">
-                      <div class="sim-card">
-                        <div class="sim-subheading">State Mutation Diffs</div>
-                        <div id="simStateDiff" class="sim-diff-box">No mutations</div>
+                  </div>
+                  <div class="wf-banner-right">
+                    <span class="wf-banner-badge" id="wfBannerBadge">READY</span>
+                    <span class="wf-banner-latency" id="wfBannerLatency">-</span>
+                    <button class="wf-insp-close-btn" onclick="toggleWorkflowInspector()" title="Hide Inspector">&times;</button>
+                  </div>
+                </div>
+
+                <!-- Inspector Navigation Sub-tabs -->
+                <div class="wf-inspector-tabs">
+                  <button class="wf-insp-tab active" id="btnInspInputs" onclick="switchInspectorTab('inputs')">
+                    Inputs &amp; Payload
+                  </button>
+                  <button class="wf-insp-tab" id="btnInspExpectations" onclick="switchInspectorTab('expectations')">
+                    Expectations (Assertions)
+                  </button>
+                  <button class="wf-insp-tab" id="btnInspResponse" onclick="switchInspectorTab('response')">
+                    Server Response
+                  </button>
+                </div>
+
+                <div class="wf-inspector-body">
+                  <!-- Panel 1: Inputs & Payload Editor -->
+                  <div id="wfPanelInputs" class="wf-insp-panel active">
+                    <div class="wf-section-box">
+                      <div class="wf-section-header">
+                        <span class="wf-section-label">Piped Dependencies</span>
+                        <span class="wf-section-count" id="wfPipedCount">0 wires linked</span>
                       </div>
-                      <div class="sim-card">
-                        <div class="sim-subheading">Dispatched Side-Effects</div>
-                        <div id="simDispatchedEffects" class="sim-effects-box">No side effects</div>
+                      <div id="wfPipedTableContainer" class="wf-table-wrap">
+                        <div class="wf-empty-table-state">No wires connected to this node. Drag an output wire from another node to pipe data.</div>
+                      </div>
+                    </div>
+
+                    <div class="wf-section-box">
+                      <div class="wf-section-header">
+                        <span class="wf-section-label">Editable Request Payload</span>
+                        <div class="wf-view-toggle">
+                          <button class="wf-toggle-btn active" id="btnReqFormView" onclick="setPayloadViewMode('request', 'form')">Form</button>
+                          <button class="wf-toggle-btn" id="btnReqJsonView" onclick="setPayloadViewMode('request', 'json')">JSON</button>
+                        </div>
+                      </div>
+                      <div class="wf-req-target-pill" id="wfReqTargetPill">POST /api/v1/auth/register</div>
+                      <div id="wfReqFormView" class="wf-payload-form-view">
+                        <!-- Editable fields populated by studio.js -->
+                      </div>
+                      <textarea id="wfReqJsonView" class="wf-json-editor" style="display: none;" oninput="onJsonEditorChange(this.value)"></textarea>
+                    </div>
+                  </div>
+
+                  <!-- Panel 2: Expectations / Assertions Editor -->
+                  <div id="wfPanelExpectations" class="wf-insp-panel" style="display: none;">
+                    <div class="wf-section-box">
+                      <div class="wf-section-header">
+                        <span class="wf-section-label">System Assertions &amp; Expectations</span>
+                        <button class="wf-quick-mock-btn" onclick="addNewAssertionRule()">+ Add Rule</button>
+                      </div>
+                      <div class="wf-expected-status-row">
+                        <label>Expected HTTP Status:</label>
+                        <select id="wfExpectedStatusSelect" class="wf-status-select" onchange="onExpectedStatusChange(this.value)">
+                          <option value="200">200 OK</option>
+                          <option value="201">201 Created</option>
+                          <option value="204">204 No Content</option>
+                          <option value="400">400 Bad Request</option>
+                          <option value="401">401 Unauthorized</option>
+                          <option value="403">403 Forbidden</option>
+                          <option value="404">404 Not Found</option>
+                        </select>
+                      </div>
+                      <div class="wf-assertions-list" id="wfAssertionsList">
+                        <!-- Dynamic Assertions rendered here -->
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <!-- Live WebSocket Console Drawer (Spec #18) -->
-                <div id="wsConsoleContainer" class="simulation-trace-container" style="display: none; margin-top: 16px;">
-                  <div class="sim-header">
-                    <div class="sim-title">
-                      <span id="wsStatusDot" class="sim-status-dot" style="background: #71717a;"></span>
-                      <span>Real-Time WebSocket Stream</span>
-                      <span id="wsTopicBadge" class="sim-badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">/topic/chat</span>
+                  <!-- Panel 3: Server Response & Audit -->
+                  <div id="wfPanelResponse" class="wf-insp-panel" style="display: none;">
+                    <div class="wf-section-box">
+                      <div class="wf-section-header">
+                        <span class="wf-section-label">Assertions Result Checklist</span>
+                        <span class="wf-section-count" id="wfAssertionPassCount">-</span>
+                      </div>
+                      <div id="wfAssertionResultsList" class="wf-assertion-results">
+                        <div class="wf-empty-table-state">Run workflow to test system response against your expectations.</div>
+                      </div>
                     </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                      <button id="btnWsConnect" class="btn btn-primary btn-xs" onclick="toggleWebSocketConnection()">Connect</button>
-                      <button class="ide-icon-btn" onclick="clearWebSocketFrames()" title="Clear frame log">⟲</button>
-                      <button class="ide-icon-btn" onclick="closeWebSocketDrawer()" title="Dismiss WebSocket console">✕</button>
-                    </div>
-                  </div>
-                  <div class="sim-content" style="padding-top: 8px;">
-                    <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
-                      <span style="font-size: 11px; color: #a1a1aa; font-family: var(--font-mono, monospace);">ENDPOINT:</span>
-                      <input type="text" id="wsEndpointInput" class="auth-input" style="flex: 1; font-family: var(--font-mono, monospace); font-size: 11px; padding: 4px 8px;" value="http://localhost:8080/ws" />
-                      <span style="font-size: 11px; color: #a1a1aa; font-family: var(--font-mono, monospace);">TOPIC:</span>
-                      <input type="text" id="wsTopicInput" class="auth-input" style="width: 140px; font-family: var(--font-mono, monospace); font-size: 11px; padding: 4px 8px;" value="/topic/chat" />
-                    </div>
-                    <div id="wsFramesList" class="sim-trace-list" style="max-height: 180px; overflow-y: auto; background: #0c0d11; border: 1px solid #1f222e; border-radius: 4px; padding: 6px;">
-                      <div class="sim-empty-item">WebSocket disconnected. Click Connect to listen for broadcast frames.</div>
+
+                    <div class="wf-section-box">
+                      <div class="wf-section-header">
+                        <span class="wf-section-label">Server Response</span>
+                        <div class="wf-response-controls">
+                          <div class="wf-view-toggle">
+                            <button class="wf-toggle-btn active" id="btnRespFormView" onclick="setPayloadViewMode('response', 'form')">Form</button>
+                            <button class="wf-toggle-btn" id="btnRespJsonView" onclick="setPayloadViewMode('response', 'json')">JSON</button>
+                          </div>
+                          <button class="wf-copy-btn" onclick="copyWorkflowStepResponse()" title="Copy Response JSON">Copy</button>
+                        </div>
+                      </div>
+                      <div id="wfRespFormView" class="wf-tree-container">
+                        <div class="wf-empty-table-state">Awaiting execution...</div>
+                      </div>
+                      <pre id="wfRespJsonView" class="wf-json-container" style="display: none;"><code>{}</code></pre>
                     </div>
                   </div>
                 </div>
@@ -2568,6 +2778,6 @@ model CatalogItem {
     </button>
   </div>
 
-  <script src="/studio.js"></script>
+  <script src="/studio.js?v=20261112_v9"></script>
 </body>
 </html>

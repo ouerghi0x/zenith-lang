@@ -358,6 +358,9 @@ public class SecurityGenerator {
         sb.append(
                 "                .requestMatchers(\"/swagger-ui/**\", \"/v3/api-docs/**\", \"/swagger-ui.html\").permitAll()\n");
         sb.append("                .requestMatchers(\"/h2-console/**\").permitAll()\n");
+        if (file.hasSockets()) {
+            sb.append("                .requestMatchers(\"/ws/**\", \"/ws\").permitAll()\n");
+        }
         sb.append("                .anyRequest().permitAll()\n");
         sb.append("            )\n");
         if (file.hasRateLimiting()) {

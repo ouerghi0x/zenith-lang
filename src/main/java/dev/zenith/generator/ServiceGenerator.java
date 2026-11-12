@@ -215,7 +215,8 @@ public class ServiceGenerator {
         if (file.hasSockets()) {
             for (CustomEndpointDef custom : model.getCustomEndpoints()) {
                 for (String stmt : custom.getActionStatements()) {
-                    if (stmt.trim().startsWith("broadcast ") || stmt.trim().matches("^broadcast\\s+.*")) {
+                    if (stmt.trim().startsWith("broadcast ") || stmt.trim().matches("^broadcast\\s+.*")
+                            || stmt.trim().startsWith("sendToUser ") || stmt.trim().matches("^sendToUser\\s*\\(.*")) {
                         usesWebSocket = true;
                         break;
                     }

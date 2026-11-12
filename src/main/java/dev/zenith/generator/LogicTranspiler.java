@@ -59,6 +59,11 @@ public class LogicTranspiler {
             return transpileBroadcastStatement(s, model, file);
         }
 
+        // 3.7. Handle "sendToUser (recipient, queue) { ... }"
+        if (s.startsWith("sendToUser ") || s.matches("^sendToUser\\s*\\(.*")) {
+            return transpileSendToUserStatement(s, model, file);
+        }
+
         // 4. Handle "return DTO { ... }" or "return expr;"
         if (s.startsWith("return ") || s.equals("return")) {
             return transpileReturnStatement(s, model, file);
@@ -482,6 +487,85 @@ public class LogicTranspiler {
         }
 
         return "this.messagingTemplate.convertAndSend(\"" + topic + "\", " + payloadExpr + ");";
+    }
+
+    private static String transpileSendToUserStatement(String s, ModelDef model, ZenithFile file) {
+        // e.g. sendToUser (recipientId, "/queue/messages") { id = entity.id, content = entity.content }
+        // or   sendToUser recipientId, "/queue/messages" { ... }
+        int openParen = s.indexOf('(');
+        int closeParen = -1;
+        String userExpr = "entity.getRecipientId()";
+        String queue = "/queue/messages";
+        String rest = "";
+
+        if (openParen != -1) {
+            closeParen = s.indexOf(')', openParen);
+            if (closeParen != -1) {
+                String header = s.substring(openParen + 1, closeParen).trim();
+                String[] parts = header.split(",", 2);
+                if (parts.length >= 1) {
+                    userExpr = transpileValueExpression(parts[0].trim(), model, file);
+                }
+                if (parts.length >= 2) {
+                    String q = parts[1].trim();
+                    if ((q.startsWith("\"") && q.endsWith("\"")) || (q.startsWith("'") && q.endsWith("'"))) {
+                        queue = q.substring(1, q.length() - 1);
+                    } else {
+                        queue = q;
+                    }
+                }
+                rest = s.substring(closeParen + 1).trim();
+            }
+        } else {
+            String afterKeyword = s.substring(10).trim();
+            int openBrace = afterKeyword.indexOf('{');
+            if (openBrace != -1) {
+                String header = afterKeyword.substring(0, openBrace).trim();
+                String[] parts = header.split(",", 2);
+                if (parts.length >= 1) {
+                    userExpr = transpileValueExpression(parts[0].trim(), model, file);
+                }
+                if (parts.length >= 2) {
+                    String q = parts[1].trim();
+                    if ((q.startsWith("\"") && q.endsWith("\"")) || (q.startsWith("'") && q.endsWith("'"))) {
+                        queue = q.substring(1, q.length() - 1);
+                    } else {
+                        queue = q;
+                    }
+                }
+                rest = afterKeyword.substring(openBrace).trim();
+            }
+        }
+
+        String payloadExpr = "response";
+        if (rest.startsWith("{") && rest.endsWith("}")) {
+            String inner = rest.substring(1, rest.length() - 1).trim();
+            if (inner.isEmpty()) {
+                payloadExpr = "java.util.Collections.emptyMap()";
+            } else {
+                StringBuilder mapSb = new StringBuilder("java.util.Map.of(");
+                String[] pairs = inner.split(",");
+                for (int i = 0; i < pairs.length; i++) {
+                    String p = pairs[i].trim();
+                    if (p.isEmpty()) continue;
+                    String[] kv = p.split("=", 2);
+                    if (i > 0) mapSb.append(", ");
+                    if (kv.length == 2) {
+                        mapSb.append("\"").append(kv[0].trim()).append("\", ")
+                             .append(transpileValueExpression(kv[1].trim(), model, file));
+                    } else {
+                        mapSb.append("\"").append(p).append("\", ")
+                             .append(transpileValueExpression(p, model, file));
+                    }
+                }
+                mapSb.append(")");
+                payloadExpr = mapSb.toString();
+            }
+        } else if (!rest.isEmpty()) {
+            payloadExpr = transpileValueExpression(rest, model, file);
+        }
+
+        return "this.messagingTemplate.convertAndSendToUser(String.valueOf(" + userExpr + "), \"" + queue + "\", " + payloadExpr + ");";
     }
 
     private static String transpileSendStatement(String s, ModelDef model, ZenithFile file) {

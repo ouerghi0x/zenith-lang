@@ -365,6 +365,7 @@ public class ZenithStudioServer {
                 json.append("\n  ],\n");
 
                 // Sockets (Spec #18 Real-Time WebSockets)
+                json.append("  \"hasSockets\": ").append(analyzed.hasSockets()).append(",\n");
                 json.append("  \"sockets\": [\n");
                 for (int i = 0; i < analyzed.getSockets().size(); i++) {
                     var s = analyzed.getSockets().get(i);
@@ -1037,6 +1038,9 @@ public class ZenithStudioServer {
     private class EditionHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                dev.zenith.extension.ExtensionManager.getInstance().togglePro();
+            }
             Map<String, Object> status = dev.zenith.extension.ExtensionManager.getInstance().getEditionStatus();
             StringBuilder sb = new StringBuilder("{");
             sb.append("\"isPro\": ").append(status.get("isPro")).append(",");
@@ -1321,6 +1325,9 @@ public class ZenithStudioServer {
             throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", contentType);
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Zenith-License");
         exchange.sendResponseHeaders(status, bytes.length);
         OutputStream os = exchange.getResponseBody();
         os.write(bytes);

@@ -575,6 +575,11 @@ public class SemanticAnalyzer {
             return;
         }
 
+        if (s.startsWith("sendToUser ") || s.matches("^sendToUser\\s*\\(.*")) {
+            // Peer-to-peer WebSocket dispatch statement: sendToUser (recipientId, "/queue/messages") { ... }
+            return;
+        }
+
         if (s.contains("=") && !s.contains("==") && !s.contains("!=") && !s.contains("<=") && !s.contains(">=")) {
             String[] parts = s.split("=", 2);
             String left = parts[0].trim().replaceAll("\\s+", "");
@@ -987,6 +992,10 @@ public class SemanticAnalyzer {
         return false;
     }
 
+    /**
+     * @param file
+     * @param modelNames
+     */
     private void validateMailDefinitions(ZenithFile file, Set<String> modelNames) {
         Set<String> mailNames = new HashSet<>();
         for (MailDef mail : file.getMails()) {
@@ -1038,7 +1047,8 @@ public class SemanticAnalyzer {
             // Validate that either 'content' or 'template' is specified
             if (!mail.hasContent() && !mail.hasTemplate()) {
                 throw new AnalysisException(
-                        "Mail contract '" + mail.getName() + "' must define either 'content:' (inline expression) or 'template:' (file path).",
+                        "Mail contract '" + mail.getName()
+                                + "' must define either 'content:' (inline expression) or 'template:' (file path).",
                         mail.getSourceFile(), mail.getSourceLine(), 1);
             }
         }

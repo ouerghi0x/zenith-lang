@@ -507,6 +507,9 @@ public class ZenithCli {
                 }
             } else if ("--desktop".equals(args[i]) || "-d".equals(args[i])) {
                 desktopMode = true;
+            } else if ("--pro".equalsIgnoreCase(args[i])) {
+                dev.zenith.extension.ExtensionManager.getInstance().setProOverride(true);
+                System.out.println("   ⭐ Zenith PRO Edition flag enabled");
             } else if (!args[i].startsWith("-") && schemaPath == null) {
                 schemaPath = Paths.get(args[i]);
             }

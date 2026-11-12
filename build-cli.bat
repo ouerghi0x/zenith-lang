@@ -25,9 +25,15 @@ if exist "src\main\resources" (
     xcopy /s /e /y /q "src\main\resources\*" "target\classes\" >nul 2>&1
 )
 
-:: 4. Update bin\zenith.jar
+:: 4. Update bin\zenith.jar with Manifest Main-Class
 echo [3/3] Updating bin\zenith.jar...
-jar uf bin\zenith.jar -C target\classes .
+(
+  echo Manifest-Version: 1.0
+  echo Main-Class: dev.zenith.cli.ZenithCli
+  echo.
+) > manifest.txt
+jar ufm bin\zenith.jar manifest.txt -C target\classes .
+if exist "manifest.txt" del manifest.txt
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Failed to update bin\zenith.jar.
     echo Make sure any running "zenith studio" or background Java processes are closed!

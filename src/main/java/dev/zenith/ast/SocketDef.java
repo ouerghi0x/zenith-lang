@@ -32,6 +32,10 @@ public class SocketDef {
         this.properties = properties != null ? new LinkedHashMap<>(properties) : new LinkedHashMap<>();
     }
 
+    public SocketDef(String name, String endpoint, String topic, String broker) {
+        this(name, endpoint, topic, broker, "", Collections.emptyMap());
+    }
+
     public String getName() {
         return name;
     }
