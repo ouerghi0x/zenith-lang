@@ -206,9 +206,15 @@ Validates schema syntax, types, and foreign key references.
 
 Scaffolds a new starter schema file.
 
-### 6. `zenith studio <file.zen> [--desktop] [--port 3000]` _(Zenith Studio)_
+### 6. `zenith studio <file.zen> [--desktop] [--port 3000]` _(Zenith Studio IDE)_
 
-Launches **Zenith Studio** — a full-featured visual architecture IDE featuring live interactive entity relation diagrams (ERD), full Monaco code editor with real-time syntax diagnostics, clickable import navigation, instant Spring Boot ZIP export, and in-browser/in-app REST API testing.
+Launches **Zenith Studio** — a full-featured visual architecture IDE running locally at `http://localhost:3000` or as a standalone native desktop app. Key capabilities include:
+
+- **Monaco Code Editor**: Real-time syntax diagnostics, auto-completion, and clickable file import navigation.
+- **Interactive Architecture ERD**: Live SVG relational diagrams, field types, primary keys, and foreign-key links.
+- **Unified Multi-Window API Tester**: Simultaneous testing of HTTP REST requests and real-time STOMP WebSocket streams side-by-side with parameter injection, schema placeholders, and dual execution (`Simulate` vs `Send`).
+- **Visual Dependency Workflows (Community Feature)**: 2D interactive DAG canvas for chaining multi-step API journeys, manual pin-to-pin wiring, AST auto-wiring, declarative assertions, and animated pipeline execution.
+- **Repository Tree & ZIP Export**: Emitted Java files inspection and one-click full Spring Boot ZIP export.
 
 #### Web Mode (Default)
 
@@ -903,6 +909,69 @@ class OrderControllerTest {
     }
 }
 ```
+
+### 14. Real-Time WebSockets & STOMP Broker (`socket { ... }`)
+
+Zenith provides turnkey real-time pub/sub and peer-to-peer messaging powered by Spring Boot STOMP over WebSocket:
+
+```zen
+// Declare a WebSocket broker
+socket ChatSocket {
+    endpoint: "/ws"
+    topic: "/topic/chat"
+    broker: simple
+}
+
+// Dispatch real-time events in custom actions
+POST "/rooms/{id}/messages"(body: MessageDto) {
+    guard: body.content.length > 0, "Message cannot be empty"
+
+    var msg = Message.create({
+        content: body.content,
+        roomId: path.id,
+        senderId: auth.userId
+    })
+
+    // Broadcast to all subscribers on this room's topic
+    broadcast "/topic/rooms/" + path.id {
+        id: msg.id,
+        content: msg.content,
+        senderId: msg.senderId
+    }
+
+    // Direct peer-to-peer notification to room owner
+    sendToUser (room.ownerId, "/queue/notifications") {
+        title: "New room activity",
+        message: body.content
+    }
+
+    return 201 msg
+}
+```
+
+- **Spring Boot Components**: Generates `WebSocketConfig.java` with `@EnableWebSocketMessageBroker`, STOMP endpoints, SockJS fallback, and injects `SimpMessagingTemplate` into domain services.
+- **Selective Dependency**: Adds `spring-boot-starter-websocket` to `pom.xml` only when schemas declare `socket`.
+
+### 15. Unified API Tester & Simulator (REST & WebSocket Coexistence)
+
+The **API Tester** tab inside Zenith Studio provides a multi-window canvas combining HTTP REST execution and WebSocket streaming:
+
+- **Multi-Window Canvas (`+ HTTP`, `+ WebSocket`)**: Run and observe REST mutations and real-time WebSocket subscriber cards side-by-side.
+- **HTTP Method Filters**: One-click filtering by `ALL`, `GET`, `POST`, `PUT`, `DELETE`, and fast text search across all endpoints.
+- **Schema-Driven Payloads**: JSON payloads and forms auto-populate realistic placeholder values derived from model attributes.
+- **Dual Engine Execution**:
+  - `Simulate`: In-memory micro-engine evaluation (~2ms) on the parsed AST without compiling Java or booting Tomcat.
+  - `Send`: Dispatches real HTTP requests to the live running Spring Boot port on `localhost:8080`.
+
+### 16. Visual Dependency Workflows (Community Feature)
+
+**API Dependency Workflows** is fully available in the Community Edition to visually chain, test, and assert complex multi-endpoint scenarios on an interactive 2D canvas:
+
+- **2D Canvas Board**: Freely drag and position API nodes, pan the infinite grid, and zoom (50%–150%).
+- **Pin-to-Pin Manual Wiring**: Click and drag from an output port dot to an input port dot to pipe dynamic responses (e.g. JWT login `token` into `Bearer`, or `orderId` into child line items).
+- **Auto-Wire (Zenith AST)**: One-click AST relationship deduction automatically links all endpoints using schema relationships, foreign keys, and security roles.
+- **Declarative Assertions**: Define per-node expectations (e.g. HTTP `201 Created`, `body.status == "CONFIRMED"`).
+- **Animated Pipeline Execution**: Run or single-step through the pipeline with live visual wire pulses, latency indicators, and pass/fail checklists.
 
 ---
 

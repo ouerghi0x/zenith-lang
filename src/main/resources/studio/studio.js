@@ -5708,7 +5708,7 @@ function clearTestOutput() {
 }
 
 /* ==========================================================================
-   Spec #37: API Dependency Workflows & Pipeline Runner (PRO Exclusive)
+   Spec #37: API Dependency Workflows & Pipeline Runner (Community Feature)
    ========================================================================== */
 
 let currentEditionStatus = { isPro: false, edition: 'COMMUNITY' };
@@ -5723,7 +5723,7 @@ let wfIsRunning = false;
 window.wfStepResults = wfStepResults;
 window.wfIsRunning = wfIsRunning;
 
-// 1. Edition Lifecycle & Gating
+// 1. Edition Lifecycle & Workflows Community Availability
 async function loadEditionStatus() {
   try {
     const res = await fetch('/api/edition');
@@ -5742,26 +5742,20 @@ function applyEditionToUI(status) {
   const tag = document.getElementById('editionTag');
   const wfTabBtn = document.getElementById('tabBtnWorkflows');
 
-  if (status.isPro) {
-    if (pill) {
+  // Workflows is a core Community feature - always visible to all users
+  if (wfTabBtn) {
+    wfTabBtn.style.display = 'inline-flex';
+  }
+
+  if (pill) {
+    if (status && status.isPro) {
       pill.className = 'edition-pill pro';
-      pill.title = 'Zenith PRO Active (Click to toggle Community Edition)';
-    }
-    if (label) label.textContent = 'PRO Edition';
-    if (tag) tag.textContent = 'ENTERPRISE';
-    if (wfTabBtn) wfTabBtn.style.display = 'inline-flex';
-  } else {
-    if (pill) {
+      if (label) label.textContent = 'PRO Edition';
+      if (tag) tag.textContent = 'ENTERPRISE';
+    } else {
       pill.className = 'edition-pill community';
-      pill.title = 'Zenith Community Edition (Click to toggle PRO Edition)';
-    }
-    if (label) label.textContent = 'Community';
-    if (tag) tag.textContent = 'FREE';
-    if (wfTabBtn) {
-      wfTabBtn.style.display = 'none';
-      if (wfTabBtn.classList.contains('active')) {
-        switchPreviewTab('api');
-      }
+      if (label) label.textContent = 'Community';
+      if (tag) tag.textContent = 'FREE';
     }
   }
 }
@@ -5772,12 +5766,6 @@ async function toggleEditionSwitch() {
     if (res.ok) {
       currentEditionStatus = await res.json();
       applyEditionToUI(currentEditionStatus);
-      if (currentEditionStatus.isPro) {
-        showToast('Switched to Zenith PRO Edition! API Workflows unlocked.');
-        switchPreviewTab('workflows');
-      } else {
-        showToast('Switched to Zenith Community Edition. PRO features hidden.');
-      }
     }
   } catch (err) {
     console.error('[Zenith Studio] Failed to toggle edition', err);

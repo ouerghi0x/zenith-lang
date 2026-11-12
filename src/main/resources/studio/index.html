@@ -10,7 +10,7 @@
   <!-- Monaco Editor Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
   <link rel="icon" type="image/png" href="logo.png" />
-  <link rel="stylesheet" href="/studio.css?v=20261112_v9" />
+  <link rel="stylesheet" href="/studio.css?v=20261112_v10" />
 </head>
 <body>
   <!-- Header -->
@@ -31,12 +31,6 @@
       <span id="statusText">Compiler Ready</span>
     </div>
 
-    <!-- Edition Switcher Pill (PRO vs Community) -->
-    <div class="edition-pill community" id="editionPill" onclick="toggleEditionSwitch()" title="Current Edition. Click to toggle Community / PRO.">
-      <span class="edition-icon" id="editionIcon">🌐</span>
-      <span id="editionLabel">Community</span>
-      <span class="edition-tag" id="editionTag">FREE</span>
-    </div>
 
     <!-- Action Bar -->
     <div class="action-bar">
@@ -206,8 +200,8 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             API Tester
           </button>
-          <!-- Spec #37: API Dependency Workflows (PRO Exclusive) -->
-          <button class="tab-btn pro-tab-btn" data-tab="workflows" id="tabBtnWorkflows" draggable="true" onclick="switchPreviewTab('workflows')" style="display: none;" title="API Dependency Workflows (PRO Exclusive)">
+          <!-- Spec #37: API Dependency Workflows -->
+          <button class="tab-btn" data-tab="workflows" id="tabBtnWorkflows" draggable="true" onclick="switchPreviewTab('workflows')" title="API Dependency Workflows">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="7" width="6" height="6" rx="1"></rect>
               <rect x="16" y="2" width="6" height="6" rx="1"></rect>
@@ -216,7 +210,6 @@
               <path d="M12 10V5a2 2 0 0 1 2-2h2"></path>
             </svg>
             <span>Workflows</span>
-            <span class="pro-tag">PRO</span>
           </button>
           <button class="tab-btn" data-tab="java" draggable="true" onclick="switchPreviewTab('java')" title="Drag to reorder tab">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
@@ -348,7 +341,7 @@
           </div>
         </div>
 
-        <!-- Spec #37: API Dependency Workflows & Pipeline Runner (PRO Exclusive) -->
+        <!-- Spec #37: API Dependency Workflows & Pipeline Runner -->
         <div id="tab-workflows" class="preview-panel">
           <div class="workflow-workspace">
             <!-- Top Controls Bar -->
@@ -967,6 +960,9 @@
           <a href="#ref-desktop" class="guide-pill">17. Desktop &amp; CLI</a>
           <a href="#ref-mcp" class="guide-pill">18. Zenith MCP Server</a>
           <a href="#ref-micro-engine" class="guide-pill">19. Core Micro-Engine</a>
+          <a href="#ref-sockets" class="guide-pill">20. WebSockets &amp; Real-Time</a>
+          <a href="#ref-api-tester" class="guide-pill">21. Interactive API Tester</a>
+          <a href="#ref-workflows" class="guide-pill">22. Dependency Workflows</a>
         </div>
 
         <!-- 1. Configuration Block -->
@@ -2762,6 +2758,190 @@ model CatalogItem {
         <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
           <strong>Smart Studio Behavior:</strong> In the <strong>API Tester</strong>, the <code>Simulate</code> button is automatically displayed only on custom endpoints declaring logic (e.g. <code>action: { ... }</code> or <code>guard: ...</code>). Standard persistence operations (CRUD and Auth) use <code>Send</code> against the live Spring Boot server.
         </p>
+
+        <!-- 20. WebSockets & Real-Time Event Streaming -->
+        <h3 class="guide-section-title" id="ref-sockets">20. WebSockets &amp; Real-Time Event Streaming <span class="guide-badge">socket</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Zenith features native real-time bidirectional messaging powered by Spring Boot STOMP over WebSocket. Declare message brokers, topic destinations, and broadcast or peer-to-peer side-effects directly inside domain actions.</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">Directive / Property</th>
+                <th style="width: 25%;">Target / Value</th>
+                <th>Description &amp; Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>socket Name { ... }</code></td>
+                <td>Broker Declaration</td>
+                <td>Declares a WebSocket STOMP endpoint. Zenith generates <code>WebSocketConfig.java</code>, registers the STOMP endpoint with SockJS fallback, and injects <code>SimpMessagingTemplate</code>.</td>
+              </tr>
+              <tr>
+                <td><code>endpoint: "/ws"</code></td>
+                <td>Transport Path</td>
+                <td>The WebSocket handshake URL where clients establish persistent connections (e.g. <code>ws://localhost:8080/ws</code>).</td>
+              </tr>
+              <tr>
+                <td><code>topic: "/topic/chat"</code></td>
+                <td>Destination Topic</td>
+                <td>Default pub/sub topic prefix. Subscribers to this topic receive broadcast events pushed from the server.</td>
+              </tr>
+              <tr>
+                <td><code>broker: "simple"</code></td>
+                <td><code>simple</code> | <code>rabbitmq</code></td>
+                <td>In-memory lightweight STOMP broker (default) or external dedicated message broker relay.</td>
+              </tr>
+              <tr>
+                <td><code>broadcast topic { ... }</code></td>
+                <td>Action Side-Effect</td>
+                <td>Pushes an asynchronous event payload to all clients subscribed to the specified topic path.</td>
+              </tr>
+              <tr>
+                <td><code>sendToUser (id, queue) { ... }</code></td>
+                <td>Action Side-Effect</td>
+                <td>Pushes a private peer-to-peer message to a specific authenticated user's private queue (e.g. <code>/user/{id}/queue/messages</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <pre class="guide-code"><code>// Declarative WebSocket STOMP Broker
+socket ChatSocket {
+    endpoint: "/ws"
+    topic: "/topic/chat"
+    broker: "simple"
+}
+
+// Emitting real-time events inside custom actions
+POST /rooms/{id}/messages(body: SendMessageDto) {
+    guard: body.content.length > 0, "Message cannot be empty"
+
+    // 1. Persist message in database
+    var msg = ChatMessage.create({
+        content: body.content,
+        roomId: path.id,
+        senderId: auth.userId
+    })
+
+    // 2. Broadcast to all active subscribers in room
+    broadcast "/topic/rooms/" + path.id {
+        id: msg.id,
+        content: msg.content,
+        senderId: msg.senderId,
+        sentAt: now()
+    }
+
+    // 3. Send direct push notification to room owner
+    sendToUser (room.ownerId, "/queue/notifications") {
+        title: "New activity in your room",
+        preview: body.content
+    }
+
+    return 201 msg
+}</code></pre>
+
+        <!-- 21. Interactive API Tester & Simulator -->
+        <h3 class="guide-section-title" id="ref-api-tester">21. Interactive API Tester &amp; Simulator <span class="guide-badge">tester</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">The Zenith Studio API Tester provides an integrated multi-window testing canvas where HTTP REST requests and WebSocket real-time streams coexist side-by-side, enabling full-cycle integration testing without external tools.</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">Feature Capability</th>
+                <th style="width: 25%;">UI Control</th>
+                <th>Testing Workflow &amp; Benefits</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Multi-Window Canvas</strong></td>
+                <td><code>+ HTTP</code> &amp; <code>+ WebSocket</code></td>
+                <td>Spawn independent testing windows side-by-side. Open a WebSocket subscriber window alongside a REST POST window to observe server push events in real time.</td>
+              </tr>
+              <tr>
+                <td><strong>HTTP Method Filtering</strong></td>
+                <td><code>ALL</code>, <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>DELETE</code></td>
+                <td>Quickly filter endpoints by HTTP verb or search by endpoint URI and model name in the endpoint catalog drawer.</td>
+              </tr>
+              <tr>
+                <td><strong>Smart Parameter Injection</strong></td>
+                <td>Inspector Path &amp; Query Inputs</td>
+                <td>Dynamic parameter placeholders (e.g. <code>{id}</code>) are auto-populated from compiled models and can be manually edited or wired from upstream steps.</td>
+              </tr>
+              <tr>
+                <td><strong>Schema Payload Placeholders</strong></td>
+                <td>Form View &amp; JSON Editor</td>
+                <td>Request body editors automatically generate realistic sample JSON matching the model or DTO schema with type-aware default values.</td>
+              </tr>
+              <tr>
+                <td><strong>Dual Mode: Simulate vs Send</strong></td>
+                <td><code>Simulate</code> / <code>Send</code></td>
+                <td><code>Simulate</code> runs instantaneously in ~2ms on the Zenith Core Micro-Engine (interprets guards, AST logic, and mock side-effects). <code>Send</code> dispatches live HTTP calls to the running backend.</td>
+              </tr>
+              <tr>
+                <td><strong>STOMP Stream Viewer</strong></td>
+                <td>Connect / Subscribe / Send</td>
+                <td>Live color-coded STOMP frame inspector showing incoming/outgoing frames, subscription acknowledgments, headers, and payload latency.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 22. Visual Dependency Workflows -->
+        <h3 class="guide-section-title" id="ref-workflows">22. Visual Dependency Workflows (Community Feature) <span class="guide-badge">workflows</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Visually map, orchestrate, and assert complex multi-step API journeys on an interactive 2D Directed Acyclic Graph (DAG) canvas. Fully available to all users in the Community Edition.</p>
+
+        <div class="table-container">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">Canvas Capability</th>
+                <th style="width: 25%;">How It Works</th>
+                <th>Use Case &amp; Example</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>2D Interactive Canvas</strong></td>
+                <td>Pan, Zoom, &amp; Drag Nodes</td>
+                <td>Position API nodes anywhere on the infinite dot-grid board. Zoom in/out (from 50% to 150%) or click <code>Auto-Layout</code> to organize dependencies.</td>
+              </tr>
+              <tr>
+                <td><strong>Pin-to-Pin Manual Wiring</strong></td>
+                <td>Click &amp; Drag from Output to Input</td>
+                <td>Click and drag an output port dot (right side of a node) to an input port dot (left side of another node) to pass variables between requests.</td>
+              </tr>
+              <tr>
+                <td><strong>Auto-Wire (Zenith AST)</strong></td>
+                <td><code>✨ Auto-Wire (Zenith AST)</code></td>
+                <td>One-click automated dependency deduction: analyzes schema foreign keys, JWT auth tokens, and DTO types to connect upstream outputs to downstream inputs automatically.</td>
+              </tr>
+              <tr>
+                <td><strong>Dynamic Node Palette</strong></td>
+                <td><code>+ Add Node</code></td>
+                <td>Search and add any endpoint declared in your <code>.zen</code> schema to the canvas to compose custom testing scenarios.</td>
+              </tr>
+              <tr>
+                <td><strong>Payload &amp; Input Inspector</strong></td>
+                <td>Form &amp; JSON Editor</td>
+                <td>Configure input variables, query filters, and editable request payloads with smart schema-aware JSON templates.</td>
+              </tr>
+              <tr>
+                <td><strong>System Assertions</strong></td>
+                <td><code>+ Add Rule</code> &amp; Expected Status</td>
+                <td>Define strict expectations (e.g. HTTP status <code>201 Created</code>, <code>body.id != null</code>, <code>body.status == "CONFIRMED"</code>). Validated automatically during pipeline execution.</td>
+              </tr>
+              <tr>
+                <td><strong>Pipeline Execution</strong></td>
+                <td><code>Run</code>, <code>Step</code>, <code>Reset</code></td>
+                <td>Execute the entire pipeline with animated wire pulses, live latency badges, step-by-step debugger stepping, and an audit checklist of assertion passes/failures.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
           </div>
         </div>
       </div>
@@ -2778,6 +2958,6 @@ model CatalogItem {
     </button>
   </div>
 
-  <script src="/studio.js?v=20261112_v9"></script>
+  <script src="/studio.js?v=20261112_v10"></script>
 </body>
 </html>

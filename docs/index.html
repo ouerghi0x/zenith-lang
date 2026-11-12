@@ -45,7 +45,7 @@
         <ul class="sidebar-nav">
           <li><a href="#overview" class="sidebar-link">Overview & Philosophy</a></li>
           <li><a href="#cli-tools" class="sidebar-link">Installation & CLI Commands</a></li>
-          <li><a href="#zenith-studio" class="sidebar-link">Zenith Studio <span class="badge-pro-pill">PRO</span></a></li>
+          <li><a href="#zenith-studio" class="sidebar-link">Zenith Studio <span class="badge-pro-pill" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">IDE</span></a></li>
         </ul>
       </div>
 
@@ -79,18 +79,21 @@
           <li><a href="#jobs" class="sidebar-link">13. Scheduled Workers (Cron)</a></li>
           <li><a href="#mail" class="sidebar-link">14. Transactional Emails (mail/send)</a></li>
           <li><a href="#cache" class="sidebar-link">15. Caching Layer (Redis / Spring Cache)</a></li>
+          <li><a href="#sockets" class="sidebar-link">16. WebSockets &amp; Real-Time (socket)</a></li>
         </ul>
       </div>
 
       <div class="sidebar-category">
-        <div class="category-title">Testing & Delivery</div>
+        <div class="category-title">Testing &amp; Delivery</div>
         <ul class="sidebar-nav">
-          <li><a href="#sdk" class="sidebar-link">16. Full-Stack TypeScript SDK</a></li>
-          <li><a href="#testing" class="sidebar-link">17. Automated Test Generation</a></li>
-          <li><a href="#docker" class="sidebar-link">18. Docker Containerization</a></li>
-          <li><a href="#mcp" class="sidebar-link">19. Zenith MCP Server (AI Agents)</a></li>
-          <li><a href="#micro-engine" class="sidebar-link">20. Core Micro-Engine (In-Memory Simulation)</a></li>
-          <li><a href="#showcase" class="sidebar-link">21. Complete Reference Project</a></li>
+          <li><a href="#sdk" class="sidebar-link">17. Full-Stack TypeScript SDK</a></li>
+          <li><a href="#testing" class="sidebar-link">18. Automated Test Generation</a></li>
+          <li><a href="#docker" class="sidebar-link">19. Docker Containerization</a></li>
+          <li><a href="#mcp" class="sidebar-link">20. Zenith MCP Server (AI Agents)</a></li>
+          <li><a href="#micro-engine" class="sidebar-link">21. Core Micro-Engine (In-Memory Simulation)</a></li>
+          <li><a href="#api-tester" class="sidebar-link">22. Interactive API Tester &amp; Simulator</a></li>
+          <li><a href="#workflows" class="sidebar-link">23. Visual Dependency Workflows</a></li>
+          <li><a href="#showcase" class="sidebar-link">24. Complete Reference Project</a></li>
         </ul>
       </div>
     </aside>
@@ -202,8 +205,8 @@
         </table>
       </div>
 
-      <!-- Zenith Studio PRO -->
-      <h2 class="section-heading" id="zenith-studio">Zenith Studio <span class="badge-pro-pill">PRO</span> (Web &amp; Desktop IDE)</h2>
+      <!-- Zenith Studio -->
+      <h2 class="section-heading" id="zenith-studio">Zenith Studio (Web &amp; Desktop IDE)</h2>
       <p>
         <strong>Zenith Studio</strong> is the full visual engineering workspace running locally at <code>http://localhost:3000</code> or as a dedicated native desktop application. Designed for developers and architects who need full-spectrum visibility into their data models, relational graphs, and runtime APIs:
       </p>
@@ -212,7 +215,8 @@
         <li><strong>Vertical Modular File Explorer</strong>: Displays all workspace <code>.zen</code> files stacked vertically with quick tab switching.</li>
         <li><strong>Clickable Import Navigation</strong>: Double-click any <code>import "./config.zen"</code> line to instantly switch to that module.</li>
         <li><strong>Interactive Architecture ERD</strong>: Live SVG diagrams displaying models, columns, primary keys, and foreign key connectors.</li>
-        <li><strong>API Tester &amp; Swagger</strong>: Test generated REST endpoints directly from the interface.</li>
+        <li><strong>Unified API Tester &amp; WebSocket Client</strong>: Test REST endpoints and stream real-time STOMP frames side-by-side.</li>
+        <li><strong>Visual Dependency Workflows (Community)</strong>: 2D DAG canvas, pin-to-pin wiring, AST auto-wiring, and step-by-step pipeline assertions.</li>
         <li><strong>Repository Tree &amp; One-Click Run</strong>: Inspect emitted Java files and boot the backend with one click.</li>
       </ul>
 
@@ -1257,8 +1261,78 @@ zenith studio schema.zen --desktop</code></pre>
         </table>
       </div>
 
-      <!-- 16. TypeScript SDK -->
-      <h2 class="section-heading" id="sdk">16. Full-Stack TypeScript Client SDK</h2>
+      <!-- 16. WebSockets & Real-Time -->
+      <h2 class="section-heading" id="sockets">16. WebSockets &amp; Real-Time Event Streaming (socket)</h2>
+      <p>
+        Zenith features native, declarative real-time communication powered by Spring Boot STOMP over WebSocket. Instead of configuring message brokers, registries, and interceptors by hand, declare WebSocket brokers, endpoints, and destinations directly in your schema and dispatch real-time events from domain actions.
+      </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">WebSocket Broker &amp; Action Dispatch</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-com">// 1. Declare WebSocket STOMP broker</span>
+<span class="syn-kw">socket</span> <span class="syn-type">OrderSocket</span> {
+    <span class="syn-prop">endpoint</span>: <span class="syn-str">"/ws"</span>
+    <span class="syn-prop">topic</span>: <span class="syn-str">"/topic/orders"</span>
+    <span class="syn-prop">broker</span>: <span class="syn-str">simple</span>
+}
+
+<span class="syn-com">// 2. Push real-time events in domain actions</span>
+<span class="syn-kw">POST</span> <span class="syn-str">"/orders/{id}/confirm"</span> {
+    <span class="syn-prop">guard</span>: order.status == OrderStatus.PENDING, <span class="syn-str">"Order must be pending"</span>
+
+    <span class="syn-prop">status</span> = OrderStatus.CONFIRMED
+
+    <span class="syn-com">// Broadcast to all dashboard subscribers</span>
+    <span class="syn-kw">broadcast</span> <span class="syn-str">"/topic/orders"</span> {
+        <span class="syn-prop">orderId</span>: order.id,
+        <span class="syn-prop">status</span>: order.status,
+        <span class="syn-prop">confirmedAt</span>: now()
+    }
+
+    <span class="syn-com">// Send private peer-to-peer notification to the customer</span>
+    <span class="syn-kw">sendToUser</span> (order.customerId, <span class="syn-str">"/queue/notifications"</span>) {
+        <span class="syn-prop">title</span>: <span class="syn-str">"Order Confirmed"</span>,
+        <span class="syn-prop">message</span>: <span class="syn-str">"Your order #"</span> + order.orderNumber + <span class="syn-str">" is on its way!"</span>
+    }
+
+    <span class="syn-kw">return</span> <span class="syn-num">200</span> order
+}</code></pre>
+      </div>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Generated Component</th>
+              <th>Artifact / Annotation</th>
+              <th>Behavior &amp; Architecture</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>WebSocketConfig.java</code></td>
+              <td><code>@EnableWebSocketMessageBroker</code></td>
+              <td>Registers the STOMP endpoint (<code>/ws</code>) with SockJS fallback and configures destination prefixes (<code>/app</code>, <code>/topic</code>, <code>/user</code>).</td>
+            </tr>
+            <tr>
+              <td><code>SimpMessagingTemplate</code></td>
+              <td>Spring Framework DI</td>
+              <td>Injected into generated domain services to broadcast topic events and route peer-to-peer user notifications automatically.</td>
+            </tr>
+            <tr>
+              <td><code>pom.xml</code></td>
+              <td><code>spring-boot-starter-websocket</code></td>
+              <td>Maven dependency is conditionally added only when at least one <code>socket</code> block is declared in the schema.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 17. TypeScript SDK -->
+      <h2 class="section-heading" id="sdk">17. Full-Stack TypeScript Client SDK</h2>
       <p>
         Zenith generates a zero-dependency TypeScript client SDK in <code>sdk/typescript/</code> containing strongly-typed models, fetch API clients with JWT bearer injection, and React Query caching hooks.
       </p>
@@ -1292,8 +1366,8 @@ zenith studio schema.zen --desktop</code></pre>
 }</code></pre>
       </div>
 
-      <!-- 16. Testing -->
-      <h2 class="section-heading" id="testing">16. Automated Test Generation</h2>
+      <!-- 18. Testing -->
+      <h2 class="section-heading" id="testing">18. Automated Test Generation</h2>
       <p>
         Zenith synthesizes complete JUnit 5, Spring Boot Test, and MockMvc test suites under <code>src/test/</code>. Tests run against an isolated in-memory H2 profile (<code>application.yml</code>) so <code>mvn test</code> passes anywhere without requiring external databases or Docker.
       </p>
@@ -1385,8 +1459,8 @@ zenith studio schema.zen --desktop</code></pre>
         <pre class="code-content"><code>mvn test</code></pre>
       </div>
 
-      <!-- 18. Docker -->
-      <h2 class="section-heading" id="docker">18. Docker Containerization</h2>
+      <!-- 19. Docker -->
+      <h2 class="section-heading" id="docker">19. Docker Containerization</h2>
       <p>
         Zenith generates a multi-stage <code>Dockerfile</code> (Maven 3.9 builder + Eclipse Temurin 17 JRE Alpine runtime with unprivileged user) and a pre-configured <code>docker-compose.yml</code> pairing the API with PostgreSQL healthchecks and persistent storage volumes.
       </p>
@@ -1399,8 +1473,8 @@ zenith studio schema.zen --desktop</code></pre>
         <pre class="code-content"><code>docker compose up --build</code></pre>
       </div>
 
-      <!-- 19. MCP Server -->
-      <h2 class="section-heading" id="mcp">19. Zenith MCP Server (AI Agent Integration)</h2>
+      <!-- 20. MCP Server -->
+      <h2 class="section-heading" id="mcp">20. Zenith MCP Server (AI Agent Integration)</h2>
       <p>
         Zenith features an official, zero-overhead <strong>Model Context Protocol (MCP) Server</strong> complying with protocol standard <code>2024-11-05</code> over standard I/O (JSON-RPC 2.0). Connect Claude Code, Cursor, Antigravity, and autonomous AI agents directly to Zenith to retrieve language specifications, generate valid schemas, diagnose syntax/semantic errors, and compile full applications.
       </p>
@@ -1452,7 +1526,7 @@ zenith mcp</code></pre>
             <tr>
               <td><code>zenith_build</code></td>
               <td><code>source?, filePath?, outputDir?</code></td>
-              <td>Compiles a Zenith project and emits complete production Java 17 & Spring Boot 3 code.</td>
+              <td>Compiles a Zenith project and emits complete production Java 17 &amp; Spring Boot 3 code.</td>
             </tr>
             <tr>
               <td><code>zenith_get_project_info</code></td>
@@ -1474,8 +1548,8 @@ zenith mcp</code></pre>
         <li><code>extend_existing_project</code>: Guides extending existing domain models without breaking relational foreign keys.</li>
       </ul>
 
-      <!-- 20. Core Micro-Engine -->
-      <h2 class="section-heading" id="micro-engine">20. Zenith Core Micro-Engine (In-Memory Simulation)</h2>
+      <!-- 21. Core Micro-Engine -->
+      <h2 class="section-heading" id="micro-engine">21. Zenith Core Micro-Engine (In-Memory Simulation)</h2>
       <p>
         The <strong>Zenith Core Micro-Engine</strong> provides an in-memory tree-walk evaluator embedded inside the compiler core and Zenith Studio. It executes custom endpoint action statements, domain precondition guards, and email dispatch contracts in <strong>under 5 milliseconds</strong> directly on the parsed AST without compiling Java or booting the Spring Boot JVM.
       </p>
@@ -1508,12 +1582,93 @@ zenith mcp</code></pre>
         </table>
       </div>
 
-      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
-        <em>Note on Studio UI:</em> In the <strong>API Tester</strong>, the <code>Simulate</code> button is selectively displayed only on custom endpoints declaring executable domain logic (actions or guards). Standard persistence operations (CRUD and Auth) use <code>Send</code> to interact with the database.
+      <!-- 22. Interactive API Tester & Simulator -->
+      <h2 class="section-heading" id="api-tester">22. Interactive API Tester &amp; Simulator (REST &amp; WebSocket)</h2>
+      <p>
+        The <strong>Zenith Studio API Tester</strong> replaces Postman and third-party WebSocket clients with a unified multi-window workspace built directly into the IDE. HTTP endpoints and live WebSocket STOMP subscribers coexist in one visual canvas.
       </p>
 
-      <!-- 21. Showcase -->
-      <h2 class="section-heading" id="showcase">21. Complete Reference Project</h2>
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th style="width: 28%;">Tester Capability</th>
+              <th style="width: 26%;">UI Controls</th>
+              <th>Description &amp; Workflow</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Multi-Window Canvas</strong></td>
+              <td><code>+ HTTP</code> &amp; <code>+ WebSocket</code> buttons</td>
+              <td>Spawn multiple testing cards side-by-side. Connect a WebSocket subscriber to <code>/topic/orders</code> in Window 1 and send a REST <code>POST /orders</code> in Window 2 to observe real-time server push frames.</td>
+            </tr>
+            <tr>
+              <td><strong>Method Filtering &amp; Search</strong></td>
+              <td><code>ALL</code>, <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>DELETE</code></td>
+              <td>Instantly filter generated endpoints by HTTP verb or filter endpoints by URI keyword in the slide-out catalog drawer.</td>
+            </tr>
+            <tr>
+              <td><strong>Auto-Generated Payloads</strong></td>
+              <td>Form &amp; JSON Editor views</td>
+              <td>Request bodies automatically populate realistic mock data matching model field constraints and types (UUID, Email, Decimal, Enums).</td>
+            </tr>
+            <tr>
+              <td><strong>Real-Time STOMP Client</strong></td>
+              <td>Connect, Subscribe, Send</td>
+              <td>Native browser-level STOMP frame inspector with connection status badges, frame payload formatting, latency metrics, and topic management.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 23. Visual Dependency Workflows -->
+      <h2 class="section-heading" id="workflows">23. Visual Dependency Workflows (Community Feature)</h2>
+      <p>
+        <strong>API Dependency Workflows</strong> is a visual pipeline orchestrator and integration testing suite available to all Zenith developers in the Community Edition. Chain multiple API requests together on an interactive 2D canvas, pass authentication tokens and entity IDs automatically between steps, and assert end-to-end system correctness.
+      </p>
+
+      <div class="table-wrap">
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th style="width: 28%;">Workflow Feature</th>
+              <th style="width: 26%;">UI Trigger / Action</th>
+              <th>Details &amp; Capabilities</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>2D Interactive Canvas</strong></td>
+              <td>Drag, Pan, Zoom, Auto-Layout</td>
+              <td>Freely position API endpoint nodes in 2D space. Smooth canvas zooming (50%–150%) and one-click auto-layout for complex multi-tier architectures.</td>
+            </tr>
+            <tr>
+              <td><strong>Pin-to-Pin Wire Linking</strong></td>
+              <td>Drag Output Dot &rarr; Input Dot</td>
+              <td>Click and drag an output port dot (e.g. <code>token</code>, <code>id</code>) to an input port dot (e.g. <code>Bearer</code>, <code>orderId</code>) to pipe dynamic runtime responses downstream.</td>
+            </tr>
+            <tr>
+              <td><strong>Auto-Wire (Zenith AST)</strong></td>
+              <td><code>✨ Auto-Wire (Zenith AST)</code></td>
+              <td>Instantly connects all dependencies across the entire workflow using Zenith Schema AST relationships, foreign keys, and authentication models.</td>
+            </tr>
+            <tr>
+              <td><strong>Assertion Inspector</strong></td>
+              <td><code>+ Add Rule</code> &amp; Expected Status</td>
+              <td>Define test expectations per node: verify expected HTTP status (200, 201, 204, etc.) and deep JSON expressions (e.g. <code>body.id != null</code>, <code>body.status == "CONFIRMED"</code>).</td>
+            </tr>
+            <tr>
+              <td><strong>Animated Pipeline Execution</strong></td>
+              <td><code>Run</code>, <code>Step</code>, <code>Reset</code></td>
+              <td>Execute the workflow with real-time glowing wire pulses, live latency badges, step-by-step stepping, and comprehensive pass/fail audit checklists.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 24. Showcase -->
+      <h2 class="section-heading" id="showcase">24. Complete Reference Project</h2>
       <p>
         The canonical reference project <strong>NexusCommerce</strong> illustrates how all Zenith features integrate cleanly. Inspect the complete codebase in <code>zenith-exemples/nexus-commerce/</code> or test it live in Zenith Studio.
       </p>
