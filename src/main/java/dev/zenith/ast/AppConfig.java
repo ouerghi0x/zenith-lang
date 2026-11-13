@@ -260,6 +260,29 @@ public class AppConfig {
         return val != null ? val.toString().trim() : "10m";
     }
 
+    public boolean isProxyEnabled() {
+        Object val = properties.get("proxy");
+        if (val == null) return false;
+        String s = val.toString().trim().toLowerCase();
+        return "nginx".equals(s) || "true".equals(s) || properties.containsKey("replicas") || properties.containsKey("ssl");
+    }
+
+    public String getProxyType() {
+        Object val = properties.get("proxy");
+        if (val == null) return isProxyEnabled() ? "nginx" : "none";
+        String s = val.toString().trim().toLowerCase();
+        if ("nginx".equals(s) || "true".equals(s)) return "nginx";
+        return s;
+    }
+
+    public int getProxyReplicas() {
+        return getInt("replicas", 2);
+    }
+
+    public boolean isProxySslEnabled() {
+        return getBoolean("ssl", false);
+    }
+
     public Map<String, Object> getProperties() {
         return properties;
     }

@@ -1,5 +1,6 @@
 package dev.zenith.generator;
 
+import dev.zenith.ast.AppConfig;
 import dev.zenith.ast.ZenithFile;
 
 import java.util.ArrayList;
@@ -8,7 +9,7 @@ import java.util.List;
 /**
  * Generates ready-to-run Docker and Docker Compose environments:
  * - Multi-stage Dockerfile (Maven 3 + Eclipse Temurin 17 JRE slim)
- * - docker-compose.yml pairing the Spring Boot API with PostgreSQL/MySQL/H2
+ * - docker-compose.yml pairing the Spring Boot API (with optional Nginx reverse proxy & multi-replica scaling) with PostgreSQL/MySQL/H2
  * - .dockerignore for clean builds
  */
 public class DockerGenerator {
@@ -36,6 +37,7 @@ public class DockerGenerator {
                 "RUN mvn clean package -DskipTests\n\n" +
                 "# 2. Runtime Stage\n" +
                 "FROM eclipse-temurin:17-jre-alpine\n" +
+                "RUN apk add --no-cache curl\n" +
                 "WORKDIR /app\n" +
                 "RUN addgroup -S zenith && adduser -S zenith -G zenith\n" +
                 "USER zenith:zenith\n" +
@@ -48,43 +50,90 @@ public class DockerGenerator {
     }
 
     private static JavaSourceFile generateDockerCompose(ZenithFile file) {
-        int port = file.getConfig().getPort();
-        String db = file.getConfig().getDatabase().toLowerCase();
-        String appName = file.getConfig().getApp().toLowerCase().replaceAll("[^a-z0-9]", "");
+        AppConfig config = file.getConfig();
+        int port = config.getPort();
+        String db = config.getDatabase().toLowerCase();
+        String appName = config.getApp().toLowerCase().replaceAll("[^a-z0-9]", "");
+        boolean useProxy = config.isProxyEnabled();
+        int replicas = useProxy ? config.getProxyReplicas() : 1;
+        if (replicas < 1) replicas = 2;
 
         StringBuilder sb = new StringBuilder();
         sb.append("version: '3.8'\n\n");
         sb.append("services:\n");
-        sb.append("  api:\n");
-        sb.append("    build:\n");
-        sb.append("      context: .\n");
-        sb.append("      dockerfile: Dockerfile\n");
-        sb.append("    ports:\n");
-        sb.append("      - \"").append(port).append(":").append(port).append("\"\n");
-        sb.append("    environment:\n");
-        sb.append("      SERVER_PORT: ").append(port).append("\n");
 
-        if (file.hasStorage()) {
-            sb.append("      STORAGE_PROVIDER: minio\n");
-            sb.append("      STORAGE_ENDPOINT: http://minio:9000\n");
-            sb.append("      STORAGE_BUCKET: ").append(file.getConfig().getStorageBucket()).append("\n");
-            sb.append("      STORAGE_ACCESS_KEY: minioadmin\n");
-            sb.append("      STORAGE_SECRET_KEY: minioadmin\n");
-        }
-
-        boolean usesRedis = file.hasCache() && "redis".equalsIgnoreCase(file.getConfig().getCacheProvider());
-        if (usesRedis) {
-            sb.append("      REDIS_HOST: redis\n");
-            sb.append("      REDIS_PORT: 6379\n");
-        }
-
-        if ("postgres".equals(db) || "postgresql".equals(db)) {
-            sb.append("      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/").append(appName).append("_db\n");
-            sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
-            sb.append("      SPRING_DATASOURCE_PASSWORD: zenith_secret\n");
+        if (useProxy) {
+            // Emit Nginx proxy service first
+            sb.append("  nginx:\n");
+            sb.append("    image: nginx:alpine\n");
+            sb.append("    ports:\n");
+            sb.append("      - \"80:80\"\n");
+            if (config.isProxySslEnabled()) {
+                sb.append("      - \"443:443\"\n");
+            }
+            sb.append("    volumes:\n");
+            sb.append("      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro\n");
             sb.append("    depends_on:\n");
-            sb.append("      db:\n");
-            sb.append("        condition: service_healthy\n\n");
+            for (int i = 1; i <= replicas; i++) {
+                sb.append("      - ").append(appName).append("-").append(i).append("\n");
+            }
+            sb.append("\n");
+
+            // Emit replicated app containers
+            for (int i = 1; i <= replicas; i++) {
+                String serviceName = appName + "-" + i;
+                sb.append("  ").append(serviceName).append(":\n");
+                sb.append("    build:\n");
+                sb.append("      context: .\n");
+                sb.append("      dockerfile: Dockerfile\n");
+                sb.append("    environment:\n");
+                sb.append("      SERVER_PORT: ").append(port).append("\n");
+
+                appendCommonEnv(sb, file, db, appName);
+
+                sb.append("    healthcheck:\n");
+                sb.append("      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:").append(port).append("/actuator/health\"]\n");
+                sb.append("      interval: 10s\n");
+                sb.append("      timeout: 5s\n");
+                sb.append("      retries: 5\n");
+                sb.append("    depends_on:\n");
+                if ("postgres".equals(db) || "postgresql".equals(db)) {
+                    sb.append("      db:\n");
+                    sb.append("        condition: service_healthy\n\n");
+                } else if ("mysql".equals(db)) {
+                    sb.append("      - db\n\n");
+                } else {
+                    sb.append("      -\n"); // none or h2
+                    sb.append("        restart: always\n\n");
+                }
+            }
+        } else {
+            // Single API container without Nginx proxy
+            sb.append("  api:\n");
+            sb.append("    build:\n");
+            sb.append("      context: .\n");
+            sb.append("      dockerfile: Dockerfile\n");
+            sb.append("    ports:\n");
+            sb.append("      - \"").append(port).append(":").append(port).append("\"\n");
+            sb.append("    environment:\n");
+            sb.append("      SERVER_PORT: ").append(port).append("\n");
+
+            appendCommonEnv(sb, file, db, appName);
+
+            if ("postgres".equals(db) || "postgresql".equals(db)) {
+                sb.append("    depends_on:\n");
+                sb.append("      db:\n");
+                sb.append("        condition: service_healthy\n\n");
+            } else if ("mysql".equals(db)) {
+                sb.append("    depends_on:\n");
+                sb.append("      - db\n\n");
+            } else {
+                sb.append("    restart: always\n\n");
+            }
+        }
+
+        // Database service
+        if ("postgres".equals(db) || "postgresql".equals(db)) {
             sb.append("  db:\n");
             sb.append("    image: postgres:15-alpine\n");
             sb.append("    environment:\n");
@@ -101,12 +150,6 @@ public class DockerGenerator {
             sb.append("      timeout: 5s\n");
             sb.append("      retries: 5\n\n");
         } else if ("mysql".equals(db)) {
-            sb.append("      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/").append(appName)
-                    .append("_db?useSSL=false&allowPublicKeyRetrieval=true\n");
-            sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
-            sb.append("      SPRING_DATASOURCE_PASSWORD: zenith_secret\n");
-            sb.append("    depends_on:\n");
-            sb.append("      - db\n\n");
             sb.append("  db:\n");
             sb.append("    image: mysql:8.0\n");
             sb.append("    environment:\n");
@@ -118,9 +161,6 @@ public class DockerGenerator {
             sb.append("      - \"3306:3306\"\n");
             sb.append("    volumes:\n");
             sb.append("      - mysqldata:/var/lib/mysql\n\n");
-        } else {
-            // H2
-            sb.append("    restart: always\n");
         }
 
         if (file.hasStorage()) {
@@ -137,6 +177,7 @@ public class DockerGenerator {
             sb.append("      - miniodata:/data\n\n");
         }
 
+        boolean usesRedis = file.hasCache() && "redis".equalsIgnoreCase(file.getConfig().getCacheProvider());
         if (usesRedis) {
             sb.append("  redis:\n");
             sb.append("    image: redis:7-alpine\n");
@@ -167,6 +208,33 @@ public class DockerGenerator {
         }
 
         return new JavaSourceFile("docker-compose.yml", sb.toString());
+    }
+
+    private static void appendCommonEnv(StringBuilder sb, ZenithFile file, String db, String appName) {
+        if (file.hasStorage()) {
+            sb.append("      STORAGE_PROVIDER: minio\n");
+            sb.append("      STORAGE_ENDPOINT: http://minio:9000\n");
+            sb.append("      STORAGE_BUCKET: ").append(file.getConfig().getStorageBucket()).append("\n");
+            sb.append("      STORAGE_ACCESS_KEY: minioadmin\n");
+            sb.append("      STORAGE_SECRET_KEY: minioadmin\n");
+        }
+
+        boolean usesRedis = file.hasCache() && "redis".equalsIgnoreCase(file.getConfig().getCacheProvider());
+        if (usesRedis) {
+            sb.append("      REDIS_HOST: redis\n");
+            sb.append("      REDIS_PORT: 6379\n");
+        }
+
+        if ("postgres".equals(db) || "postgresql".equals(db)) {
+            sb.append("      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/").append(appName).append("_db\n");
+            sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
+            sb.append("      SPRING_DATASOURCE_PASSWORD: zenith_secret\n");
+        } else if ("mysql".equals(db)) {
+            sb.append("      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/").append(appName)
+                    .append("_db?useSSL=false&allowPublicKeyRetrieval=true\n");
+            sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
+            sb.append("      SPRING_DATASOURCE_PASSWORD: zenith_secret\n");
+        }
     }
 
     private static JavaSourceFile generateDockerignore() {

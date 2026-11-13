@@ -149,7 +149,8 @@ require(['vs/editor/editor.main'], function () {
   monaco.languages.register({ id: 'zenith' });
   monaco.languages.setMonarchTokensProvider('zenith', {
     keywords: [
-      'import', 'config', 'model', 'enum', 'dto', 'body', 'seed', 'relations', 'endpoints',
+      'nginx',
+      'proxy', 'ssl', 'replicas', 'import', 'config', 'model', 'enum', 'dto', 'body', 'seed', 'relations', 'endpoints',
       'crud', 'guard', 'action', 'true', 'false', 'auth', 'public',
       'and', 'or', 'paginate', 'search', 'filter', 'sort', 'params', 'query', 'where', 'find',
       'create', 'update', 'notify', 'minio', 's3', 'storage', 'storageBucket', 'job', 'cron', 'fixedRate',
@@ -8827,11 +8828,218 @@ async function executeSingleStep(index) {
   }
 }
 
-// Initial edition check on DOM load
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', loadEditionStatus);
-} else {
-  loadEditionStatus();
+// ==========================================
+// SPEC #23: MULTI-PANE WINDOW SPLITTING & FLEXIBLE GRID WORKSPACE
+// ==========================================
+
+let activeLayoutPreset = 'standard'; // Always default to standard 1:1 on initial page load
+let editors = {}; // { editor1: monacoInstance, editor2: monacoInstance }
+let activeEditorId = 'editor1';
+
+function initMultiPaneWorkspace() {
+    applyLayoutPreset(activeLayoutPreset, false);
+    setupWorkspaceKeybindings();
+    setupEditorSplitterDrag();
 }
+
+function applyLayoutPreset(presetName, save = true) {
+    activeLayoutPreset = presetName;
+    if (save) {
+        localStorage.setItem('zenith_workspace_layout', presetName);
+    }
+    const ws = document.getElementById('studioWorkspace');
+    if (!ws) return;
+    
+    ws.className = 'studio-workspace layout-' + presetName;
+
+    // Update preset button label
+    const labels = {
+        'standard': 'Standard 1:1',
+        'dual_schema': 'Dual Schema',
+        'horizontal': 'Horizontal Stack',
+        'quad': 'Quad Multi-Grid'
+    };
+    const lblEl = document.getElementById('currentPresetLabel');
+    if (lblEl) lblEl.textContent = labels[presetName] || 'Standard 1:1';
+
+    // Highlight active in dropdown menu
+    document.querySelectorAll('#layoutPresetMenu .execution-dropdown-item').forEach(el => el.classList.remove('active'));
+    const activeItem = document.getElementById('presetItem' + presetName.charAt(0).toUpperCase() + presetName.slice(1).replace('_',''));
+    if (activeItem) activeItem.classList.add('active');
+
+    // Show/hide secondary editor pane based on layout
+    const ed2 = document.getElementById('editorPane2');
+    const edSplitter = document.getElementById('editorSplitter');
+    if (ed2) {
+        if (presetName === 'dual_schema' || presetName === 'quad') {
+            ed2.style.display = 'flex';
+            if (edSplitter) edSplitter.style.display = 'block';
+            if (!editors['editor2']) {
+                setTimeout(() => initSecondaryEditor(), 50);
+            }
+        } else {
+            ed2.style.display = 'none';
+            if (edSplitter) edSplitter.style.display = 'none';
+        }
+    }
+
+    setTimeout(() => {
+        Object.values(editors).forEach(ed => {
+            if (ed && typeof ed.layout === 'function') ed.layout();
+        });
+    }, 100);
+}
+
+function toggleLayoutPresetDropdown(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('layoutPresetMenu');
+    if (menu) {
+        menu.classList.toggle('show');
+    }
+}
+
+function initSecondaryEditor() {
+    const container = document.getElementById('monacoEditorContainer2');
+    if (!container || editors['editor2']) return;
+
+    editors['editor2'] = monaco.editor.create(container, {
+        value: window.zenithFiles ? (window.zenithFiles[1]?.content || window.zenithFileContent || '') : '',
+        language: 'zenith',
+        theme: 'zenith-dark',
+        automaticLayout: true,
+        fontSize: 14,
+        fontFamily: 'JetBrains Mono',
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        lineNumbersMinChars: 3,
+        padding: { top: 12, bottom: 12 },
+    });
+
+    editors['editor2'].onDidFocusEditorText(() => {
+        activeEditorId = 'editor2';
+    });
+
+    editors['editor2'].getModel().onDidChangeContent(() => {
+        if (activeEditorId === 'editor2') {
+            const val = editors['editor2'].getValue();
+            window.zenithFileContent = val;
+            scheduleCompilation();
+        }
+    });
+
+    populateVerticalTabsListForPane('editor2');
+}
+
+function splitActiveEditor(orientation) {
+    if (orientation === 'vertical') {
+        applyLayoutPreset('dual_schema');
+    } else {
+        applyLayoutPreset('horizontal');
+    }
+}
+
+function closeSplitPane(paneId) {
+    if (paneId === 'editor2') {
+        applyLayoutPreset('standard');
+    }
+}
+
+function setupWorkspaceKeybindings() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl + \ -> Vertical Split
+        if ((e.ctrlKey || e.metaKey) && e.key === '\\' && !e.shiftKey) {
+            e.preventDefault();
+            splitActiveEditor('vertical');
+        }
+        // Ctrl + Shift + \ -> Horizontal Split
+        else if ((e.ctrlKey || e.metaKey) && e.key === '\\' && e.shiftKey) {
+            e.preventDefault();
+            splitActiveEditor('horizontal');
+        }
+        // Ctrl + W -> Close Split Pane
+        else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') {
+            e.preventDefault();
+            closeSplitPane('editor2');
+        }
+        // Ctrl + 1 -> Focus Editor 1
+        else if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+            e.preventDefault();
+            activeEditorId = 'editor1';
+            if (editors['editor1']) editors['editor1'].focus();
+        }
+        // Ctrl + 2 -> Focus Editor 2
+        else if ((e.ctrlKey || e.metaKey) && e.key === '2') {
+            e.preventDefault();
+            activeEditorId = 'editor2';
+            if (editors['editor2']) editors['editor2'].focus();
+        }
+    });
+
+    document.addEventListener('click', () => {
+        const menu = document.getElementById('layoutPresetMenu');
+        if (menu) menu.classList.remove('show');
+    });
+}
+
+function setupEditorSplitterDrag() {
+    const splitter = document.getElementById('editorSplitter');
+    const ws = document.getElementById('studioWorkspace');
+    if (!splitter || !ws) return;
+
+    let isDragging = false;
+    splitter.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        splitter.classList.add('dragging');
+        e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const rect = ws.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const pct = Math.max(20, Math.min(80, (x / rect.width) * 100));
+        ws.style.gridTemplateColumns = `minmax(260px, ${pct}fr) 4px minmax(260px, ${100 - pct}fr)`;
+        Object.values(editors).forEach(ed => {
+            if (ed && typeof ed.layout === 'function') ed.layout();
+        });
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            splitter.classList.remove('dragging');
+        }
+    });
+
+    splitter.addEventListener('dblclick', () => {
+        ws.style.gridTemplateColumns = '1fr 4px 1fr';
+        Object.values(editors).forEach(ed => {
+            if (ed && typeof ed.layout === 'function') ed.layout();
+        });
+    });
+}
+
+function populateVerticalTabsListForPane(paneId) {
+    const listEl = document.getElementById(paneId === 'editor1' ? 'verticalTabsList' : 'verticalTabsList2');
+    if (!listEl || !window.zenithFiles) return;
+    listEl.innerHTML = '';
+    window.zenithFiles.forEach(f => {
+        const item = document.createElement('div');
+        item.className = 'vertical-tab-item' + (f.name === window.currentActiveFile ? ' active' : '');
+        item.innerHTML = `<span class="vertical-tab-name">${f.name}</span>`;
+        item.onclick = () => {
+            activeEditorId = paneId;
+            switchFile(f.name);
+        };
+        listEl.appendChild(item);
+    });
+}
+
+// Hook into initial load
+window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        initMultiPaneWorkspace();
+    }, 150);
+});
 
 

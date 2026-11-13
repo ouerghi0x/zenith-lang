@@ -15,7 +15,7 @@ public class Parser {
             "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket",
             "usermodel", "jwtsecret", "jwtexpiration", "ratelimit", "mail", "mailprovider", "mailfrom", "cache",
             "cacheprovider", "cachettl",
-            "mailport", "mailhost", "mailusername", "mailpassword"
+            "mailport", "mailhost", "mailusername", "mailpassword", "proxy", "replicas", "ssl"
     );
 
     public Parser(List<Token> tokens) {
@@ -510,12 +510,24 @@ public class Parser {
                         throw error(keyToken, "Invalid mail provider '" + valStr
                                 + "'. Supported options: smtp, sendgrid, ses, console.");
                     }
-                } else if ("cache".equals(keyLower) || "cacheprovider".equals(keyLower)) {
-                    String c = valStr.toLowerCase();
-                    if (!c.equals("redis") && !c.equals("caffeine") && !c.equals("memory") && !c.equals("none")
-                            && !c.equals("true") && !c.equals("false")) {
-                        throw error(keyToken, "Invalid cache provider '" + valStr
-                                + "'. Supported options: redis, caffeine, memory, none.");
+                } else if ("proxy".equals(keyLower)) {
+                    String pr = valStr.toLowerCase();
+                    if (!pr.equals("nginx") && !pr.equals("none") && !pr.equals("true") && !pr.equals("false")) {
+                        throw error(keyToken, "Invalid proxy option '" + valStr + "'. Supported options: nginx, none.");
+                    }
+                } else if ("replicas".equals(keyLower)) {
+                    try {
+                        int r = Integer.parseInt(valStr);
+                        if (r < 1 || r > 100) {
+                            throw error(keyToken, "Replicas count must be between 1 and 100, found: " + valStr);
+                        }
+                    } catch (NumberFormatException nfe) {
+                        throw error(keyToken, "Replicas must be an integer, found: '" + valStr + "'");
+                    }
+                } else if ("ssl".equals(keyLower)) {
+                    String b = valStr.toLowerCase();
+                    if (!b.equals("true") && !b.equals("false")) {
+                        throw error(keyToken, "Property 'ssl' must be a boolean (true or false), found: '" + valStr + "'");
                     }
                 }
             }

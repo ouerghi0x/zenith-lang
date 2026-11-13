@@ -115,6 +115,11 @@ public class ProjectGenerator {
         // 10. Phase 5: Containerization (Dockerfile & docker-compose.yml)
         files.addAll(DockerGenerator.generate(file));
 
+        // 10.2. Nginx Reverse Proxy & Load Balancer (Spec #14)
+        if (file.getConfig().isProxyEnabled()) {
+            files.add(NginxGenerator.generate(file));
+        }
+
         // 11. Phase 6: Automated Integration & Unit Tests Generation
         files.addAll(TestGenerator.generate(file));
 
