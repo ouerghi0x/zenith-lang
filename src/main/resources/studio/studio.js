@@ -4617,6 +4617,11 @@ function initConsole() {
     box.dataset.initialized = 'true';
     box.addEventListener('scroll', handleConsoleScroll, { passive: true });
   }
+  const termBox = document.getElementById('terminalOutput');
+  if (termBox && !termBox.dataset.initialized) {
+    termBox.dataset.initialized = 'true';
+    termBox.addEventListener('scroll', checkTerminalScrollPosition, { passive: true });
+  }
 }
 
 // User-aware scroll detection (prevents snap-down when reading stack traces)
@@ -5052,6 +5057,323 @@ function appendConsoleLog(line) {
 // Download Project ZIP
 function exportZip() {
   window.location.href = '/api/export';
+}
+
+/* ==========================================================================
+   Spec #21: Embedded Interactive Terminal in Studio Console (cmd / sh Runner)
+   ========================================================================== */
+
+let activeConsoleSubTab = 'logs';
+let terminalWorkingDir = 'workspace';
+let terminalAutoScroll = true;
+let terminalHistory = [];
+let terminalHistoryIndex = -1;
+let terminalDraftInput = '';
+let terminalLastLineIndex = 0;
+let terminalPollInterval = null;
+let isTerminalRunning = false;
+
+function switchConsoleSubTab(subTab) {
+  activeConsoleSubTab = subTab;
+  const btnLogs = document.getElementById('btnConsoleSubLogs');
+  const btnTerm = document.getElementById('btnConsoleSubTerminal');
+  const panelLogs = document.getElementById('consoleSubPanelLogs');
+  const panelTerm = document.getElementById('consoleSubPanelTerminal');
+
+  if (subTab === 'terminal') {
+    if (btnLogs) btnLogs.classList.remove('active');
+    if (btnTerm) btnTerm.classList.add('active');
+    if (panelLogs) panelLogs.style.display = 'none';
+    if (panelTerm) panelTerm.style.display = 'flex';
+
+    // Focus input and fetch latest lines
+    const input = document.getElementById('terminalInput');
+    if (input) setTimeout(() => input.focus(), 50);
+    fetchTerminalLogs();
+    startTerminalPolling();
+  } else {
+    if (btnTerm) btnTerm.classList.remove('active');
+    if (btnLogs) btnLogs.classList.add('active');
+    if (panelTerm) panelTerm.style.display = 'none';
+    if (panelLogs) panelLogs.style.display = 'flex';
+  }
+}
+
+function onTerminalWorkingDirChange(val) {
+  terminalWorkingDir = val;
+  const prompt = document.getElementById('terminalPromptDisplay');
+  if (prompt) {
+    prompt.textContent = (val === 'project') ? 'studio-run ❯' : 'workspace ❯';
+  }
+}
+
+function quickFillTerminal(cmd) {
+  const input = document.getElementById('terminalInput');
+  if (input) {
+    input.value = cmd;
+    input.focus();
+  }
+}
+
+function handleTerminalKeydown(e) {
+  const input = document.getElementById('terminalInput');
+  if (!input) return;
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submitTerminalCommand();
+  } else if (e.key === 'ArrowUp') {
+    if (terminalHistory.length === 0) return;
+    if (terminalHistoryIndex === -1) {
+      terminalDraftInput = input.value;
+    }
+    if (terminalHistoryIndex < terminalHistory.length - 1) {
+      terminalHistoryIndex++;
+      input.value = terminalHistory[terminalHistory.length - 1 - terminalHistoryIndex];
+      e.preventDefault();
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+  } else if (e.key === 'ArrowDown') {
+    if (terminalHistoryIndex > 0) {
+      terminalHistoryIndex--;
+      input.value = terminalHistory[terminalHistory.length - 1 - terminalHistoryIndex];
+      e.preventDefault();
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    } else if (terminalHistoryIndex === 0) {
+      terminalHistoryIndex = -1;
+      input.value = terminalDraftInput;
+      e.preventDefault();
+    }
+  }
+}
+
+async function submitTerminalCommand() {
+  const input = document.getElementById('terminalInput');
+  if (!input) return;
+  const cmd = input.value.trim();
+  if (!cmd) return;
+
+  // Add to local history
+  if (terminalHistory.length === 0 || terminalHistory[terminalHistory.length - 1] !== cmd) {
+    terminalHistory.push(cmd);
+    if (terminalHistory.length > 100) terminalHistory.shift();
+  }
+  terminalHistoryIndex = -1;
+  terminalDraftInput = '';
+  input.value = '';
+
+  try {
+    const res = await fetch('/api/terminal/exec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: cmd, workingDir: terminalWorkingDir })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to execute terminal command');
+    }
+    // Fetch logs immediately
+    await fetchTerminalLogs();
+    startTerminalPolling();
+  } catch (err) {
+    console.error('[Terminal] Exec error:', err);
+    showToast('Error communicating with terminal backend');
+  }
+}
+
+function startTerminalPolling() {
+  if (terminalPollInterval) return;
+  terminalPollInterval = setInterval(fetchTerminalLogs, 250);
+}
+
+function stopTerminalPolling() {
+  if (terminalPollInterval) {
+    clearInterval(terminalPollInterval);
+    terminalPollInterval = null;
+  }
+}
+
+async function fetchTerminalLogs() {
+  try {
+    const res = await fetch(`/api/terminal/logs?since=${terminalLastLineIndex}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    isTerminalRunning = Boolean(data.running);
+    updateTerminalStatus(data);
+
+    if (data.lines && data.lines.length > 0) {
+      const box = document.getElementById('terminalOutput');
+      if (box) {
+        data.lines.forEach(line => {
+          const el = document.createElement('div');
+          el.className = `term-line ${line.type || 'stdout'}`;
+          el.innerHTML = parseAnsiColors(line.text);
+          box.appendChild(el);
+          terminalLastLineIndex = Math.max(terminalLastLineIndex, line.index + 1);
+        });
+
+        // Cap total children to 2000 lines
+        while (box.children.length > 2000) {
+          box.removeChild(box.firstChild);
+        }
+
+        if (terminalAutoScroll) {
+          box.scrollTop = box.scrollHeight;
+        } else {
+          checkTerminalScrollPosition();
+        }
+      }
+    }
+
+    if (!data.running && terminalPollInterval) {
+      // Idle down polling to every 1.5s when not actively executing
+      stopTerminalPolling();
+      terminalPollInterval = setInterval(fetchTerminalLogs, 1500);
+    }
+  } catch (err) {
+    // Silent catch on network hiccups
+  }
+}
+
+function updateTerminalStatus(data) {
+  const badge = document.getElementById('terminalStatusBadge');
+  const stopBtn = document.getElementById('terminalStopBtn');
+  const runningDot = document.getElementById('terminalRunningDot');
+
+  if (data.running) {
+    if (badge) {
+      badge.textContent = `Running (PID: ${data.pid})`;
+      badge.className = 'terminal-status-badge running';
+    }
+    if (stopBtn) stopBtn.disabled = false;
+    if (runningDot) runningDot.style.display = 'inline-block';
+  } else {
+    if (badge) {
+      if (data.exitCode === 0) {
+        badge.textContent = 'Exited (0)';
+        badge.className = 'terminal-status-badge success';
+      } else if (data.exitCode !== null) {
+        badge.textContent = `Exited (${data.exitCode})`;
+        badge.className = 'terminal-status-badge error';
+      } else {
+        badge.textContent = 'Idle';
+        badge.className = 'terminal-status-badge';
+      }
+    }
+    if (stopBtn) stopBtn.disabled = true;
+    if (runningDot) runningDot.style.display = 'none';
+  }
+}
+
+async function terminateTerminalProcess() {
+  const stopBtn = document.getElementById('terminalStopBtn');
+  if (stopBtn) stopBtn.disabled = true;
+  try {
+    await fetch('/api/terminal/kill', { method: 'POST' });
+    await fetchTerminalLogs();
+  } catch (err) {
+    console.error('[Terminal] Kill error:', err);
+  }
+}
+
+async function clearTerminalOutput() {
+  try {
+    await fetch('/api/terminal/clear', { method: 'POST' });
+  } catch (ignored) {}
+  const box = document.getElementById('terminalOutput');
+  if (box) box.innerHTML = '<div class="term-line system">[Terminal buffer cleared]</div>';
+  terminalLastLineIndex = 0;
+}
+
+function copyTerminalOutput() {
+  const box = document.getElementById('terminalOutput');
+  if (!box) return;
+  const text = box.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Terminal output copied to clipboard!');
+  }).catch(() => {
+    showToast('Failed to copy terminal output');
+  });
+}
+
+function toggleTerminalAutoScroll() {
+  terminalAutoScroll = !terminalAutoScroll;
+  const btn = document.getElementById('terminalAutoScrollBtn');
+  const lbl = document.getElementById('terminalAutoScrollLabel');
+  if (btn) btn.classList.toggle('active', terminalAutoScroll);
+  if (lbl) lbl.textContent = `Auto-scroll: ${terminalAutoScroll ? 'ON' : 'OFF'}`;
+  if (terminalAutoScroll) jumpTerminalToBottom();
+}
+
+function jumpTerminalToBottom() {
+  const box = document.getElementById('terminalOutput');
+  if (box) {
+    box.scrollTop = box.scrollHeight;
+    const jumpBtn = document.getElementById('terminalJumpBottomBtn');
+    if (jumpBtn) jumpBtn.style.display = 'none';
+  }
+}
+
+function checkTerminalScrollPosition() {
+  const box = document.getElementById('terminalOutput');
+  const jumpBtn = document.getElementById('terminalJumpBottomBtn');
+  if (!box || !jumpBtn) return;
+  const distanceFromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+  if (distanceFromBottom > 100) {
+    jumpBtn.style.display = 'inline-flex';
+  } else {
+    jumpBtn.style.display = 'none';
+  }
+}
+
+function parseAnsiColors(text) {
+  if (!text) return '';
+  // 1. HTML Escape first
+  let escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // Standard ANSI foreground colors
+  const ANSI_FG = {
+    '30': '#27272a', '31': '#ef4444', '32': '#22c55e', '33': '#eab308',
+    '34': '#3b82f6', '35': '#a855f7', '36': '#06b6d4', '37': '#e4e4e7',
+    '90': '#71717a', '91': '#f87171', '92': '#4ade80', '93': '#fde047',
+    '94': '#60a5fa', '95': '#c084fc', '96': '#38bdf8', '97': '#ffffff'
+  };
+
+  // Convert ANSI escape sequences
+  let inSpan = false;
+  escaped = escaped.replace(/(?:\u001b|\x1b)\[([\d;]*)m/g, (match, codes) => {
+    if (!codes || codes === '0') {
+      if (inSpan) {
+        inSpan = false;
+        return '</span>';
+      }
+      return '';
+    }
+    const parts = codes.split(';');
+    let color = '';
+    let bold = false;
+    for (const code of parts) {
+      if (code === '1') bold = true;
+      else if (ANSI_FG[code]) color = ANSI_FG[code];
+    }
+    let styles = [];
+    if (color) styles.push(`color:${color}`);
+    if (bold) styles.push(`font-weight:600`);
+    if (styles.length === 0) return '';
+    const spanTag = `${inSpan ? '</span>' : ''}<span style="${styles.join(';')}">`;
+    inSpan = true;
+    return spanTag;
+  });
+
+  if (inSpan) {
+    escaped += '</span>';
+  }
+
+  // Strip remaining ANSI non-color control sequences
+  escaped = escaped.replace(/(?:\u001b|\x1b)\[[0-9;]*[a-zA-Z]/g, '');
+
+  return escaped;
 }
 
 // Reference Tab

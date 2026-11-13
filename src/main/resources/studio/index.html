@@ -10,7 +10,7 @@
   <!-- Monaco Editor Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
   <link rel="icon" type="image/png" href="logo.png" />
-  <link rel="stylesheet" href="/studio.css?v=20261112_v10" />
+  <link rel="stylesheet" href="/studio.css?v=20261112_v11" />
 </head>
 <body>
   <!-- Header -->
@@ -709,44 +709,133 @@
           </div>
         </div>
 
-        <!-- 6. Console / Process Logs -->
+        <!-- 6. Console / Process Logs & Embedded Interactive Terminal (Spec #21) -->
         <div id="tab-console" class="preview-panel">
           <div class="console-layout">
-            <div class="console-toolbar">
-              <div class="console-toolbar-left">
-                <div class="console-title-wrap">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-                  <span>Build &amp; Process Output</span>
-                </div>
-                <span class="console-status-badge" id="consoleStatusBadge">Idle</span>
-              </div>
-              <div class="console-toolbar-right">
-                <button class="btn btn-ghost console-action-btn active" id="consoleAutoScrollBtn" onclick="toggleConsoleAutoScroll()" title="Toggle Auto-Scroll to bottom">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-                  <span id="consoleAutoScrollLabel">Auto-scroll: ON</span>
+            <!-- Sub-tab Navigation Header -->
+            <div class="console-subnav-bar">
+              <div class="console-subnav">
+                <button class="console-subnav-btn active" id="btnConsoleSubLogs" onclick="switchConsoleSubTab('logs')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                  <span>Build Logs</span>
                 </button>
-                <button class="btn btn-ghost console-action-btn" onclick="copyConsoleLogs()" title="Copy all console output">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                  Copy
-                </button>
-                <button class="btn btn-ghost console-action-btn" onclick="clearConsoleOutput()" title="Clear console output">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                  Clear
-                </button>
-                <button class="btn btn-ghost console-action-btn" onclick="resetDevDatabase()" title="Reset dev database & clean schema cache (Fixes column type mismatch crashes)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                  Reset Dev DB
+                <button class="console-subnav-btn" id="btnConsoleSubTerminal" onclick="switchConsoleSubTab('terminal')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+                  <span>Interactive Terminal</span>
+                  <span class="terminal-running-dot" id="terminalRunningDot" style="display: none;" title="Process executing in background"></span>
                 </button>
               </div>
             </div>
-            <div class="console-box-container">
-              <div class="console-box" id="consoleOutput">
-                <div class="log-line info">[Zenith Studio] Compiler ready. Monitoring editor for modifications...</div>
+
+            <!-- Panel 1: Build & Process Output -->
+            <div class="console-subpanel" id="consoleSubPanelLogs">
+              <div class="console-toolbar">
+                <div class="console-toolbar-left">
+                  <div class="console-title-wrap">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                    <span>Spring Boot &amp; Process Output</span>
+                  </div>
+                  <span class="console-status-badge" id="consoleStatusBadge">Idle</span>
+                </div>
+                <div class="console-toolbar-right">
+                  <button class="btn btn-ghost console-action-btn active" id="consoleAutoScrollBtn" onclick="toggleConsoleAutoScroll()" title="Toggle Auto-Scroll to bottom">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                    <span id="consoleAutoScrollLabel">Auto-scroll: ON</span>
+                  </button>
+                  <button class="btn btn-ghost console-action-btn" onclick="copyConsoleLogs()" title="Copy all console output">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy
+                  </button>
+                  <button class="btn btn-ghost console-action-btn" onclick="clearConsoleOutput()" title="Clear console output">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Clear
+                  </button>
+                  <button class="btn btn-ghost console-action-btn" onclick="resetDevDatabase()" title="Reset dev database & clean schema cache (Fixes column type mismatch crashes)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    Reset Dev DB
+                  </button>
+                </div>
               </div>
-              <button class="console-jump-bottom-btn" id="consoleJumpBottomBtn" onclick="jumpConsoleToBottom()" title="Jump back to latest output" style="display: none;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                <span>Scroll to latest logs</span>
-              </button>
+              <div class="console-box-container">
+                <div class="console-box" id="consoleOutput">
+                  <div class="log-line info">[Zenith Studio] Compiler ready. Monitoring editor for modifications...</div>
+                </div>
+                <button class="console-jump-bottom-btn" id="consoleJumpBottomBtn" onclick="jumpConsoleToBottom()" title="Jump back to latest output" style="display: none;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  <span>Scroll to latest logs</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Panel 2: Interactive Terminal (Spec #21) -->
+            <div class="console-subpanel" id="consoleSubPanelTerminal" style="display: none;">
+              <div class="terminal-toolbar">
+                <div class="terminal-toolbar-left">
+                  <div class="terminal-title-wrap">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+                    <span>Shell Environment</span>
+                  </div>
+                  <span class="terminal-status-badge" id="terminalStatusBadge">Idle</span>
+
+                  <div class="terminal-dir-wrap">
+                    <label class="terminal-dir-label">Directory:</label>
+                    <select id="terminalWorkingDir" class="terminal-dir-select" onchange="onTerminalWorkingDirChange(this.value)">
+                      <option value="workspace">~/workspace (schema root)</option>
+                      <option value="project">target/studio-run (Spring Boot)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="terminal-toolbar-right">
+                  <div class="terminal-presets">
+                    <span class="terminal-presets-label">Quick:</span>
+                    <button class="terminal-chip" onclick="quickFillTerminal('mvn test')" title="Run Maven unit tests">mvn test</button>
+                    <button class="terminal-chip" onclick="quickFillTerminal('git status')" title="Inspect Git workspace status">git status</button>
+                    <button class="terminal-chip" onclick="quickFillTerminal('docker compose ps')" title="List running Docker containers">docker ps</button>
+                    <button class="terminal-chip" onclick="quickFillTerminal('dir')" title="List current directory contents">dir / ls</button>
+                  </div>
+
+                  <button class="btn btn-ghost console-action-btn active" id="terminalAutoScrollBtn" onclick="toggleTerminalAutoScroll()" title="Toggle Auto-Scroll">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                    <span id="terminalAutoScrollLabel">Auto-scroll: ON</span>
+                  </button>
+                  <button class="btn btn-ghost console-action-btn" onclick="copyTerminalOutput()" title="Copy all terminal output">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy
+                  </button>
+                  <button class="btn btn-ghost console-action-btn" onclick="clearTerminalOutput()" title="Clear terminal buffer">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Clear
+                  </button>
+                  <button class="btn btn-ghost console-action-btn terminal-stop-btn" id="terminalStopBtn" onclick="terminateTerminalProcess()" title="Stop running process (Ctrl+C)" disabled>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                    Stop
+                  </button>
+                </div>
+              </div>
+
+              <!-- Terminal Output Viewport -->
+              <div class="terminal-box-container">
+                <div class="terminal-viewport" id="terminalOutput">
+                  <!-- Terminal lines rendered here with ANSI colors -->
+                </div>
+                <button class="console-jump-bottom-btn" id="terminalJumpBottomBtn" onclick="jumpTerminalToBottom()" title="Jump back to latest output" style="display: none;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  <span>Scroll to latest</span>
+                </button>
+              </div>
+
+              <!-- Interactive Prompt Input Bar -->
+              <div class="terminal-prompt-bar">
+                <span class="terminal-prompt-label" id="terminalPromptDisplay">workspace ❯</span>
+                <div class="terminal-input-wrap">
+                  <input type="text" id="terminalInput" class="terminal-input" placeholder="Type shell command (e.g. mvn test, git status, curl)..." autocomplete="off" spellcheck="false" onkeydown="handleTerminalKeydown(event)">
+                </div>
+                <button class="btn btn-primary terminal-send-btn" id="terminalSendBtn" onclick="submitTerminalCommand()" title="Execute command (Enter)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  <span>Run</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2958,6 +3047,6 @@ POST /rooms/{id}/messages(body: SendMessageDto) {
     </button>
   </div>
 
-  <script src="/studio.js?v=20261112_v10"></script>
+  <script src="/studio.js?v=20261112_v11"></script>
 </body>
 </html>

@@ -214,6 +214,7 @@ Launches **Zenith Studio** — a full-featured visual architecture IDE running l
 - **Interactive Architecture ERD**: Live SVG relational diagrams, field types, primary keys, and foreign-key links.
 - **Unified Multi-Window API Tester**: Simultaneous testing of HTTP REST requests and real-time STOMP WebSocket streams side-by-side with parameter injection, schema placeholders, and dual execution (`Simulate` vs `Send`).
 - **Visual Dependency Workflows (Community Feature)**: 2D interactive DAG canvas for chaining multi-step API journeys, manual pin-to-pin wiring, AST auto-wiring, declarative assertions, and animated pipeline execution.
+- **Embedded Interactive Terminal (Shell Runner)**: Fully-integrated terminal inside the Console panel for executing Maven (`mvn test`, `mvn compile`), Git (`git status`, `git diff`), Docker, and OS shell commands directly within the workspace or generated target directory with real-time ANSI streaming and command history.
 - **Repository Tree & ZIP Export**: Emitted Java files inspection and one-click full Spring Boot ZIP export.
 
 #### Web Mode (Default)

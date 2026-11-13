@@ -58,10 +58,15 @@ public class ZenithStudioServer {
     // Active Docker Process Tracker (for continuous streaming)
     private Process activeDockerProcess = null;
 
+    // Embedded Interactive Terminal Manager (Spec #21)
+    private final TerminalManager terminalManager;
+
     public ZenithStudioServer(int port, Path initialFilePath) {
         this.port = port;
         this.schemaPath = initialFilePath != null ? initialFilePath.toAbsolutePath().normalize()
                 : Paths.get("schema.zen").toAbsolutePath().normalize();
+        this.terminalManager = new TerminalManager(this.schemaPath != null && this.schemaPath.getParent() != null
+                ? this.schemaPath.getParent() : Paths.get("."));
     }
 
     public void start() throws IOException {
@@ -86,6 +91,13 @@ public class ZenithStudioServer {
         server.createContext("/api/export", new ExportHandler());
         server.createContext("/api/schema", new SchemaHandler());
         server.createContext("/download/desktop", new DesktopDownloadHandler());
+
+        // Embedded Interactive Terminal Routes (Spec #21)
+        server.createContext("/api/terminal/exec", new TerminalExecHandler());
+        server.createContext("/api/terminal/logs", new TerminalLogsHandler());
+        server.createContext("/api/terminal/kill", new TerminalKillHandler());
+        server.createContext("/api/terminal/clear", new TerminalClearHandler());
+        server.createContext("/api/terminal/history", new TerminalHistoryHandler());
 
         server.start();
 
@@ -1655,6 +1667,110 @@ public class ZenithStudioServer {
                 return sb.toString();
             }
             return "\"" + escape(val.toString()) + "\"";
+        }
+    }
+
+    // =========================================================================
+    // Embedded Interactive Terminal Handlers (Spec #21)
+    // =========================================================================
+
+    private class TerminalExecHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendResponse(exchange, 405, "application/json", "{\"success\":false,\"error\":\"Method not allowed\"}");
+                return;
+            }
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String command = extractJsonField(body, "command");
+            String workingDir = extractJsonField(body, "workingDir");
+
+            if (command == null || command.isBlank()) {
+                sendResponse(exchange, 400, "application/json", "{\"success\":false,\"error\":\"Command cannot be empty\"}");
+                return;
+            }
+
+            if (terminalManager.isRunning()) {
+                sendResponse(exchange, 409, "application/json",
+                        "{\"success\":false,\"error\":\"A terminal command is already executing. Click Stop or wait for completion.\"}");
+                return;
+            }
+
+            boolean started = terminalManager.executeCommand(command, workingDir);
+            if (started) {
+                String resp = "{\"success\":true,\"pid\":" + terminalManager.getActivePid()
+                        + ",\"command\":\"" + escape(terminalManager.getActiveCommand())
+                        + "\",\"workingDir\":\"" + terminalManager.getActiveWorkingDirKey() + "\"}";
+                sendResponse(exchange, 200, "application/json", resp);
+            } else {
+                sendResponse(exchange, 500, "application/json", "{\"success\":false,\"error\":\"Failed to launch terminal command\"}");
+            }
+        }
+    }
+
+    private class TerminalLogsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            int since = 0;
+            String query = exchange.getRequestURI().getQuery();
+            if (query != null && query.contains("since=")) {
+                try {
+                    for (String param : query.split("&")) {
+                        if (param.startsWith("since=")) {
+                            since = Integer.parseInt(param.substring(6));
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            List<TerminalManager.TerminalLine> lines = terminalManager.getLinesSince(since);
+            StringBuilder sb = new StringBuilder("{");
+            sb.append("\"running\":").append(terminalManager.isRunning()).append(",");
+            sb.append("\"pid\":").append(terminalManager.getActivePid()).append(",");
+            sb.append("\"command\":\"").append(escape(terminalManager.getActiveCommand())).append("\",");
+            sb.append("\"workingDir\":\"").append(terminalManager.getActiveWorkingDirKey()).append("\",");
+            sb.append("\"workspacePath\":\"").append(escape(terminalManager.getWorkspaceDir().toString())).append("\",");
+            sb.append("\"projectPath\":\"").append(escape(terminalManager.getProjectDir().toString())).append("\",");
+            Integer exitCode = terminalManager.getLastExitCode();
+            sb.append("\"exitCode\":").append(exitCode == null ? "null" : exitCode).append(",");
+            sb.append("\"lines\":[");
+            for (int i = 0; i < lines.size(); i++) {
+                if (i > 0) sb.append(",");
+                sb.append(lines.get(i).toJson());
+            }
+            sb.append("]}");
+            sendResponse(exchange, 200, "application/json", sb.toString());
+        }
+    }
+
+    private class TerminalKillHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            boolean killed = terminalManager.terminateActiveProcess();
+            sendResponse(exchange, 200, "application/json", "{\"success\":" + killed + "}");
+        }
+    }
+
+    private class TerminalClearHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            terminalManager.clearOutput();
+            sendResponse(exchange, 200, "application/json", "{\"success\":true}");
+        }
+    }
+
+    private class TerminalHistoryHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            List<String> history = terminalManager.getCommandHistory();
+            StringBuilder sb = new StringBuilder("{\"history\":[");
+            for (int i = 0; i < history.size(); i++) {
+                if (i > 0) sb.append(",");
+                sb.append("\"").append(escape(history.get(i))).append("\"");
+            }
+            sb.append("]}");
+            sendResponse(exchange, 200, "application/json", sb.toString());
         }
     }
 
