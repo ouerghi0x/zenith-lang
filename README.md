@@ -244,7 +244,6 @@ Watch a narrated 16:9 walkthrough of a one-to-one schema in Zenith Studio. It co
   Your browser does not support embedded video. [Open or download the MP4](docs/assets/one-to-one-studio-demo.mp4).
 </video>
 
-
 For example, register and check a VPS from the Zenith terminal:
 
 ```sh
@@ -333,9 +332,9 @@ Declare application-wide architecture, database dialect, authentication, and ext
 | `flyway`        | `Boolean`    | `false`             | Generates Flyway database migration scripts (`V1__initial_schema.sql`). Disabled by default; explicitly opt-in with `flyway: true`.                                                         |
 | `storage`       | `Identifier` | `minio`             | Unified object storage provider: `minio` (local S3-compatible dev storage) or `s3` (AWS S3 cloud production).                                                                               |
 | `storageBucket` | `String`     | `"zenith-bucket"`   | Default bucket name for media, images, and file uploads.                                                                                                                                    |
-| `proxy`         | `Identifier` | `none`              | Set to `nginx` to generate an Nginx reverse proxy and load balancer in Docker Compose.                                                                                                       |
-| `replicas`      | `Int`        | `2`                 | Number of Spring Boot app containers behind Nginx (1-100; used with the proxy).                                                                                                               |
-| `ssl`           | `Boolean`    | `false`             | Publishes host port `443` on the generated Nginx service. TLS certificates and an HTTPS listener are not generated yet; see below.                                                           |
+| `proxy`         | `Identifier` | `none`              | Set to `nginx` to generate an Nginx reverse proxy and load balancer in Docker Compose.                                                                                                      |
+| `replicas`      | `Int`        | `2`                 | Number of Spring Boot app containers behind Nginx (1-100; used with the proxy).                                                                                                             |
+| `ssl`           | `Boolean`    | `false`             | Publishes host port `443` on the generated Nginx service. TLS certificates and an HTTPS listener are not generated yet; see below.                                                          |
 
 ```zen
 config {
@@ -1250,13 +1249,17 @@ Available endpoints:
 
 ## Roadmap & Feature Status
 
-All 7 foundational milestones (**Custom Request Bodies**, **Database Seeding**, **Multi-File Modular Imports**, **Advanced Actions & Notifications**, **File Uploads & Object Storage**, **Automated Test Generation**, and **Background Jobs & Cron**) are **Fully Implemented**. For historical architecture breakdowns, see **[ROADMAP.md](ROADMAP.md)**.
+All 7 foundational milestones (**Custom Request Bodies**, **Database Seeding**, **Multi-File Modular Imports**, **Advanced Actions & Notifications**, **File Uploads & Object Storage**, **Automated Test Generation**, and **Background Jobs & Cron**) are **Fully Implemented**.
+
+Looking for a way to contribute? See the [Zenith Contributor Roadmap](CONTRIBUTOR_ROADMAP.md) for open feature ideas and good first contributions. Items are proposals, not scheduled commitments.
 
 ---
 
 ## Contributing
 
 Contributions are warmly welcomed! Please read our **[CONTRIBUTING.md](CONTRIBUTING.md)** for details on the development environment setup, codebase architecture, pull request workflow, and contributor agreement.
+
+Browse the [Contributor Roadmap](CONTRIBUTOR_ROADMAP.md) for suggested areas to work on. Check existing issues and discuss larger changes before implementation.
 
 ---
 
