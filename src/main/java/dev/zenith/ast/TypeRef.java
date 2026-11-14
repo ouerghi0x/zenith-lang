@@ -7,13 +7,23 @@ public class TypeRef {
     private final String name;
     private final boolean isList;
     private final String genericType;
+    private final TypeRef elementTypeRef;
     private final Map<String, Object> params;
 
     public TypeRef(String name, boolean isList, String genericType, Map<String, Object> params) {
         this.name = name;
         this.isList = isList;
         this.genericType = genericType;
+        this.elementTypeRef = null;
         this.params = params != null ? params : Collections.emptyMap();
+    }
+
+    private TypeRef(TypeRef elementType) {
+        this.name = "List";
+        this.isList = true;
+        this.genericType = elementType != null ? elementType.getName() : null;
+        this.elementTypeRef = elementType;
+        this.params = Collections.emptyMap();
     }
 
     public static TypeRef simple(String name) {
@@ -26,6 +36,14 @@ public class TypeRef {
 
     public static TypeRef list(String genericType) {
         return new TypeRef("List", true, genericType, Collections.emptyMap());
+    }
+
+    public static TypeRef list(TypeRef elementType) {
+        return new TypeRef(elementType);
+    }
+
+    public TypeRef getElementTypeRef() {
+        return elementTypeRef != null ? elementTypeRef : (isList ? TypeRef.simple(genericType) : null);
     }
 
     public String getName() {
@@ -46,7 +64,7 @@ public class TypeRef {
 
     @Override
     public String toString() {
-        if (isList) return "List<" + genericType + ">";
+        if (isList) return "List<" + (elementTypeRef != null ? elementTypeRef.toString() : genericType) + ">";
         if (!params.isEmpty()) return name + params;
         return name;
     }

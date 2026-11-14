@@ -181,8 +181,14 @@ public class EntityGenerator {
                 sb.append("    private List<").append(targetModel).append("> ").append(fieldName)
                         .append(" = new ArrayList<>();\n\n");
             } else if (rel.getRelationType() == RelationType.ONE_TO_ONE) {
-                sb.append("    @OneToOne(fetch = FetchType.LAZY)\n");
-                sb.append("    @JoinColumn(name = \"").append(TypeHelper.toSnakeCase(fieldName)).append("_id\")\n");
+                if (rel.getMappedBy() != null && !rel.getMappedBy().isBlank()) {
+                    sb.append("    @OneToOne(mappedBy = \"").append(rel.getMappedBy())
+                            .append("\", fetch = FetchType.LAZY)\n");
+                } else {
+                    sb.append("    @OneToOne(fetch = FetchType.LAZY)\n");
+                    sb.append("    @JoinColumn(name = \"").append(TypeHelper.toSnakeCase(fieldName))
+                            .append("_id\", unique = true)\n");
+                }
                 sb.append("    private ").append(targetModel).append(" ").append(fieldName).append(";\n\n");
             } else if (rel.getRelationType() == RelationType.MANY_TO_MANY) {
                 sb.append("    @ManyToMany\n");

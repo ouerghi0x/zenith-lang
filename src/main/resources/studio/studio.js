@@ -8,6 +8,14 @@ let logPollInterval = null;
 let consoleAutoScroll = true;
 let renderedConsoleLogsCount = 0;
 let monacoMarkers = [];
+let serviceCompanionEditor = null;
+let serviceCompanionTarget = null;
+let serviceCompanionLastMethod = null;
+let serviceCompanionLastKey = null;
+let serviceCompanionCompileTimer = null;
+let serviceCompanionSuppressedKey = null;
+let compileRequestSequence = 0;
+const compiledBufferByFile = new Map();
 
 // Redraw ERD arrows if ERD tab is active (cheap SVG path update without destroying DOM)
 function redrawErdIfActive() {
@@ -52,6 +60,7 @@ const defaultSchema = `config {
     auth: jwt
     swagger: true
     flyway: true
+    outbox: false
 }
 
 enum OrderStatus {
@@ -149,6 +158,8 @@ require(['vs/editor/editor.main'], function () {
   monaco.languages.register({ id: 'zenith' });
   monaco.languages.setMonarchTokensProvider('zenith', {
     keywords: [
+      'try', 'catch', 'fail', 'for', 'event', 'stream', 'publish', 'subscribe',
+      'outbox','return',
       'nginx',
       'proxy', 'ssl', 'replicas', 'import', 'config', 'model', 'enum', 'dto', 'body', 'seed', 'relations', 'endpoints',
       'crud', 'guard', 'action', 'true', 'false', 'auth', 'public',
@@ -243,6 +254,11 @@ require(['vs/editor/editor.main'], function () {
     padding: { top: 12, bottom: 12 },
   });
   window.editor = editor;
+  editors.editor1 = editor;
+  editor.onDidFocusEditorText(() => { activeEditorId = 'editor1'; refreshServiceCompanionSelection(); });
+  editor.onDidChangeCursorPosition(() => {
+    if (activeEditorId === 'editor1') refreshServiceCompanionSelection();
+  });
 
   // Double-click or Ctrl+Click navigation to switch tabs when clicking files or imports
   let lastFileSwitchTime = 0;
@@ -332,13 +348,19 @@ require(['vs/editor/editor.main'], function () {
   window.currentActiveFile = 'schema.zen';
   window.currentSchemaFiles = [];
   window.fileBuffers = {};
+  bindZenithModel(window.currentActiveFile, editor.getModel());
 
   // Always fetch active schema file from server on startup
   fetch('/api/schema')
     .then(r => r.json())
     .then(d => {
       if (d && d.fileName) {
+        if (d.fileName !== 'schema.zen' && zenithModelsByFile.get('schema.zen') === editor.getModel()) {
+          zenithModelsByFile.delete('schema.zen');
+          zenithFileByModel.delete(editor.getModel());
+        }
         window.currentActiveFile = d.fileName;
+        setEditorModelForFile('editor1', d.fileName, d.content || '');
         const nameEl = document.getElementById('currentFileName');
         if (nameEl) nameEl.textContent = d.fileName;
         document.title = 'Zenith Studio PRO - ' + d.fileName;
@@ -350,15 +372,17 @@ require(['vs/editor/editor.main'], function () {
         renderSchemaTabs([{ name: window.currentActiveFile, relativePath: window.currentActiveFile, isRoot: true, isImported: true }]);
       }
       if (d && d.exists && d.content && d.content.trim().length > 0) {
-        editor.setValue(d.content);
+        setEditorModelForFile('editor1', window.currentActiveFile, d.content);
       } else {
-        editor.setValue(defaultSchema);
+        setEditorModelForFile('editor1', window.currentActiveFile, defaultSchema);
       }
+      initMultiPaneWorkspace();
       triggerCompile();
     })
     .catch(() => {
       renderSchemaTabs([{ name: 'schema.zen', relativePath: 'schema.zen', isRoot: true, isImported: true }]);
-      editor.setValue(defaultSchema);
+      setEditorModelForFile('editor1', 'schema.zen', defaultSchema);
+      initMultiPaneWorkspace();
       triggerCompile();
     });
 
@@ -379,42 +403,12 @@ require(['vs/editor/editor.main'], function () {
 
   window.editor = editor;
   window.viewerEditor = viewerEditor;
+  initServiceMethodCompanion();
 
-  // Live Compilation Debounce & Auto-Save
-  let timeoutId = null;
-  editor.onDidChangeModelContent(() => {
-    // If user is actively typing, dismiss previous error banner so it never blocks view
-    dismissError();
-    const currentCode = editor.getValue();
-    window.fileBuffers[window.currentActiveFile] = currentCode;
-    try {
-      localStorage.setItem('zenith_studio_' + window.currentActiveFile, currentCode);
-    } catch (_) {}
-    updateSaveIndicator('saving');
+  // Attach one content listener per shared file model. Both panes can edit the
+  // same Monaco model without duplicate saves or compilation requests.
+  bindZenithModel(window.currentActiveFile || 'schema.zen', editor.getModel());
 
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-      triggerCompile();
-      // Auto-save to the active file on disk as well
-      fetch('/api/schema', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: currentCode, file: window.currentActiveFile })
-      })
-      .then(r => r.json())
-      .then(d => {
-        if (d && d.files) renderSchemaTabs(d.files);
-        updateSaveIndicator('saved');
-      })
-      .catch(() => updateSaveIndicator('saved-local'));
-    }, 600);
-  });
-
-  // Initialize draggable split resizer
-  initPaneResizer();
-
-  // Initial compile
-  triggerCompile();
 });
 
 // Draggable Split Pane Resizer (VS Code style)
@@ -446,7 +440,7 @@ function initPaneResizer() {
     e.preventDefault();
     isDragging = true;
     resizer.classList.add('is-dragging');
-    document.body.classList.add('resizing-panels');
+    document.body.classList.add(orientation === 'horizontal' ? 'resizing-panels-row' : 'resizing-panels');
   });
 
   window.addEventListener('mousemove', (e) => {
@@ -477,7 +471,7 @@ function initPaneResizer() {
     if (!isDragging) return;
     isDragging = false;
     resizer.classList.remove('is-dragging');
-    document.body.classList.remove('resizing-panels');
+    document.body.classList.remove(orientation === 'horizontal' ? 'resizing-panels-row' : 'resizing-panels');
 
     const currentW = Math.round(editorPane.getBoundingClientRect().width);
     try {
@@ -685,7 +679,7 @@ function updateNotesStats() {
   const val = textarea.value.trim();
   const words = val.length > 0 ? val.split(/\s+/).length : 0;
   const chars = textarea.value.length;
-  statsEl.textContent = `${words} words • ${chars} chars`;
+  statsEl.textContent = `${words} w • ${chars} c`;
 }
 
 function renderNotesPreview() {
@@ -825,7 +819,7 @@ function highlightCodeTokens(code, lang) {
   safe = safe.replace(/(@[a-zA-Z0-9_]+)/g, '<span class="syntax-decorator">$1</span>');
 
   // Language specific keywords
-  const zenithKeywords = /\b(model|enum|config|endpoints|endpoint|crud|guard|action|create|update|import|dto|mail|send|client|call|var|try|catch|fail|return|auth|storage|broadcast|service|system|library)\b/g;
+  const zenithKeywords = /\b(model|enum|config|endpoints|endpoint|crud|guard|action|create|update|import|dto|mail|send|client|call|var|try|catch|fail|return|auth|storage|broadcast|event|stream|publish|subscribe|service|system|library)\b/g;
   const javaKeywords = /\b(public|private|protected|class|interface|record|extends|implements|return|if|else|try|catch|throw|new|void|static|final|package)\b/g;
   const types = /\b(String|Int|Long|Decimal|Boolean|DateTime|UUID|Float|Double|UserEntity|Order|Product)\b/g;
 
@@ -931,13 +925,11 @@ function clearNotes() {
 // Ensure resizer, tab drag & drop, notes and console run on DOM load
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    initPaneResizer();
     initTabDragAndDrop();
     initNotes();
     initConsole();
   });
 } else {
-  initPaneResizer();
   initTabDragAndDrop();
   initNotes();
   initConsole();
@@ -992,6 +984,7 @@ function renderSchemaTabs(files) {
   if (!files || !Array.isArray(files) || files.length === 0) {
     files = [{ name: window.currentActiveFile || 'schema.zen', relativePath: window.currentActiveFile || 'schema.zen', isRoot: true, isImported: true }];
   }
+  files = [...files].sort((a, b) => (a.isRoot ? -1 : b.isRoot ? 1 : a.name.localeCompare(b.name)));
   window.currentSchemaFiles = files;
   if (typeof initWorkflowCanvas === 'function') {
     try { initWorkflowCanvas(); } catch (_) {}
@@ -1056,7 +1049,16 @@ function renderSchemaTabs(files) {
         ${badgeHtml}
       `;
 
-      vTab.onclick = () => switchFile(f.name);
+      vTab.onclick = () => { activeEditorId = 'editor1'; switchFileInPane('editor1', f.name); };
+      vTab.setAttribute('role', 'button');
+      vTab.setAttribute('tabindex', '0');
+      vTab.onkeydown = event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          vTab.click();
+        }
+      };
+      appendFileManagerActions(vTab, f);
       vContainer.appendChild(vTab);
 
       if (isActive) {
@@ -1069,6 +1071,8 @@ function renderSchemaTabs(files) {
     });
   }
 
+  if (typeof populateVerticalTabsListForPane === 'function') populateVerticalTabsListForPane('editor2');
+
   // Ensure Monaco editor redraws cleanly
   if (window.editor) {
     setTimeout(() => {
@@ -1079,55 +1083,47 @@ function renderSchemaTabs(files) {
   }
 }
 
+let fileManagerBusy = false;
+
+function setFileManagerBusy(busy) {
+  fileManagerBusy = busy;
+  document.querySelectorAll('.schema-file-actions button, .vertical-tab-add').forEach(button => {
+    button.disabled = busy;
+    button.setAttribute('aria-busy', busy ? 'true' : 'false');
+  });
+}
+
+function appendFileManagerActions(row, file) {
+  if (!isManagedZenFile(file)) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'schema-file-actions';
+  const rename = document.createElement('button');
+  rename.type = 'button'; rename.textContent = '✎'; rename.title = 'Rename ' + file.name;
+  rename.disabled = fileManagerBusy;
+  rename.setAttribute('aria-label', 'Rename ' + file.name);
+  rename.onclick = event => { event.preventDefault(); event.stopPropagation(); renameZenFile(file); };
+  const remove = document.createElement('button');
+  remove.type = 'button'; remove.textContent = '×'; remove.title = 'Delete ' + file.name;
+  remove.disabled = fileManagerBusy;
+  remove.setAttribute('aria-label', 'Delete ' + file.name);
+  remove.onclick = event => { event.preventDefault(); event.stopPropagation(); deleteZenFile(file); };
+  wrap.append(rename, remove);
+  row.appendChild(wrap);
+}
+
 async function switchFile(targetFileName) {
-  if (!targetFileName || targetFileName === window.currentActiveFile) return;
-
-  // 1. Save current active buffer before switching
-  const currentContent = editor.getValue();
-  window.fileBuffers[window.currentActiveFile] = currentContent;
-
-  try {
-    await fetch('/api/schema', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: currentContent, file: window.currentActiveFile })
-    });
-  } catch (err) {
-    console.warn('Auto-save error before file switch:', err);
-  }
-
-  // 2. Fetch target file content from server
-  try {
-    const res = await fetch('/api/schema?file=' + encodeURIComponent(targetFileName));
-    const data = await res.json();
-    window.currentActiveFile = targetFileName;
-    const nameEl = document.getElementById('currentFileName');
-    if (nameEl) nameEl.textContent = targetFileName;
-    document.title = 'Zenith Studio PRO - ' + targetFileName;
-
-    // Use in-memory buffer if we previously typed in it, otherwise use server file content
-    const newContent = window.fileBuffers[targetFileName] !== undefined ? window.fileBuffers[targetFileName] : (data.content || '');
-    editor.setValue(newContent);
-
-    if (data.files) {
-      renderSchemaTabs(data.files);
-    } else {
-      renderSchemaTabs(window.currentSchemaFiles);
-    }
-
-    // 3. Re-compile unified schema with the new active file override
-    triggerCompile();
-  } catch (err) {
-    console.error('Error switching file to ' + targetFileName, err);
-  }
+  return switchFileInPane(activeEditorId || 'editor1', targetFileName);
 }
 
 async function createNewZenFile() {
+  if (fileManagerBusy) return;
   const fileName = prompt("Enter new module file name (e.g. 'auth.zen', 'projects.zen'):");
   if (!fileName || !fileName.trim()) return;
   const cleanName = fileName.trim();
 
+  setFileManagerBusy(true);
   try {
+    await flushAllZenithModels();
     const res = await fetch('/api/schema', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1144,6 +1140,150 @@ async function createNewZenFile() {
     }
   } catch (err) {
     alert("Error creating file: " + err.message);
+  } finally {
+    setFileManagerBusy(false);
+  }
+}
+
+async function postZenFileBuffer(fileName, source) {
+  const response = await fetch('/api/schema', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source, file: fileName })
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save ' + fileName);
+  return data;
+}
+
+async function flushAllZenithModels() {
+  for (const [fileName, timer] of fileSaveTimers.entries()) {
+    clearTimeout(timer);
+    fileSaveTimers.delete(fileName);
+  }
+  await Promise.all(Array.from(fileSaveInFlight.values()));
+  const savedFiles = new Set();
+  for (const [fileName, model] of zenithModelsByFile.entries()) {
+    await postZenFileBuffer(fileName, model.getValue());
+    savedFiles.add(fileName);
+  }
+  for (const [fileName, source] of Object.entries(window.fileBuffers || {})) {
+    if (!savedFiles.has(fileName)) await postZenFileBuffer(fileName, source);
+  }
+}
+
+function isManagedZenFile(file) {
+  const name = String(file && file.name || '');
+  const rootName = String((window.currentSchemaFiles || []).find(item => item.isRoot)?.name || '');
+  return !!file && !file.isRoot && name.toLowerCase().endsWith('.zen')
+    && name === String(file.relativePath || name)
+    && (!rootName || name !== rootName);
+}
+
+async function renameZenFile(file) {
+  if (fileManagerBusy || !isManagedZenFile(file)) return;
+  const suggested = file.name.replace(/\.zen$/i, '');
+  const requested = prompt('Rename schema file:', suggested);
+  if (requested == null || !requested.trim()) return;
+  setFileManagerBusy(true);
+  try {
+    await flushAllZenithModels();
+    const response = await fetch('/api/schema', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'rename', fileName: file.name, newFileName: requested.trim() })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to rename schema file.');
+
+    const oldName = file.name, newName = data.fileName;
+    const model = zenithModelsByFile.get(oldName);
+    let oldBuffer = model ? model.getValue() : window.fileBuffers[oldName];
+    if (oldBuffer === undefined) {
+      try { oldBuffer = localStorage.getItem('zenith_studio_' + oldName); } catch (_) {}
+    }
+    if (model) {
+      zenithModelsByFile.delete(oldName);
+      zenithModelsByFile.set(newName, model);
+      zenithFileByModel.set(model, newName);
+    }
+    if (oldBuffer !== undefined && oldBuffer !== null) {
+      window.fileBuffers[newName] = oldBuffer;
+      try { localStorage.setItem('zenith_studio_' + newName, oldBuffer); } catch (_) {}
+    }
+    delete window.fileBuffers[oldName];
+    try { localStorage.removeItem('zenith_studio_' + oldName); } catch (_) {}
+    for (const paneId of Object.keys(paneActiveFiles)) {
+      if (paneActiveFiles[paneId] === oldName) paneActiveFiles[paneId] = newName;
+      if (paneViewStates[paneId][oldName]) {
+        paneViewStates[paneId][newName] = paneViewStates[paneId][oldName];
+        delete paneViewStates[paneId][oldName];
+      }
+      const nameEl = document.getElementById(paneId === 'editor1' ? 'currentFileName' : 'currentFileName2');
+      if (paneActiveFiles[paneId] === newName && nameEl) nameEl.textContent = newName;
+    }
+    if (window.currentActiveFile === oldName) window.currentActiveFile = newName;
+    if (window.currentActiveFile === newName) document.title = 'Zenith Studio PRO - ' + newName;
+    for (const updated of data.updatedFiles || []) {
+      window.fileBuffers[updated.fileName] = updated.content;
+      try { localStorage.setItem('zenith_studio_' + updated.fileName, updated.content); } catch (_) {}
+      const importerModel = zenithModelsByFile.get(updated.fileName);
+      if (importerModel && importerModel.getValue() !== updated.content) importerModel.setValue(updated.content);
+    }
+    renderSchemaTabs(data.files || []);
+    triggerCompile(false, window.currentActiveFile || newName);
+  } catch (error) {
+    alert('Unable to rename schema file: ' + error.message);
+  } finally {
+    setFileManagerBusy(false);
+  }
+}
+
+async function deleteZenFile(file) {
+  const fileName = typeof file === 'string' ? file : file && file.name;
+  const fileMeta = typeof file === 'string'
+    ? (window.currentSchemaFiles || []).find(item => item.name === fileName)
+    : file;
+  if (fileManagerBusy || !isManagedZenFile(fileMeta)) return;
+  if (!confirm(`Delete '${fileName}'? This cannot be undone.`)) return;
+  setFileManagerBusy(true);
+  try {
+    await flushAllZenithModels();
+    const response = await fetch('/api/schema', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', fileName })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to delete schema file.');
+
+    const rootName = (data.files || window.currentSchemaFiles || []).find(item => item.isRoot)?.name || 'schema.zen';
+    const model = zenithModelsByFile.get(fileName);
+    for (const paneId of Object.keys(paneActiveFiles)) {
+      if (paneActiveFiles[paneId] === fileName && editors[paneId]) {
+        const paneEditor = editors[paneId];
+        const switchSequence = (paneEditor.__zenithSwitchSequence || 0) + 1;
+        paneEditor.__zenithSwitchSequence = switchSequence;
+        const rootModel = await ensureZenithModel(rootName);
+        setEditorModelForFile(paneId, rootName, rootModel.getValue());
+        paneEditor.focus();
+      }
+    }
+    if (model) {
+      zenithModelsByFile.delete(fileName);
+      const stillAttached = Object.values(editors).some(paneEditor => paneEditor && paneEditor.getModel() === model);
+      if (!stillAttached) model.dispose();
+    }
+    delete window.fileBuffers[fileName];
+    for (const paneId of Object.keys(paneViewStates)) delete paneViewStates[paneId][fileName];
+    for (const paneId of Object.keys(paneActiveFiles)) {
+      if (paneActiveFiles[paneId] === fileName) paneActiveFiles[paneId] = rootName;
+    }
+    if (window.currentActiveFile === fileName) window.currentActiveFile = rootName;
+    try { localStorage.removeItem('zenith_studio_' + fileName); } catch (_) {}
+    renderSchemaTabs(data.files || []);
+    triggerCompile(false, window.currentActiveFile || rootName);
+  } catch (error) {
+    alert('Unable to delete schema file: ' + error.message);
+  } finally {
+    setFileManagerBusy(false);
   }
 }
 
@@ -1171,24 +1311,28 @@ function resetToDefaultSchema() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source: defaultSchema, file: window.currentActiveFile })
     }).catch(() => {});
-    triggerCompile();
+    triggerCompile(true);
     updateSaveIndicator('saved');
   }
 }
 
 // Trigger Live In-Memory Compilation with Error Analysis
-async function triggerCompile() {
-  const code = editor.getValue();
+async function triggerCompile(sourceChanged = false, sourceFile = window.currentActiveFile || 'schema.zen') {
+  const requestSequence = ++compileRequestSequence;
+  const code = window.fileBuffers && window.fileBuffers[sourceFile] !== undefined
+    ? window.fileBuffers[sourceFile]
+    : editor.getValue();
   const startTime = performance.now();
 
   try {
     const res = await fetch('/api/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: code, file: window.currentActiveFile || 'schema.zen' })
+      body: JSON.stringify({ source: code, file: sourceFile, sourceChanged })
     });
 
     const data = await res.json();
+    if (requestSequence !== compileRequestSequence) return;
     const elapsed = Math.round(performance.now() - startTime);
 
     if (data.schemaFiles) {
@@ -1198,16 +1342,19 @@ async function triggerCompile() {
     if (data.success) {
       currentCompilation = data;
       window.currentCompilation = data;
+      compiledBufferByFile.set(sourceFile, code);
 
       // Update Swagger button link dynamically with configured port
       updateSwaggerButton(data.config);
 
       // Clear Monaco error markers and red line highlight
-      monaco.editor.setModelMarkers(editor.getModel(), 'zenith', []);
-      monaco.editor.setModelMarkers(editor.getModel(), 'zenith-build', []);
-      if (window.errorLineDecorations) {
-        window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations, []);
-      }
+      Object.entries(editors).forEach(([paneId, instance]) => {
+        if (!instance || !instance.getModel()) return;
+        monaco.editor.setModelMarkers(instance.getModel(), 'zenith', []);
+        monaco.editor.setModelMarkers(instance.getModel(), 'zenith-build', []);
+        const key = paneId === 'editor1' ? 'errorLineDecorations' : 'errorLineDecorations_' + paneId;
+        if (window[key]) window[key] = instance.deltaDecorations(window[key], []);
+      });
       dismissError();
 
       document.getElementById('schemaStatus').innerHTML = `
@@ -1227,6 +1374,7 @@ async function triggerCompile() {
       if (typeof initWorkflowCanvas === 'function') {
         initWorkflowCanvas();
       }
+      updateServiceMethodCompanionFromCompilation(data, sourceFile, code);
 
     } else {
       // Highlight exact error line in Monaco Editor
@@ -1235,8 +1383,12 @@ async function triggerCompile() {
       const errMsg = data.error || 'Syntax error';
       const errFile = data.file || window.currentActiveFile || 'schema.zen';
 
-      if (!data.file || data.file === window.currentActiveFile) {
-        const model = editor.getModel();
+      const errorPaneId = data.file
+        ? (Object.keys(editors).find(paneId => paneActiveFiles[paneId] === errFile) || 'editor1')
+        : 'editor1';
+      const errorEditor = editors[errorPaneId] || editor;
+      if (errorEditor && errorEditor.getModel()) {
+        const model = errorEditor.getModel();
         const maxCol = (model && errLine <= model.getLineCount()) ? model.getLineMaxColumn(errLine) : (errCol + 30);
         monaco.editor.setModelMarkers(model, 'zenith', [{
           startLineNumber: errLine,
@@ -1246,7 +1398,8 @@ async function triggerCompile() {
           message: errMsg,
           severity: monaco.MarkerSeverity.Error
         }]);
-        window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations || [], [{
+        const decorationKey = errorPaneId === 'editor1' ? 'errorLineDecorations' : 'errorLineDecorations_' + errorPaneId;
+        window[decorationKey] = errorEditor.deltaDecorations(window[decorationKey] || [], [{
           range: new monaco.Range(errLine, 1, errLine, 1),
           options: {
             isWholeLine: true,
@@ -1254,11 +1407,6 @@ async function triggerCompile() {
             linesDecorationsClassName: 'zenith-error-line-gutter'
           }
         }]);
-      } else {
-        monaco.editor.setModelMarkers(editor.getModel(), 'zenith', []);
-        if (window.errorLineDecorations) {
-          window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations, []);
-        }
       }
 
       showErrorDrawer(errMsg, errLine, errCol, errFile);
@@ -1271,10 +1419,435 @@ async function triggerCompile() {
       const badge = document.getElementById('compileTimeBadge');
       badge.innerText = `Error${fileLabel ? ' (' + errFile + ')' : ''}`;
       badge.className = 'compile-badge error-badge';
+      updateServiceMethodCompanionFromError(data, sourceFile, code);
     }
   } catch (err) {
+    if (requestSequence !== compileRequestSequence) return;
     console.error('Compile error:', err);
+    setServiceCompanionStatus('Preview compilation failed: ' + (err.message || String(err)), 'error');
   }
+}
+
+const SERVICE_COMPANION_STORAGE_KEY = 'zenith_studio_service_method_companion';
+let serviceCompanionErrorLocation = null;
+
+function initServiceMethodCompanion() {
+  const panel = document.getElementById('serviceMethodCompanion');
+  const container = document.getElementById('serviceCompanionEditor');
+  if (!panel || !container || !window.monaco) return;
+  serviceCompanionEditor = monaco.editor.create(container, {
+    value: '// Place the cursor inside a custom API to preview its generated controller method.',
+    language: 'java', theme: 'zenith-dark', readOnly: true, automaticLayout: true,
+    fontSize: 12, fontFamily: 'JetBrains Mono', minimap: { enabled: false },
+    scrollBeyondLastLine: false, lineNumbersMinChars: 3, padding: { top: 8, bottom: 8 }
+  });
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SERVICE_COMPANION_STORAGE_KEY) || 'null'); } catch (_) {}
+  if (saved && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+    panel.style.width = Math.max(Math.min(360, window.innerWidth - 16), Math.min(window.innerWidth - 16, saved.width)) + 'px';
+    panel.style.height = Math.max(170, Math.min(window.innerHeight - 70, saved.height)) + 'px';
+  }
+  if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+    panel.style.left = Math.max(8, Math.min(window.innerWidth - 80, saved.left)) + 'px';
+    panel.style.top = Math.max(55, Math.min(window.innerHeight - 70, saved.top)) + 'px';
+    panel.style.right = 'auto';
+  }
+  if (saved && saved.open) openServiceMethodCompanion(false);
+  initServiceCompanionDragAndResize();
+  window.addEventListener('resize', clampServiceCompanionToViewport);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && panel.classList.contains('open') && panel.contains(document.activeElement)) {
+      closeServiceMethodCompanion();
+    }
+  });
+  refreshServiceCompanionSelection();
+}
+
+function toggleServiceMethodCompanion() {
+  const panel = document.getElementById('serviceMethodCompanion');
+  if (!panel) return;
+  if (panel.classList.contains('open')) closeServiceMethodCompanion();
+  else openServiceMethodCompanion(true);
+}
+
+function openServiceMethodCompanion(compileNow = true) {
+  const panel = document.getElementById('serviceMethodCompanion');
+  if (!panel) return;
+  serviceCompanionSuppressedKey = null;
+  panel.classList.add('open');
+  panel.classList.remove('minimized');
+  panel.setAttribute('aria-hidden', 'false');
+  const button = document.getElementById('serviceCompanionToggle');
+  if (button) { button.classList.add('active'); button.setAttribute('aria-pressed', 'true'); }
+  persistServiceCompanionState();
+  requestAnimationFrame(() => serviceCompanionEditor && serviceCompanionEditor.layout());
+  refreshServiceCompanionSelection();
+  if (compileNow && serviceCompanionTarget) queueServiceCompanionCompile(serviceCompanionTarget.file);
+}
+
+function closeServiceMethodCompanion() {
+  const panel = document.getElementById('serviceMethodCompanion');
+  if (!panel) return;
+  serviceCompanionSuppressedKey = serviceCompanionTarget ? serviceCompanionTarget.key : null;
+  panel.classList.remove('open');
+  panel.setAttribute('aria-hidden', 'true');
+  const button = document.getElementById('serviceCompanionToggle');
+  if (button) { button.classList.remove('active'); button.setAttribute('aria-pressed', 'false'); }
+  persistServiceCompanionState();
+}
+
+function minimizeServiceMethodCompanion() {
+  const panel = document.getElementById('serviceMethodCompanion');
+  if (!panel) return;
+  panel.classList.toggle('minimized');
+  requestAnimationFrame(() => serviceCompanionEditor && serviceCompanionEditor.layout());
+  persistServiceCompanionState();
+}
+
+function persistServiceCompanionState() {
+  const panel = document.getElementById('serviceMethodCompanion');
+  if (!panel) return;
+  const rect = panel.getBoundingClientRect();
+  try {
+    localStorage.setItem(SERVICE_COMPANION_STORAGE_KEY, JSON.stringify({
+      open: panel.classList.contains('open'), left: Math.round(rect.left), top: Math.round(rect.top),
+      width: Math.round(rect.width), height: Math.round(rect.height)
+    }));
+  } catch (_) {}
+}
+
+function initServiceCompanionDragAndResize() {
+  const panel = document.getElementById('serviceMethodCompanion');
+  const header = document.getElementById('serviceCompanionHeader');
+  const resizeHandle = panel && panel.querySelector('.service-companion-resize');
+  if (!panel || !header || panel.dataset.dragResizeReady) return;
+  panel.dataset.dragResizeReady = 'true';
+  let drag = null;
+  header.addEventListener('pointerdown', event => {
+    if (event.target.closest('button') || event.button !== 0) return;
+    const rect = panel.getBoundingClientRect();
+    drag = { mode: 'move', x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    panel.style.left = rect.left + 'px'; panel.style.top = rect.top + 'px'; panel.style.right = 'auto';
+    header.setPointerCapture(event.pointerId);
+  });
+  if (resizeHandle) resizeHandle.addEventListener('pointerdown', event => {
+    event.preventDefault(); event.stopPropagation();
+    const rect = panel.getBoundingClientRect();
+    drag = { mode: 'resize', x: event.clientX, y: event.clientY, width: rect.width, height: rect.height };
+    resizeHandle.setPointerCapture(event.pointerId);
+  });
+  const move = event => {
+    if (!drag) return;
+    if (drag.mode === 'move') {
+      panel.style.left = Math.max(8, Math.min(window.innerWidth - 80, drag.left + event.clientX - drag.x)) + 'px';
+      panel.style.top = Math.max(55, Math.min(window.innerHeight - 38, drag.top + event.clientY - drag.y)) + 'px';
+    } else {
+      const minWidth = Math.min(360, window.innerWidth - 16);
+      panel.style.width = Math.max(minWidth, Math.min(window.innerWidth - 16, drag.width + event.clientX - drag.x)) + 'px';
+      panel.style.height = Math.max(170, Math.min(window.innerHeight - 70, drag.height + event.clientY - drag.y)) + 'px';
+      if (serviceCompanionEditor) serviceCompanionEditor.layout();
+    }
+  };
+  const stop = () => { if (!drag) return; drag = null; persistServiceCompanionState(); };
+  header.addEventListener('pointermove', move); header.addEventListener('pointerup', stop); header.addEventListener('pointercancel', stop);
+  if (resizeHandle) { resizeHandle.addEventListener('pointermove', move); resizeHandle.addEventListener('pointerup', stop); resizeHandle.addEventListener('pointercancel', stop); }
+}
+
+function clampServiceCompanionToViewport() {
+  const panel = document.getElementById('serviceMethodCompanion');
+  if (!panel) return;
+  const rect = panel.getBoundingClientRect();
+  if (panel.style.left) panel.style.left = Math.max(8, Math.min(window.innerWidth - Math.min(rect.width, window.innerWidth - 16), rect.left)) + 'px';
+  if (panel.style.top) panel.style.top = Math.max(55, Math.min(window.innerHeight - Math.min(rect.height, window.innerHeight - 70), rect.top)) + 'px';
+  panel.style.width = Math.min(rect.width, window.innerWidth - 16) + 'px';
+  panel.style.height = Math.min(rect.height, window.innerHeight - 70) + 'px';
+  if (serviceCompanionEditor) serviceCompanionEditor.layout();
+  persistServiceCompanionState();
+}
+
+function activeZenithEditorContext() {
+  const paneId = activeEditorId || 'editor1';
+  const instance = editors[paneId] || editor;
+  if (!instance || !instance.getModel() || !instance.getPosition()) return null;
+  const model = instance.getModel();
+  return { instance, model, file: paneActiveFiles[paneId] || window.currentActiveFile || 'schema.zen', source: model.getValue(), offset: model.getOffsetAt(instance.getPosition()) };
+}
+
+function findClosingSourceBrace(source, open) {
+  let depth = 0, quote = null, escaped = false, lineComment = false, blockComment = false;
+  for (let i = open; i < source.length; i++) {
+    const c = source[i], next = source[i + 1];
+    if (lineComment) { if (c === '\n') lineComment = false; continue; }
+    if (blockComment) { if (c === '*' && next === '/') { blockComment = false; i++; } continue; }
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '/' && next === '/') { lineComment = true; i++; continue; }
+    if (c === '/' && next === '*') { blockComment = true; i++; continue; }
+    if (c === '"' || c === '\'') { quote = c; continue; }
+    if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function methodNameForRoute(method, route) {
+  const cleaned = String(route || '').replace(/\{[^}]+\}/g, '').replace(/[^a-zA-Z0-9]+/g, ' ').trim();
+  if (!cleaned) return String(method || '').toLowerCase();
+  const parts = cleaned.split(/\s+/);
+  const first = parts[0];
+  let name = first.length > 1 && /^[a-z]/.test(first) && first !== first.toLowerCase()
+    ? first : first.toLowerCase();
+  for (const part of parts.slice(1)) name += part.charAt(0).toUpperCase() + part.slice(1);
+  return name;
+}
+
+function locateServiceActionAtCursor(context) {
+  if (!context) return null;
+  const routePattern = /\b(get|post|put|patch|delete)\s+["']([^"']+)["']/gi;
+  let routeMatch, selected = null;
+  while ((routeMatch = routePattern.exec(context.source)) !== null) {
+    if (routeMatch.index > context.offset) break;
+    const open = context.source.indexOf('{', routePattern.lastIndex);
+    if (open < 0) continue;
+    const close = findClosingSourceBrace(context.source, open);
+    if (close < 0 || context.offset < routeMatch.index || context.offset > close) continue;
+    if (!selected || close - open < selected.close - selected.open) selected = { open, close, route: routeMatch };
+  }
+  if (!selected) return null;
+  const route = selected.route;
+  const modelPattern = /\bmodel\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
+  let modelMatch, modelName = null;
+  while ((modelMatch = modelPattern.exec(context.source)) !== null && modelMatch.index < route.index) modelName = modelMatch[1];
+  if (!modelName) return null;
+  const verb = route[1].toUpperCase(), path = route[2];
+  let insideAction = false;
+  const actionPattern = /\baction\s*:?\s*/g;
+  actionPattern.lastIndex = selected.open;
+  let actionMatch;
+  while ((actionMatch = actionPattern.exec(context.source)) !== null && actionMatch.index < selected.close) {
+    const actionOpen = context.source.indexOf('{', actionPattern.lastIndex);
+    if (actionOpen < 0 || actionOpen >= selected.close) continue;
+    const actionClose = findClosingSourceBrace(context.source, actionOpen);
+    if (actionClose >= 0 && context.offset > actionOpen && context.offset < actionClose) {
+      insideAction = true;
+      break;
+    }
+  }
+  const view = insideAction ? 'service' : 'controller';
+  return { file: context.file, model: modelName, method: verb, path, view,
+    methodName: methodNameForRoute(verb, path), key: [context.file, modelName, verb, path, view].join('|') };
+}
+
+function refreshServiceCompanionSelection() {
+  const context = activeZenithEditorContext();
+  const target = locateServiceActionAtCursor(context);
+  serviceCompanionTarget = target;
+  const title = document.getElementById('serviceCompanionTitle');
+  const openTree = document.getElementById('serviceCompanionOpenTree');
+  const panel = document.getElementById('serviceMethodCompanion');
+  if (!target) {
+    serviceCompanionSuppressedKey = null;
+    if (title) title.textContent = 'Action preview';
+    if (openTree) openTree.disabled = true;
+    setServiceCompanionStatus('Place the cursor inside a custom API to preview its controller method.');
+    if (serviceCompanionEditor && panel?.classList.contains('open')) serviceCompanionEditor.setValue('// No custom API selected.');
+    hideServiceCompanionError();
+    return;
+  }
+  if (serviceCompanionSuppressedKey && serviceCompanionSuppressedKey !== target.key) {
+    serviceCompanionSuppressedKey = null;
+  }
+  if (!panel?.classList.contains('open') && serviceCompanionSuppressedKey !== target.key) {
+    openServiceMethodCompanion(false);
+  }
+  const kind = document.getElementById('serviceCompanionKind');
+  const className = target.view === 'service' ? `${target.model}ServiceImpl` : `${target.model}Controller`;
+  if (kind) kind.textContent = target.view === 'service' ? 'Service Method' : 'Controller Method';
+  if (title) title.textContent = `${className}.${target.methodName} · ${target.method} ${target.path}`;
+  if (openTree) openTree.disabled = true;
+  hideServiceCompanionError();
+  const compiledSource = compiledBufferByFile.get(context.file);
+  if (compiledSource !== undefined && compiledSource === context.source && currentCompilation?.success) {
+    renderServiceMethodFromCompilation(currentCompilation, target);
+  } else if (serviceCompanionLastKey === target.key) {
+    setServiceCompanionStatus('Updating… showing the last successful controller method.', 'pending');
+  } else {
+    setServiceCompanionStatus(panel?.classList.contains('open') ? 'Updating generated method…' : 'Open the panel to compile this API preview.', 'pending');
+    if (panel?.classList.contains('open')) queueServiceCompanionCompile(target.file);
+  }
+}
+
+function queueServiceCompanionCompile(file) {
+  if (!document.getElementById('serviceMethodCompanion')?.classList.contains('open')) return;
+  clearTimeout(serviceCompanionCompileTimer);
+  setServiceCompanionStatus('Updating generated method…', 'pending');
+  serviceCompanionCompileTimer = setTimeout(() => triggerCompile(false, file || window.currentActiveFile || 'schema.zen'), 200);
+}
+
+function handleServiceCompanionSourceChange(changedFile) {
+  const context = activeZenithEditorContext();
+  if (context && context.file === changedFile) {
+    refreshServiceCompanionSelection();
+    if (serviceCompanionTarget && !document.getElementById('serviceMethodCompanion')?.classList.contains('open')
+        && serviceCompanionSuppressedKey !== serviceCompanionTarget.key) {
+      openServiceMethodCompanion(false);
+    }
+  }
+  if (document.getElementById('serviceMethodCompanion')?.classList.contains('open')) {
+    queueServiceCompanionCompile(changedFile);
+  }
+}
+
+function updateServiceMethodCompanionFromCompilation(compilation, sourceFile, source) {
+  if (!document.getElementById('serviceMethodCompanion')?.classList.contains('open')) return;
+  const context = activeZenithEditorContext();
+  const target = locateServiceActionAtCursor(context);
+  serviceCompanionTarget = target;
+  if (!target) { refreshServiceCompanionSelection(); return; }
+  if (target.file === sourceFile && context && context.source !== source) {
+    setServiceCompanionStatus('A newer edit is waiting to compile.', 'pending');
+    return;
+  }
+  renderServiceMethodFromCompilation(compilation, target);
+}
+
+function renderServiceMethodFromCompilation(compilation, target) {
+  if (!target || !compilation || !Array.isArray(compilation.files)) return;
+  const suffix = target.view === 'service'
+    ? `/service/impl/${target.model}ServiceImpl.java`.toLowerCase()
+    : `/controller/${target.model}Controller.java`.toLowerCase();
+  const file = compilation.files.find(candidate => String(candidate.path || '').replace(/\\/g, '/').toLowerCase().endsWith(suffix));
+  if (!file) {
+    setServiceCompanionCode('// The generated method is unavailable for this custom API.');
+    setServiceCompanionStatus(`No ${target.model} ${target.view} method was generated for this API.`);
+    hideServiceCompanionError();
+    return;
+  }
+  const escapedName = target.methodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const signature = new RegExp(`^[\\t ]*public\\s+[^\\n{;]*?\\b${escapedName}\\s*\\(`, 'm').exec(file.content || '');
+  if (!signature) {
+    setServiceCompanionCode('// The generated method could not be mapped.');
+    setServiceCompanionStatus('The generated method could not be located in ' + file.path + '.');
+    hideServiceCompanionError();
+    return;
+  }
+  const open = file.content.indexOf('{', signature.index + signature[0].length);
+  const close = open < 0 ? -1 : findClosingSourceBrace(file.content, open);
+  if (close < 0) {
+    setServiceCompanionStatus('The generated method is incomplete.', 'error');
+    return;
+  }
+  const prefix = file.content.slice(0, signature.index);
+  let start = prefix.lastIndexOf('\n') + 1;
+  let priorLineEnd = start - 1;
+  while (priorLineEnd >= 0) {
+    const priorLineStart = file.content.lastIndexOf('\n', priorLineEnd - 1) + 1;
+    const priorLine = file.content.slice(priorLineStart, priorLineEnd).trim();
+    if (!/^@[A-Za-z_$][A-Za-z0-9_$.]*(?:\s*\(.*)?$/.test(priorLine)) break;
+    start = priorLineStart;
+    priorLineEnd = priorLineStart - 1;
+  }
+  const code = file.content.slice(start, close + 1).trimEnd();
+  const line = file.content.slice(0, signature.index).split('\n').length;
+  serviceCompanionTarget.servicePath = file.path;
+  serviceCompanionTarget.methodLine = line;
+  serviceCompanionLastMethod = code;
+  serviceCompanionLastKey = target.key;
+  setServiceCompanionCode(code);
+  setServiceCompanionStatus(`${file.path} · line ${line}`);
+  const openTree = document.getElementById('serviceCompanionOpenTree');
+  if (openTree) openTree.disabled = false;
+  hideServiceCompanionError();
+}
+
+function setServiceCompanionCode(code) {
+  if (!serviceCompanionEditor) return;
+  if (serviceCompanionEditor.getValue() !== code) {
+    const container = document.getElementById('serviceCompanionEditor');
+    if (container) {
+      container.classList.remove('updated');
+      void container.offsetWidth;
+      container.classList.add('updated');
+      clearTimeout(container._refreshAnimationTimer);
+      container._refreshAnimationTimer = setTimeout(() => container.classList.remove('updated'), 450);
+    }
+    serviceCompanionEditor.setValue(code);
+    serviceCompanionEditor.setPosition({ lineNumber: 1, column: 1 });
+    serviceCompanionEditor.revealLine(1);
+  }
+}
+
+function setServiceCompanionStatus(message, kind = '') {
+  const status = document.getElementById('serviceCompanionStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.className = 'service-companion-status' + (kind ? ' ' + kind : '');
+}
+
+function hideServiceCompanionError() {
+  const box = document.getElementById('serviceCompanionError');
+  if (box) box.hidden = true;
+  serviceCompanionErrorLocation = null;
+}
+
+function updateServiceMethodCompanionFromError(data, sourceFile, source) {
+  if (!document.getElementById('serviceMethodCompanion')?.classList.contains('open')) return;
+  const context = activeZenithEditorContext();
+  const target = locateServiceActionAtCursor(context);
+  serviceCompanionTarget = target;
+  if (target && serviceCompanionLastKey === target.key && serviceCompanionLastMethod) {
+    setServiceCompanionCode(serviceCompanionLastMethod);
+    setServiceCompanionStatus('Stale preview · current schema has an error.', 'error');
+  } else {
+    setServiceCompanionStatus(target ? 'Could not update the generated method because the current schema has an error.' : 'The current cursor is not inside a custom API.', 'error');
+    if (target) setServiceCompanionCode('// Fix the schema error to preview this generated method.');
+  }
+  const error = document.getElementById('serviceCompanionError');
+  const errorText = document.getElementById('serviceCompanionErrorText');
+  if (error && errorText) {
+    error.hidden = false;
+    errorText.textContent = data.error || 'Schema compilation failed.';
+  }
+  serviceCompanionErrorLocation = { file: data.file || sourceFile, line: data.line || 1, column: data.column || 1 };
+}
+
+async function jumpToServiceCompanionError() {
+  if (!serviceCompanionErrorLocation) return;
+  const location = serviceCompanionErrorLocation;
+  const paneId = Object.keys(editors).find(id => paneActiveFiles[id] === location.file) || 'editor1';
+  if (paneActiveFiles[paneId] !== location.file) await switchFileInPane(paneId, location.file);
+  const instance = editors[paneId] || editor;
+  if (instance) {
+    activeEditorId = paneId;
+    instance.setPosition({ lineNumber: location.line, column: location.column });
+    instance.revealLineInCenter(location.line);
+    instance.focus();
+  }
+}
+
+function openCompanionMethodInRepositoryTree() {
+  const target = serviceCompanionTarget;
+  if (!target || !target.servicePath || !currentCompilation?.files) return;
+  switchPreviewTab('java');
+  requestAnimationFrame(() => {
+    const item = Array.from(document.querySelectorAll('.tree-file-item')).find(el => el.dataset.path === target.servicePath);
+    if (!item) return;
+    item.onclick(null);
+    if (viewerEditor && item) {
+      const content = currentCompilation.files.find(file => file.path === target.servicePath)?.content || '';
+      const escapedName = target.methodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const methodSignature = new RegExp(`^[\\t ]*public\\s+[^\\n{;]*?\\b${escapedName}\\s*\\(`, 'm').exec(content);
+      if (methodSignature) {
+        const line = content.slice(0, methodSignature.index).split('\n').length;
+        viewerEditor.setPosition({ lineNumber: line, column: 1 });
+        viewerEditor.revealLineInCenter(line);
+      }
+    }
+  });
 }
 
 // Show Diagnostic Drawer
@@ -1295,9 +1868,11 @@ function updateSwaggerButton(config) {
 
 function dismissError() {
   document.getElementById('errorDrawer').className = 'error-drawer';
-  if (typeof editor !== 'undefined' && editor && window.errorLineDecorations) {
-    window.errorLineDecorations = editor.deltaDecorations(window.errorLineDecorations, []);
-  }
+  if (typeof editors === 'undefined') return;
+  Object.entries(editors).forEach(([paneId, instance]) => {
+    const key = paneId === 'editor1' ? 'errorLineDecorations' : 'errorLineDecorations_' + paneId;
+    if (instance && window[key]) window[key] = instance.deltaDecorations(window[key], []);
+  });
 }
 
 // Tab Drag and Drop Reordering
@@ -1324,9 +1899,11 @@ function initTabDragAndDrop() {
         return;
       }
       draggedTabItem = tab;
+      draggedPreviewKey = tab.getAttribute('data-tab') || '';
       isTabDragging = true;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', tab.getAttribute('data-tab') || '');
+      e.dataTransfer.setData('application/x-zenith-preview-tab', tab.getAttribute('data-tab') || '');
       closeArtifactsDropdown();
       setTimeout(() => {
         if (draggedTabItem) draggedTabItem.classList.add('tab-dragging');
@@ -1339,6 +1916,7 @@ function initTabDragAndDrop() {
       }
       clearTabDropIndicators();
       draggedTabItem = null;
+      draggedPreviewKey = null;
       if (tabDragTimeoutId) clearTimeout(tabDragTimeoutId);
       tabDragTimeoutId = setTimeout(() => {
         isTabDragging = false;
@@ -1444,8 +2022,11 @@ function restoreTabOrder() {
 // Switch Right Preview Tabs
 function switchPreviewTab(tabKey) {
   if (isTabDragging) return;
+  const secondaryPanel = activeLayoutPreset === 'quad' ? document.querySelector('#previewContent2 .preview-panel') : null;
+  if (secondaryPanel && secondaryPanel.id === 'tab-' + tabKey) return;
+  if (activeLayoutPreset !== 'quad') selectedPreviewTab = tabKey;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll('.preview-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.preview-panel').forEach(p => { if (p !== secondaryPanel) p.classList.remove('active'); });
   document.querySelectorAll('.tab-dropdown-item').forEach(i => i.classList.remove('active'));
   closeArtifactsDropdown();
 
@@ -1472,6 +2053,7 @@ function switchPreviewTab(tabKey) {
   } else if (tabKey === 'workflows') {
     if (typeof initWorkflowCanvas === 'function') initWorkflowCanvas();
   }
+  if (activeLayoutPreset !== 'quad' && typeof persistWorkspaceState === 'function') persistWorkspaceState();
 }
 
 function toggleArtifactsDropdown(e) {
@@ -1913,7 +2495,12 @@ function drawRelationArrows(models, canvas, svg) {
       group.appendChild(path);
 
       // Port Cardinality Badges (Standard ERD notation at card ports)
-      const relType = (r.relationType || r.type || 'manyToOne').toLowerCase();
+      // Backend AST enums serialize as names like ONE_TO_ONE while older UI
+      // payloads use camelCase (oneToOne). Normalize both forms before mapping
+      // cardinalities so one-to-one is never mistaken for the 1:N default.
+      const relType = String(r.relationType || r.type || 'manyToOne')
+        .replace(/[_\-\s]/g, '')
+        .toLowerCase();
       let sCard = '1', tCard = 'N';
       if (relType.includes('onetoone')) { sCard = '1'; tCard = '1'; }
       else if (relType.includes('manytomany')) { sCard = 'M'; tCard = 'N'; }
@@ -2649,8 +3236,7 @@ function initUnifiedTesterCanvas() {
     );
 
     if (hasSockets) {
-      addWsTestWindow(false, 'alice', 'bob');
-      addWsTestWindow(false, 'bob', 'alice');
+      addWsTestWindow(false);
     }
 
     if (testWindows.length > 0) {
@@ -2664,17 +3250,12 @@ function initUnifiedTesterCanvas() {
       (typeof editor !== 'undefined' && editor && editor.getValue && /\b(socket|broadcast|sendToUser)\b/i.test(editor.getValue()))
     );
     if (hasSockets && !testWindows.some(w => w.type === 'ws')) {
-      addWsTestWindow(false, 'alice', 'bob');
-      addWsTestWindow(false, 'bob', 'alice');
+      addWsTestWindow(false);
     }
   }
 
   // Ensure ports match actual active app port (e.g. 8081)
   const activePort = getActiveAppPort();
-  const hasAuth = Boolean(
-    (currentCompilation && (currentCompilation.hasAuth || (currentCompilation.config && (currentCompilation.config.hasAuth || currentCompilation.config.auth === 'jwt')))) ||
-    (typeof editor !== 'undefined' && editor && editor.getValue && /\bauth\s*:\s*jwt\b/i.test(editor.getValue()))
-  );
   testWindows.forEach(w => {
     if (w.type === 'rest' && w.url && w.url.includes('localhost:')) {
       w.url = w.url.replace(/localhost:\d+/, `localhost:${activePort}`);
@@ -2682,9 +3263,6 @@ function initUnifiedTesterCanvas() {
     if (w.type === 'ws') {
       if (w.endpoint && w.endpoint.includes('localhost:')) {
         w.endpoint = w.endpoint.replace(/localhost:\d+/, `localhost:${activePort}`);
-      }
-      if (hasAuth && !w.token) {
-        w.token = generateUserJwt(w.user);
       }
     }
   });
@@ -2697,7 +3275,7 @@ function renderTesterWindows() {
   if (!canvas) return;
 
   if (testWindows.length === 0) {
-    canvas.innerHTML = '<div style="color: #71717a; font-size: 11px; padding: 24px; text-align: center;">No active test windows. Click "+ REST Window" or "+ WS Client" above to begin.</div>';
+    canvas.innerHTML = '<div style="color: #71717a; font-size: 11px; padding: 24px; text-align: center;">No active test windows. Click "+ REST Window" or "+ WebSocket Listener" above to begin.</div>';
     return;
   }
 
@@ -2805,11 +3383,6 @@ function renderTesterWindows() {
       else if (win.status === 'connecting') { dotColor = '#eab308'; statusText = 'Connecting...'; }
       else if (win.status === 'error') { dotColor = '#f43f5e'; statusText = 'Error'; }
 
-      const hasAuth = Boolean(
-        (currentCompilation && (currentCompilation.hasAuth || (currentCompilation.config && (currentCompilation.config.hasAuth || currentCompilation.config.auth === 'jwt')))) ||
-        (typeof editor !== 'undefined' && editor && editor.getValue && /\bauth\s*:\s*jwt\b/i.test(editor.getValue()))
-      );
-
       card.innerHTML = `
         <div class="tester-card-header">
           <div class="tester-card-title">
@@ -2819,7 +3392,7 @@ function renderTesterWindows() {
               </svg>
             </span>
             <span class="sim-status-dot" style="background: ${dotColor};"></span>
-            <span class="card-title-text">${escapeHtml(win.user)}</span>
+            <span class="card-title-text">WebSocket listener</span>
             <span class="card-status-badge ${isConn ? 'success' : ''}">${escapeHtml(statusText)}</span>
           </div>
           <div class="tester-card-actions">
@@ -2833,49 +3406,25 @@ function renderTesterWindows() {
 
         <div class="tester-card-body">
           <div class="mini-form-row">
-            <span class="mini-label">USER</span>
-            <input type="text" class="ws-mini-user-input" value="${escapeHtml(win.user)}" oninput="updateWsWinUser('${win.id}', this.value)" title="Client Principal" />
-            <span class="mini-label" style="margin-left: 6px;">URL</span>
+            <span class="mini-label">URL</span>
             <input type="text" class="card-input" value="${escapeHtml(win.endpoint)}" onchange="updateWsWinEndpoint('${win.id}', this.value)" />
           </div>
 
-          ${hasAuth ? `
-            <div class="mini-form-row">
-              <span class="mini-label">TOKEN</span>
-              <input type="text" class="card-input" id="token-${win.id}" value="${escapeHtml(win.token || '')}" placeholder="Bearer eyJ..." oninput="updateWsWinToken('${win.id}', this.value)" />
-              <button class="btn-clean-link" onclick="autoFillWsToken('${win.id}', event)">Auto-Fill</button>
-            </div>
-          ` : ''}
+          <div class="mini-form-row">
+            <span class="mini-label">TOKEN</span>
+            <input type="text" class="card-input" id="token-${win.id}" value="${escapeHtml(win.token || '')}" placeholder="Optional Bearer token" oninput="updateWsWinToken('${win.id}', this.value)" />
+          </div>
 
           <div class="mini-form-row" style="background: transparent; border: none; padding: 0;">
             <span class="mini-label" style="margin-right: 4px;">SUBS</span>
             <div class="mini-subs-wrap">
-              ${win.subscriptions.map(s => `<span class="mini-sub-chip ${isConn ? 'active' : ''}">${escapeHtml(s)}</span>`).join('')}
+              ${win.subscriptions.map((s, index) => `<span class="mini-sub-chip ${isConn ? 'active' : ''}">${escapeHtml(s)}<button class="mini-sub-remove" onclick="removeWsSubscription('${win.id}', ${index}, event)" title="Unsubscribe">x</button></span>`).join('') || '<span class="mini-sub-empty">No subscriptions</span>'}
             </div>
           </div>
 
-          <div class="ws-send-box-mini">
-            <div class="ws-send-header-mini">
-              <div class="ws-mode-toggle-mini">
-                <button class="layout-btn ${win.mode === 'p2p' ? 'active' : ''}" onclick="setWsWinSendMode('${win.id}', 'p2p', event)">1-to-1</button>
-                <button class="layout-btn ${win.mode === 'broadcast' ? 'active' : ''}" onclick="setWsWinSendMode('${win.id}', 'broadcast', event)">Broadcast</button>
-              </div>
-              ${win.mode === 'p2p' ? `
-                <div class="ws-to-wrap">
-                  <span class="mini-label">TO:</span>
-                  <input type="text" class="ws-target-input" value="${escapeHtml(win.targetRecipient)}" oninput="updateWsWinTarget('${win.id}', this.value)" />
-                </div>
-              ` : `
-                <div class="ws-to-wrap">
-                  <span class="mini-label">TOPIC:</span>
-                  <span class="mini-topic-text">${escapeHtml(win.subscriptions[1] || '/topic/chat')}</span>
-                </div>
-              `}
-            </div>
-            <div class="ws-send-input-row">
-              <input type="text" class="card-input" style="background: #0a0a0c; border: 1px solid #1f1f23; border-radius: 3px; padding: 3px 6px;" value="${escapeHtml(win.mode === 'p2p' ? win.messageContent : win.broadcastContent)}" oninput="updateWsWinMessage('${win.id}', this.value)" placeholder="${win.mode === 'p2p' ? 'Type peer message...' : 'Type broadcast message...'}" onkeydown="if(event.key==='Enter') sendWsWinMessage('${win.id}', event)" />
-              <button class="btn btn-primary btn-xxs" onclick="sendWsWinMessage('${win.id}', event)">Send</button>
-            </div>
+          <div class="ws-subscribe-row">
+            <input type="text" class="card-input" id="ws-sub-input-${win.id}" value="${escapeHtml(win.subscriptionInput || '')}" oninput="updateWsSubscriptionInput('${win.id}', this.value)" placeholder="Destination, e.g. /topic/updates" onkeydown="if(event.key==='Enter') addWsSubscriptionFromInput('${win.id}', event)" />
+            <button class="btn btn-secondary btn-xxs" onclick="addWsSubscriptionFromInput('${win.id}', event)">Add subscription</button>
           </div>
 
           <div class="ws-mini-frame-log" id="frames-${win.id}">
@@ -2917,15 +3466,8 @@ function getActiveWsEndpoint() {
   const port = getActiveAppPort();
   const sock = (currentCompilation && currentCompilation.sockets && currentCompilation.sockets[0])
     ? currentCompilation.sockets[0]
-    : { endpoint: '/ws', topic: '/topic/chat' };
+    : { endpoint: '/ws' };
   return `http://localhost:${port}${sock.endpoint || '/ws'}`;
-}
-
-function getActiveWsTopic() {
-  const sock = (currentCompilation && currentCompilation.sockets && currentCompilation.sockets[0])
-    ? currentCompilation.sockets[0]
-    : { endpoint: '/ws', topic: '/topic/chat' };
-  return sock.topic || '/topic/chat';
 }
 
 function addRestTestWindow(route = null, doRender = true) {
@@ -2993,39 +3535,24 @@ function addRestTestWindow(route = null, doRender = true) {
   return win;
 }
 
-function addWsTestWindow(doRender = true, defaultUser = null, defaultTarget = null) {
+function addWsTestWindow(doRender = true) {
   windowCounter++;
   const defaultEndpoint = getActiveWsEndpoint();
-  const defaultTopic = getActiveWsTopic();
 
-  const defaultNames = ['alice', 'bob', 'charlie', 'david', 'emma', 'frank'];
-  const wsCount = testWindows.filter(w => w.type === 'ws').length;
-  const user = defaultUser || defaultNames[wsCount % defaultNames.length];
-  const target = defaultTarget || (user === 'alice' ? 'bob' : 'alice');
-
-  const hasAuth = Boolean(
-    (currentCompilation && (currentCompilation.hasAuth || (currentCompilation.config && (currentCompilation.config.hasAuth || currentCompilation.config.auth === 'jwt')))) ||
-    (typeof editor !== 'undefined' && editor && editor.getValue && /\bauth\s*:\s*jwt\b/i.test(editor.getValue()))
-  );
-  let userToken = '';
-  if (hasAuth) {
-    userToken = generateUserJwt(user);
-  }
+  let savedToken = '';
+  try { savedToken = localStorage.getItem('zenith_auth_token') || ''; } catch (_) {}
 
   const win = {
     id: `ws-${windowCounter}`,
     type: 'ws',
-    title: `WS: ${user}`,
-    user: user,
-    token: userToken,
+    title: 'WebSocket listener',
+    token: savedToken,
     endpoint: defaultEndpoint,
-    subscriptions: ['/user/queue/messages', defaultTopic],
-    targetRecipient: target,
-    messageContent: `Hello ${target}!`,
-    broadcastContent: `${user} joined the room!`,
-    mode: 'p2p',
+    subscriptions: [],
+    subscriptionInput: '',
     ws: null,
     subIds: {},
+    subCounter: 0,
     status: 'disconnected',
     frames: []
   };
@@ -3317,7 +3844,7 @@ function connectWsWin(win) {
 
   win.status = 'connecting';
   renderTesterWindows();
-  appendWinFrame(win.id, `Connecting to ${wsUrl} as '${win.user}'...`, 'system');
+  appendWinFrame(win.id, `Connecting to ${wsUrl}...`, 'system');
 
   try {
     const ws = new WebSocket(wsUrl);
@@ -3332,9 +3859,6 @@ function connectWsWin(win) {
       if (token) {
         connectFrame += `Authorization:${token.startsWith('Bearer ') ? token : 'Bearer ' + token}\n`;
       }
-      if (win.user) {
-        connectFrame += `user:${win.user}\nusername:${win.user}\nlogin:${win.user}\n`;
-      }
       connectFrame += "\n\0";
       ws.send(connectFrame);
     };
@@ -3346,17 +3870,11 @@ function connectWsWin(win) {
       if (data.startsWith('CONNECTED')) {
         win.status = 'connected';
         renderTesterWindows();
-        appendWinFrame(win.id, `● STOMP Authenticated as '${win.user}'`, 'system');
+        appendWinFrame(win.id, 'STOMP connection established', 'system');
 
         setTimeout(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            win.subscriptions.forEach((dest, idx) => {
-              const subId = `sub-${win.id}-${idx}`;
-              win.subIds[dest] = subId;
-              const subFrame = `SUBSCRIBE\nid:${subId}\ndestination:${dest}\n\n\0`;
-              ws.send(subFrame);
-              appendWinFrame(win.id, `✓ Subscribed to ${dest}`, 'system');
-            });
+            win.subscriptions.forEach(dest => subscribeWsDestination(win, dest));
           }
         }, 120);
       } else if (data.startsWith('MESSAGE')) {
@@ -3391,6 +3909,7 @@ function connectWsWin(win) {
     ws.onclose = () => {
       win.status = 'disconnected';
       win.ws = null;
+      win.subIds = {};
       renderTesterWindows();
       appendWinFrame(win.id, `Disconnected from server`, 'system');
     };
@@ -3413,44 +3932,60 @@ function disconnectWsWin(win) {
     } catch (_) {}
     win.ws = null;
   }
+  win.subIds = {};
   win.status = 'disconnected';
   renderTesterWindows();
 }
 
-function sendWsWinMessage(winId, event) {
+function updateWsSubscriptionInput(winId, value) {
+  const win = testWindows.find(w => w.id === winId);
+  if (win) win.subscriptionInput = value;
+}
+
+function addWsSubscriptionFromInput(winId, event) {
   if (event) event.stopPropagation();
   const win = testWindows.find(w => w.id === winId);
-  if (!win || !win.ws || win.ws.readyState !== WebSocket.OPEN) {
-    appendWinFrame(winId, `Cannot send: WebSocket is not connected. Click Connect first!`, 'error');
+  if (!win) return;
+  const input = document.getElementById(`ws-sub-input-${winId}`);
+  const destination = (input ? input.value : win.subscriptionInput || '').trim();
+  if (!destination) return;
+  if (!destination.startsWith('/') || /[\r\n\0]/.test(destination)) {
+    appendWinFrame(winId, 'Destination must start with / and cannot contain line breaks.', 'error');
     return;
   }
-
-  focusTesterWindow(winId);
-
-  if (win.mode === 'p2p') {
-    const payload = {
-      id: 'msg-' + Math.floor(Math.random() * 1000000),
-      recipientId: win.targetRecipient,
-      senderId: win.user,
-      content: win.messageContent,
-      timestamp: Date.now()
-    };
-    const payloadStr = JSON.stringify(payload);
-    const frame = `SEND\ndestination:/app/chat.send\ncontent-type:application/json\n\n${payloadStr}\0`;
-    win.ws.send(frame);
-    appendWinFrame(winId, `(To: ${win.targetRecipient}) "${win.messageContent}"`, 'out');
-  } else {
-    const payload = {
-      id: 'msg-' + Math.floor(Math.random() * 1000000),
-      senderId: win.user,
-      content: win.broadcastContent,
-      timestamp: Date.now()
-    };
-    const payloadStr = JSON.stringify(payload);
-    const frame = `SEND\ndestination:/app/chat.broadcast\ncontent-type:application/json\n\n${payloadStr}\0`;
-    win.ws.send(frame);
-    appendWinFrame(winId, `(/topic/chat) "${win.broadcastContent}"`, 'out');
+  if (win.subscriptions.includes(destination)) {
+    appendWinFrame(winId, `Already subscribed to ${destination}`, 'system');
+    return;
   }
+  win.subscriptions.push(destination);
+  win.subscriptionInput = '';
+  if (win.status === 'connected' && win.ws && win.ws.readyState === WebSocket.OPEN) {
+    subscribeWsDestination(win, destination);
+  }
+  renderTesterWindows();
+}
+
+function subscribeWsDestination(win, destination) {
+  if (!win.ws || win.ws.readyState !== WebSocket.OPEN || win.subIds[destination]) return;
+  const subId = `sub-${win.id}-${++win.subCounter}`;
+  win.subIds[destination] = subId;
+  win.ws.send(`SUBSCRIBE\nid:${subId}\ndestination:${destination}\n\n\0`);
+  appendWinFrame(win.id, `Subscribed to ${destination}`, 'system');
+}
+
+function removeWsSubscription(winId, index, event) {
+  if (event) event.stopPropagation();
+  const win = testWindows.find(w => w.id === winId);
+  if (!win || index < 0 || index >= win.subscriptions.length) return;
+  const destination = win.subscriptions[index];
+  const subId = win.subIds[destination];
+  if (subId && win.ws && win.ws.readyState === WebSocket.OPEN) {
+    win.ws.send(`UNSUBSCRIBE\nid:${subId}\n\n\0`);
+    appendWinFrame(winId, `Unsubscribed from ${destination}`, 'system');
+  }
+  delete win.subIds[destination];
+  win.subscriptions.splice(index, 1);
+  renderTesterWindows();
 }
 
 function appendWinFrame(winId, text, type = 'system') {
@@ -3555,67 +4090,17 @@ function copyRestWindowResponse(winId, event) {
     setTimeout(() => btn.innerText = oldText, 1200);
   }
 }
-function updateWsWinUser(winId, val) {
-  const win = testWindows.find(w => w.id === winId);
-  if (win) {
-    win.user = val.trim();
-    win.title = `WS: ${win.user}`;
-  }
-}
 function updateWsWinEndpoint(winId, val) {
   const win = testWindows.find(w => w.id === winId);
   if (win) win.endpoint = val.trim();
 }
-function updateWsWinTarget(winId, val) {
-  const win = testWindows.find(w => w.id === winId);
-  if (win) win.targetRecipient = val.trim();
-}
-function updateWsWinMessage(winId, val) {
-  const win = testWindows.find(w => w.id === winId);
-  if (win) {
-    if (win.mode === 'p2p') win.messageContent = val;
-    else win.broadcastContent = val;
-  }
-}
-function setWsWinSendMode(winId, mode, event) {
-  if (event) event.stopPropagation();
-  const win = testWindows.find(w => w.id === winId);
-  if (win) {
-    win.mode = mode;
-    renderTesterWindows();
-  }
-}
-
-function generateUserJwt(username) {
-  try {
-    const b64u = (obj) => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-    const header = b64u({ alg: "HS256", typ: "JWT" });
-    const payload = b64u({
-      sub: username,
-      username: username,
-      roles: ["USER"],
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 86400
-    });
-    return `Bearer ${header}.${payload}.sample_zenith_jwt_token`;
-  } catch (_) {
-    return `Bearer eyJhbGciOiJIUzI1NiJ9.sample_jwt_${username}`;
-  }
-}
-
-function autoFillWsToken(winId, event) {
-  if (event) event.stopPropagation();
-  const win = testWindows.find(w => w.id === winId);
-  if (!win) return;
-  const token = generateUserJwt(win.user || 'user');
-  win.token = token;
-  const input = document.getElementById(`token-${winId}`);
-  if (input) input.value = token;
-}
 
 function updateWsWinToken(winId, val) {
   const win = testWindows.find(w => w.id === winId);
-  if (win) win.token = val;
+  if (win) {
+    win.token = val;
+    try { localStorage.setItem('zenith_auth_token', val); } catch (_) {}
+  }
 }
 
 function toggleApiSidebar() {
@@ -4415,6 +4900,7 @@ function renderDocker(files) {
 
 // Render Docker Hook called when Docker Tab is clicked
 function renderDockerPreview() {
+  loadServers();
   initDockerIdeEditors();
   setTimeout(() => {
     if (dockerfileEditor) dockerfileEditor.layout();
@@ -4503,6 +4989,71 @@ function clearDockerLogs() {
   }
 }
 
+async function readApiResponse(res) {
+  const body = await res.text();
+  let data;
+  try {
+    data = body ? JSON.parse(body) : {};
+  } catch (_) {
+    const detail = body.trim().slice(0, 240) || res.statusText || 'Empty response';
+    throw new Error(`Server returned HTTP ${res.status}: ${detail}`);
+  }
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Request failed (HTTP ${res.status})`);
+  }
+  return data;
+}
+
+// Load Configured SSH Servers into dropdown
+async function loadServers() {
+  const select = document.getElementById('serverSelect');
+  if (!select) return;
+  try {
+    const res = await fetch('/api/servers');
+    const servers = await res.json();
+    // Keep first option
+    select.innerHTML = '<option value="">Select Server...</option>';
+    servers.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.name;
+      opt.textContent = `${s.name} (${s.host})`;
+      select.appendChild(opt);
+    });
+  } catch (e) {}
+}
+
+// Execute SSH Deployment Action
+async function runSshAction(action) {
+  const select = document.getElementById('serverSelect');
+  if (!select || !select.value) {
+    alert('Please select a target server first using the server dropdown.');
+    return;
+  }
+  const server = select.value;
+  toggleDockerLogDrawer(true);
+  const pill = document.getElementById('terminalFilterPill');
+  if (pill) pill.textContent = `${server} : ${action}`;
+
+  appendDockerTerminalLine(`$ zenith deploy ${action} --server ${server}`, 'cmd');
+
+  try {
+    const res = await fetch('/api/ssh/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action, server: server })
+    });
+    const data = await readApiResponse(res);
+    if (!data.success) {
+      appendDockerTerminalLine(`✖ Error: ${data.error}`, 'error');
+    } else {
+      appendDockerTerminalLine(`[executing SSH ${action} on ${server}...]`);
+      pollDockerLogsToTerminal();
+    }
+  } catch (e) {
+    appendDockerTerminalLine(`✖ Network error: ${e.message}`, 'error');
+  }
+}
+
 // Execute Docker Actions (Build, Compose Up, Compose Down)
 async function runDockerAction(action) {
   toggleDockerLogDrawer(true);
@@ -4517,7 +5068,7 @@ async function runDockerAction(action) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: action })
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!data.success) {
       appendDockerTerminalLine(`✖ Error: ${data.error}`, 'error');
     } else {
@@ -4549,7 +5100,7 @@ async function runDockerServiceAction(action, serviceName) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: action, service: serviceName })
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!data.success) {
       appendDockerTerminalLine(`✖ Error: ${data.error}`, 'error');
     } else {
@@ -8831,215 +9382,479 @@ async function executeSingleStep(index) {
 // ==========================================
 // SPEC #23: MULTI-PANE WINDOW SPLITTING & FLEXIBLE GRID WORKSPACE
 // ==========================================
-
-let activeLayoutPreset = 'standard'; // Always default to standard 1:1 on initial page load
-let editors = {}; // { editor1: monacoInstance, editor2: monacoInstance }
+let activeLayoutPreset = 'standard';
+let selectedPreviewTab = 'erd';
+let previewTabBeforeQuad = 'erd';
+let secondaryPreviewTab = 'console';
+let editors = {};
 let activeEditorId = 'editor1';
+let paneActiveFiles = { editor1: null, editor2: null };
+let paneViewStates = { editor1: {}, editor2: {} };
+const zenithModelsByFile = new Map();
+const zenithFileByModel = new WeakMap();
+const zenithModelListeners = new WeakSet();
+const fileSaveTimers = new Map();
+const fileSaveInFlight = new Map();
+const workspaceRatios = { editor: 50, left: 50, top: 58 };
+let workspaceInitDone = false;
+let workspaceStateLoaded = false;
+let draggedPreviewKey = null;
+let previewPanelOrder = null;
 
-function initMultiPaneWorkspace() {
-    applyLayoutPreset(activeLayoutPreset, false);
-    setupWorkspaceKeybindings();
-    setupEditorSplitterDrag();
+function bindZenithModel(fileName, model) {
+  if (!fileName || !model) return;
+  for (const [oldName, oldModel] of zenithModelsByFile.entries()) {
+    if (oldModel === model && oldName !== fileName) zenithModelsByFile.delete(oldName);
+  }
+  zenithModelsByFile.set(fileName, model);
+  zenithFileByModel.set(model, fileName);
+  if (zenithModelListeners.has(model)) return;
+  zenithModelListeners.add(model);
+  model.onDidChangeContent(change => {
+    if (change && change.isFlush) return;
+    const changedFile = zenithFileByModel.get(model);
+    if (!changedFile) return;
+    const source = model.getValue();
+    window.fileBuffers = window.fileBuffers || {};
+    window.fileBuffers[changedFile] = source;
+    try { localStorage.setItem('zenith_studio_' + changedFile, source); } catch (_) {}
+    if (changedFile === window.currentActiveFile) updateSaveIndicator('saving');
+    dismissError();
+    handleServiceCompanionSourceChange(changedFile);
+    clearTimeout(fileSaveTimers.get(changedFile));
+    const timer = setTimeout(async () => {
+      const saving = postZenFileBuffer(changedFile, source);
+      fileSaveInFlight.set(changedFile, saving);
+      try {
+        const data = await saving;
+        if (data.files) renderSchemaTabs(data.files);
+        if (changedFile === window.currentActiveFile) updateSaveIndicator('saved');
+      } catch (_) {
+        if (changedFile === window.currentActiveFile) updateSaveIndicator('saved-local');
+      } finally {
+        if (fileSaveInFlight.get(changedFile) === saving) fileSaveInFlight.delete(changedFile);
+      }
+      triggerCompile(true, changedFile);
+    }, 600);
+    fileSaveTimers.set(changedFile, timer);
+  });
+}
+
+function setEditorModelForFile(paneId, fileName, initialContent) {
+  const paneEditor = editors[paneId];
+  if (!paneEditor || !fileName || !window.monaco) return;
+  const oldFile = paneActiveFiles[paneId];
+  if (oldFile && oldFile !== fileName) {
+    paneViewStates[paneId][oldFile] = paneEditor.saveViewState();
+  }
+  let model = zenithModelsByFile.get(fileName);
+  if (model && model.isDisposed()) {
+    zenithModelsByFile.delete(fileName);
+    model = null;
+  }
+  if (!model) {
+    const currentModel = paneEditor.getModel();
+    if (currentModel && !zenithFileByModel.has(currentModel)) model = currentModel;
+    else model = monaco.editor.createModel('', 'zenith');
+    const cached = window.fileBuffers && window.fileBuffers[fileName];
+    const source = cached !== undefined ? cached : (initialContent !== undefined ? initialContent : '');
+    if (model.getValue() !== source) model.setValue(source);
+    bindZenithModel(fileName, model);
+  } else if (initialContent !== undefined && (!window.fileBuffers || window.fileBuffers[fileName] === undefined) && model.getValue() !== initialContent) {
+    model.setValue(initialContent);
+  }
+  window.fileBuffers = window.fileBuffers || {};
+  window.fileBuffers[fileName] = model.getValue();
+  paneEditor.setModel(model);
+  paneActiveFiles[paneId] = fileName;
+  if (paneViewStates[paneId][fileName]) paneEditor.restoreViewState(paneViewStates[paneId][fileName]);
+  paneEditor.layout();
+  if (paneId === (activeEditorId || 'editor1')) refreshServiceCompanionSelection();
+  if (paneId === 'editor1') {
+    window.currentActiveFile = fileName;
+    const name = document.getElementById('currentFileName');
+    if (name) name.textContent = fileName;
+    document.title = 'Zenith Studio PRO - ' + fileName;
+  } else {
+    const name = document.getElementById('currentFileName2');
+    if (name) name.textContent = fileName;
+  }
+  populateVerticalTabsListForPane(paneId);
+  persistWorkspaceState();
+}
+
+async function ensureZenithModel(fileName) {
+  const cachedModel = zenithModelsByFile.get(fileName);
+  if (cachedModel && !cachedModel.isDisposed()) return cachedModel;
+  if (cachedModel && cachedModel.isDisposed()) zenithModelsByFile.delete(fileName);
+  let source = window.fileBuffers && window.fileBuffers[fileName];
+  if (source === undefined) {
+    try {
+      const response = await fetch('/api/schema?file=' + encodeURIComponent(fileName));
+      const data = await response.json();
+      if (!response.ok || data.exists === false) throw new Error(data.error || 'File not found: ' + fileName);
+      source = data.content || '';
+      if (data.fileName && data.fileName !== fileName) throw new Error('Server returned a different schema file.');
+      if (data.files) {
+        window.currentSchemaFiles = data.files;
+      }
+    } catch (error) {
+      console.error('Unable to load schema file ' + fileName, error);
+      throw error;
+    }
+  }
+  window.fileBuffers = window.fileBuffers || {};
+  window.fileBuffers[fileName] = source;
+  const model = monaco.editor.createModel(source, 'zenith');
+  bindZenithModel(fileName, model);
+  return model;
+}
+
+async function switchFileInPane(paneId, fileName, skipCompile = false) {
+  if (!fileName) return;
+  if (paneId === 'editor2' && !editors.editor2) await initSecondaryEditor();
+  const paneEditor = editors[paneId];
+  if (!paneEditor) return;
+  const activeModel = paneEditor.getModel();
+  if (paneActiveFiles[paneId] === fileName && activeModel && !activeModel.isDisposed()
+      && activeModel === zenithModelsByFile.get(fileName)) {
+    paneEditor.focus();
+    return;
+  }
+  activeEditorId = paneId;
+  const switchSequence = (paneEditor.__zenithSwitchSequence || 0) + 1;
+  paneEditor.__zenithSwitchSequence = switchSequence;
+  try {
+    const model = await ensureZenithModel(fileName);
+    if (paneEditor.__zenithSwitchSequence !== switchSequence) return;
+    setEditorModelForFile(paneId, fileName, model.getValue());
+    if (paneId === 'editor1') {
+      const info = window.currentSchemaFiles && window.currentSchemaFiles.find(f => f.name === fileName);
+      if (info) renderSchemaTabs(window.currentSchemaFiles);
+    }
+    paneEditor.focus();
+    if (!skipCompile) triggerCompile(false, fileName);
+  } catch (error) {
+    console.error('Unable to open schema file ' + fileName, error);
+    if (paneEditor.__zenithSwitchSequence === switchSequence) {
+      if (paneId === 'editor1') updateSaveIndicator('saved-local');
+      showToast('Unable to open ' + fileName + ': ' + error.message, 'error');
+    }
+  }
+}
+
+function readWorkspaceState() {
+  if (workspaceStateLoaded) return;
+  workspaceStateLoaded = true;
+  try {
+    const raw = localStorage.getItem('zenith_workspace_layout');
+    if (!raw) return;
+    let state;
+    try { state = JSON.parse(raw); } catch (_) { state = { preset: raw }; }
+    if (state && ['standard', 'dual_schema', 'horizontal', 'quad'].includes(state.preset)) activeLayoutPreset = state.preset;
+    if (state && state.ratios) Object.assign(workspaceRatios, state.ratios);
+    if (state && state.editorFiles) Object.assign(paneActiveFiles, state.editorFiles);
+    if (state && state.previewTab && document.getElementById('tab-' + state.previewTab)) selectedPreviewTab = state.previewTab;
+    if (state && state.previewTabBeforeQuad) previewTabBeforeQuad = state.previewTabBeforeQuad;
+    if (state && state.secondaryPreviewTab) secondaryPreviewTab = state.secondaryPreviewTab;
+  } catch (_) {}
+}
+
+function persistWorkspaceState() {
+  try {
+    localStorage.setItem('zenith_workspace_layout', JSON.stringify({
+      preset: activeLayoutPreset, ratios: workspaceRatios,
+      editorFiles: paneActiveFiles, previewTab: selectedPreviewTab,
+      previewTabBeforeQuad, secondaryPreviewTab
+    }));
+  } catch (_) {}
 }
 
 function applyLayoutPreset(presetName, save = true) {
+  const allowed = ['standard', 'dual_schema', 'horizontal', 'quad'];
+  if (!allowed.includes(presetName)) presetName = 'standard';
+  if (window.innerWidth < 1024 && presetName !== 'standard') presetName = 'standard';
+  const ws = document.getElementById('studioWorkspace');
+  if (!ws) return;
+  const wasQuad = activeLayoutPreset === 'quad';
+  const secondaryHasPanel = Boolean(document.querySelector('#previewContent2 .preview-panel'));
+  if (presetName === 'quad' && (!wasQuad || !secondaryHasPanel)) {
+    if (!wasQuad) previewTabBeforeQuad = selectedPreviewTab;
+    switchPreviewTab('erd');
+    movePreviewPanel(secondaryPreviewTab || 'console', 'secondary');
+  } else if (wasQuad && presetName !== 'quad') {
+    restorePreviewPanels();
     activeLayoutPreset = presetName;
-    if (save) {
-        localStorage.setItem('zenith_workspace_layout', presetName);
-    }
-    const ws = document.getElementById('studioWorkspace');
-    if (!ws) return;
-    
-    ws.className = 'studio-workspace layout-' + presetName;
-
-    // Update preset button label
-    const labels = {
-        'standard': 'Standard 1:1',
-        'dual_schema': 'Dual Schema',
-        'horizontal': 'Horizontal Stack',
-        'quad': 'Quad Multi-Grid'
-    };
-    const lblEl = document.getElementById('currentPresetLabel');
-    if (lblEl) lblEl.textContent = labels[presetName] || 'Standard 1:1';
-
-    // Highlight active in dropdown menu
-    document.querySelectorAll('#layoutPresetMenu .execution-dropdown-item').forEach(el => el.classList.remove('active'));
-    const activeItem = document.getElementById('presetItem' + presetName.charAt(0).toUpperCase() + presetName.slice(1).replace('_',''));
-    if (activeItem) activeItem.classList.add('active');
-
-    // Show/hide secondary editor pane based on layout
-    const ed2 = document.getElementById('editorPane2');
-    const edSplitter = document.getElementById('editorSplitter');
-    if (ed2) {
-        if (presetName === 'dual_schema' || presetName === 'quad') {
-            ed2.style.display = 'flex';
-            if (edSplitter) edSplitter.style.display = 'block';
-            if (!editors['editor2']) {
-                setTimeout(() => initSecondaryEditor(), 50);
-            }
-        } else {
-            ed2.style.display = 'none';
-            if (edSplitter) edSplitter.style.display = 'none';
-        }
-    }
-
-    setTimeout(() => {
-        Object.values(editors).forEach(ed => {
-            if (ed && typeof ed.layout === 'function') ed.layout();
-        });
-    }, 100);
+    switchPreviewTab(previewTabBeforeQuad || selectedPreviewTab || 'erd');
+  }
+  if (presetName === 'horizontal' && selectedPreviewTab !== 'console' && selectedPreviewTab !== 'api') switchPreviewTab('console');
+  activeLayoutPreset = presetName;
+  ws.classList.remove('layout-standard', 'layout-dual_schema', 'layout-horizontal', 'layout-quad');
+  ws.classList.add('layout-' + presetName);
+  ws.style.setProperty('--workspace-editor-ratio', workspaceRatios.editor + '%');
+  ws.style.setProperty('--workspace-left-fr', workspaceRatios.left + 'fr');
+  ws.style.setProperty('--workspace-right-fr', (100 - workspaceRatios.left) + 'fr');
+  ws.style.setProperty('--workspace-top-fr', workspaceRatios.top + 'fr');
+  ws.style.setProperty('--workspace-bottom-fr', (100 - workspaceRatios.top) + 'fr');
+  const labels = { standard: 'Standard 1:1', dual_schema: 'Dual Schema', horizontal: 'Horizontal Stack', quad: 'Quad Multi-Grid' };
+  const label = document.getElementById('currentPresetLabel');
+  if (label) label.textContent = labels[presetName];
+  const menuIds = { standard: 'presetItemStandard', dual_schema: 'presetItemDualSchema', horizontal: 'presetItemHorizontal', quad: 'presetItemQuad' };
+  document.querySelectorAll('#layoutPresetMenu button').forEach(item => item.classList.remove('active'));
+  const selected = document.getElementById(menuIds[presetName]);
+  if (selected) selected.classList.add('active');
+  const menu = document.getElementById('layoutPresetMenu');
+  if (menu) menu.classList.remove('show');
+  if (presetName === 'dual_schema' || presetName === 'quad') initSecondaryEditor();
+  if (save) persistWorkspaceState();
+  requestAnimationFrame(layoutWorkspaceEditors);
 }
 
-function toggleLayoutPresetDropdown(e) {
-    if (e) e.stopPropagation();
-    const menu = document.getElementById('layoutPresetMenu');
-    if (menu) {
-        menu.classList.toggle('show');
-    }
+function toggleLayoutPresetDropdown(event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById('layoutPresetMenu');
+  if (menu) menu.classList.toggle('show');
 }
 
-function initSecondaryEditor() {
-    const container = document.getElementById('monacoEditorContainer2');
-    if (!container || editors['editor2']) return;
-
-    editors['editor2'] = monaco.editor.create(container, {
-        value: window.zenithFiles ? (window.zenithFiles[1]?.content || window.zenithFileContent || '') : '',
-        language: 'zenith',
-        theme: 'zenith-dark',
-        automaticLayout: true,
-        fontSize: 14,
-        fontFamily: 'JetBrains Mono',
-        minimap: { enabled: false },
-        scrollBeyondLastLine: false,
-        lineNumbersMinChars: 3,
-        padding: { top: 12, bottom: 12 },
-    });
-
-    editors['editor2'].onDidFocusEditorText(() => {
-        activeEditorId = 'editor2';
-    });
-
-    editors['editor2'].getModel().onDidChangeContent(() => {
-        if (activeEditorId === 'editor2') {
-            const val = editors['editor2'].getValue();
-            window.zenithFileContent = val;
-            scheduleCompilation();
-        }
-    });
-
-    populateVerticalTabsListForPane('editor2');
+async function initSecondaryEditor() {
+  const container = document.getElementById('monacoEditorContainer2');
+  if (!container || editors.editor2 || !window.monaco || !editors.editor1) return;
+  editors.editor2 = monaco.editor.create(container, {
+    model: editors.editor1.getModel(), language: 'zenith', theme: 'zenith-dark', automaticLayout: true,
+    fontSize: 14, fontFamily: 'JetBrains Mono', minimap: { enabled: false }, scrollBeyondLastLine: false,
+    lineNumbersMinChars: 3, padding: { top: 12, bottom: 12 }
+  });
+  window.editor2 = editors.editor2;
+  editors.editor2.onDidFocusEditorText(() => { activeEditorId = 'editor2'; refreshServiceCompanionSelection(); });
+  editors.editor2.onDidChangeCursorPosition(() => {
+    if (activeEditorId === 'editor2') refreshServiceCompanionSelection();
+  });
+  const files = window.currentSchemaFiles || [];
+  const preferred = paneActiveFiles.editor2 || (files.find(f => f.name !== window.currentActiveFile)?.name) || window.currentActiveFile || 'schema.zen';
+  await switchFileInPane('editor2', preferred, true);
+  populateVerticalTabsListForPane('editor2');
+  layoutWorkspaceEditors();
 }
 
 function splitActiveEditor(orientation) {
-    if (orientation === 'vertical') {
-        applyLayoutPreset('dual_schema');
-    } else {
-        applyLayoutPreset('horizontal');
-    }
+  applyLayoutPreset(orientation === 'vertical' ? 'dual_schema' : 'horizontal');
+  if (orientation === 'vertical') setTimeout(() => editors.editor2 && editors.editor2.focus(), 80);
 }
 
 function closeSplitPane(paneId) {
-    if (paneId === 'editor2') {
-        applyLayoutPreset('standard');
-    }
+  if (paneId === 'editor2' && editors.editor2) {
+    const model = editors.editor2.getModel();
+    if (paneActiveFiles.editor2 && model) paneViewStates.editor2[paneActiveFiles.editor2] = editors.editor2.saveViewState();
+    editors.editor2.dispose();
+    editors.editor2 = null;
+    window.editor2 = null;
+    paneActiveFiles.editor2 = null;
+    activeEditorId = 'editor1';
+    applyLayoutPreset('standard');
+    editors.editor1 && editors.editor1.focus();
+    persistWorkspaceState();
+  }
 }
 
 function setupWorkspaceKeybindings() {
-    document.addEventListener('keydown', (e) => {
-        // Ctrl + \ -> Vertical Split
-        if ((e.ctrlKey || e.metaKey) && e.key === '\\' && !e.shiftKey) {
-            e.preventDefault();
-            splitActiveEditor('vertical');
-        }
-        // Ctrl + Shift + \ -> Horizontal Split
-        else if ((e.ctrlKey || e.metaKey) && e.key === '\\' && e.shiftKey) {
-            e.preventDefault();
-            splitActiveEditor('horizontal');
-        }
-        // Ctrl + W -> Close Split Pane
-        else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') {
-            e.preventDefault();
-            closeSplitPane('editor2');
-        }
-        // Ctrl + 1 -> Focus Editor 1
-        else if ((e.ctrlKey || e.metaKey) && e.key === '1') {
-            e.preventDefault();
-            activeEditorId = 'editor1';
-            if (editors['editor1']) editors['editor1'].focus();
-        }
-        // Ctrl + 2 -> Focus Editor 2
-        else if ((e.ctrlKey || e.metaKey) && e.key === '2') {
-            e.preventDefault();
-            activeEditorId = 'editor2';
-            if (editors['editor2']) editors['editor2'].focus();
-        }
-    });
+  if (document.body.dataset.workspaceKeys === 'true') return;
+  document.body.dataset.workspaceKeys = 'true';
+  document.addEventListener('keydown', event => {
+    const mod = event.ctrlKey || event.metaKey;
+    if (!mod) return;
+    const backslashKey = event.code === 'Backslash' || event.key === '\\' || event.key === '|';
+    if (backslashKey && event.shiftKey) { event.preventDefault(); splitActiveEditor('horizontal'); }
+    else if (backslashKey) { event.preventDefault(); splitActiveEditor('vertical'); }
+    else if (event.key.toLowerCase() === 'w' && editors.editor2 && activeLayoutPreset !== 'standard') {
+      event.preventDefault(); closeSplitPane('editor2');
+    } else if (event.key === '1') { event.preventDefault(); activeEditorId = 'editor1'; editors.editor1 && editors.editor1.focus(); }
+    else if (event.key === '2') {
+      event.preventDefault();
+      if (activeLayoutPreset !== 'dual_schema' && activeLayoutPreset !== 'quad') applyLayoutPreset('dual_schema');
+      setTimeout(() => { if (editors.editor2) { activeEditorId = 'editor2'; editors.editor2.focus(); } }, 60);
+    }
+  });
+  document.addEventListener('click', event => {
+    if (!event.target.closest('#workspaceLayoutSwitcher')) document.getElementById('layoutPresetMenu')?.classList.remove('show');
+  });
+}
 
-    document.addEventListener('click', () => {
-        const menu = document.getElementById('layoutPresetMenu');
-        if (menu) menu.classList.remove('show');
-    });
+function layoutWorkspaceEditors() {
+  Object.values(editors).forEach(instance => { if (instance && instance.layout) instance.layout(); });
+  if (window.viewerEditor && window.viewerEditor.layout) window.viewerEditor.layout();
+  requestAnimationFrame(redrawErdIfActive);
+}
+
+function initSplitterDrag(splitter, orientation) {
+  if (!splitter || splitter.dataset.initialized === 'true') return;
+  splitter.dataset.initialized = 'true';
+  let dragging = false;
+  const move = event => {
+    if (!dragging) return;
+    const ws = document.getElementById('studioWorkspace');
+    const rect = ws.getBoundingClientRect();
+    if (orientation === 'horizontal') {
+      const topPx = event.clientY - rect.top;
+      const minPct = Math.min(45, 210 / Math.max(1, rect.height) * 100);
+      const pct = Math.max(minPct, Math.min(100 - minPct, topPx / rect.height * 100));
+      workspaceRatios.top = pct;
+      ws.style.setProperty('--workspace-top-fr', pct + 'fr');
+      ws.style.setProperty('--workspace-bottom-fr', (100 - pct) + 'fr');
+    } else {
+      const leftPx = event.clientX - rect.left;
+      const minPct = Math.min(45, 260 / Math.max(1, rect.width) * 100);
+      if (activeLayoutPreset === 'standard') {
+        const pct = Math.max(minPct, Math.min(100 - minPct, leftPx / rect.width * 100));
+        workspaceRatios.editor = pct;
+        ws.style.setProperty('--workspace-editor-ratio', pct + '%');
+      } else {
+        const pct = Math.max(minPct, Math.min(100 - minPct, leftPx / rect.width * 100));
+        workspaceRatios.left = pct;
+        ws.style.setProperty('--workspace-left-fr', pct + 'fr');
+        ws.style.setProperty('--workspace-right-fr', (100 - pct) + 'fr');
+      }
+    }
+    layoutWorkspaceEditors();
+  };
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('dragging');
+    document.body.classList.remove('resizing-panels');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', stop);
+    persistWorkspaceState();
+  };
+  splitter.addEventListener('pointerdown', event => {
+    if (window.innerWidth < 1024) return;
+    dragging = true;
+    splitter.classList.add('dragging');
+    document.body.classList.add('resizing-panels');
+    event.preventDefault();
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+  });
+  splitter.addEventListener('dblclick', () => {
+    if (orientation === 'horizontal') workspaceRatios.top = 50;
+    else if (activeLayoutPreset === 'standard') workspaceRatios.editor = 50;
+    else workspaceRatios.left = 50;
+    applyLayoutPreset(activeLayoutPreset);
+  });
 }
 
 function setupEditorSplitterDrag() {
-    const splitter = document.getElementById('editorSplitter');
-    const ws = document.getElementById('studioWorkspace');
-    if (!splitter || !ws) return;
-
-    let isDragging = false;
-    splitter.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        splitter.classList.add('dragging');
-        e.preventDefault();
-    });
-
-    window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        const rect = ws.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const pct = Math.max(20, Math.min(80, (x / rect.width) * 100));
-        ws.style.gridTemplateColumns = `minmax(260px, ${pct}fr) 4px minmax(260px, ${100 - pct}fr)`;
-        Object.values(editors).forEach(ed => {
-            if (ed && typeof ed.layout === 'function') ed.layout();
-        });
-    });
-
-    window.addEventListener('mouseup', () => {
-        if (isDragging) {
-            isDragging = false;
-            splitter.classList.remove('dragging');
-        }
-    });
-
-    splitter.addEventListener('dblclick', () => {
-        ws.style.gridTemplateColumns = '1fr 4px 1fr';
-        Object.values(editors).forEach(ed => {
-            if (ed && typeof ed.layout === 'function') ed.layout();
-        });
-    });
+  initSplitterDrag(document.getElementById('paneResizer'), 'vertical');
+  initSplitterDrag(document.getElementById('editorSplitter'), 'vertical');
+  initSplitterDrag(document.getElementById('layoutHorizontalSplitter'), 'horizontal');
 }
 
 function populateVerticalTabsListForPane(paneId) {
-    const listEl = document.getElementById(paneId === 'editor1' ? 'verticalTabsList' : 'verticalTabsList2');
-    if (!listEl || !window.zenithFiles) return;
-    listEl.innerHTML = '';
-    window.zenithFiles.forEach(f => {
-        const item = document.createElement('div');
-        item.className = 'vertical-tab-item' + (f.name === window.currentActiveFile ? ' active' : '');
-        item.innerHTML = `<span class="vertical-tab-name">${f.name}</span>`;
-        item.onclick = () => {
-            activeEditorId = paneId;
-            switchFile(f.name);
-        };
-        listEl.appendChild(item);
-    });
+  const list = document.getElementById(paneId === 'editor1' ? 'verticalTabsList' : 'verticalTabsList2');
+  if (!list) return;
+  list.innerHTML = '';
+  (window.currentSchemaFiles || []).forEach(file => {
+    const item = document.createElement('div');
+    item.className = 'v-file-item' + (paneActiveFiles[paneId] === file.name ? ' active' : '');
+    item.title = file.relativePath || file.name;
+    item.innerHTML = `<span class="v-file-name">${escapeHtml(file.name)}</span>${file.isRoot ? '<span class="tab-badge-root">ROOT</span>' : file.isImported ? '<span class="tab-badge-imported">MOD</span>' : ''}`;
+    item.onclick = () => { activeEditorId = paneId; switchFileInPane(paneId, file.name); };
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
+    item.onkeydown = event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        item.click();
+      }
+    };
+    appendFileManagerActions(item, file);
+    list.appendChild(item);
+  });
 }
 
-// Hook into initial load
-window.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        initMultiPaneWorkspace();
-    }, 150);
-});
+function movePreviewPanel(tabKey, target) {
+  const panel = document.getElementById('tab-' + tabKey);
+  const main = document.querySelector('#previewPane .preview-content');
+  const secondary = document.getElementById('previewContent2');
+  if (!panel || !main || !secondary) return;
+  if (previewPanelOrder === null) previewPanelOrder = Array.from(main.querySelectorAll('.preview-panel')).map(el => el.id);
+  if (target === 'secondary') {
+    Array.from(secondary.querySelectorAll('.preview-panel')).forEach(item => item.classList.remove('active'));
+    secondary.appendChild(panel);
+    panel.classList.add('active');
+    secondaryPreviewTab = tabKey;
+    const title = document.getElementById('previewPane2Title');
+    const tab = document.querySelector(`.tab-btn[data-tab="${tabKey}"]`);
+    if (title && tab) title.textContent = tab.textContent.trim();
+    const fallback = main.querySelector('.preview-panel');
+    if (fallback) fallback.classList.add('active');
+  } else {
+    panel.classList.remove('active');
+    main.appendChild(panel);
+  }
+}
+
+function restorePreviewPanels() {
+  const main = document.querySelector('#previewPane .preview-content');
+  const secondary = document.getElementById('previewContent2');
+  if (!main || !secondary) return;
+  Array.from(secondary.querySelectorAll('.preview-panel')).forEach(panel => main.appendChild(panel));
+  if (previewPanelOrder) {
+    previewPanelOrder.forEach(id => { const panel = document.getElementById(id); if (panel && panel.parentElement === main) main.appendChild(panel); });
+  }
+  document.getElementById('previewPane2Title').textContent = 'Console';
+}
+
+function setupPreviewPaneDropTargets() {
+  [document.getElementById('previewPane'), document.getElementById('previewPane2')].forEach(target => {
+    if (!target || target.dataset.dropReady === 'true') return;
+    target.dataset.dropReady = 'true';
+    target.addEventListener('dragover', event => {
+      if (!draggedPreviewKey) return;
+      event.preventDefault(); target.classList.add('workspace-drop-target');
+    });
+    target.addEventListener('dragleave', event => {
+      if (!target.contains(event.relatedTarget)) target.classList.remove('workspace-drop-target');
+    });
+    target.addEventListener('drop', event => {
+      if (!draggedPreviewKey) return;
+      event.preventDefault(); event.stopPropagation();
+      const key = draggedPreviewKey;
+      target.classList.remove('workspace-drop-target');
+      if (target.id === 'previewPane2') {
+        applyLayoutPreset('quad');
+        if (key !== secondaryPreviewTab) movePreviewPanel(secondaryPreviewTab, 'main');
+        movePreviewPanel(key, 'secondary');
+        const main = document.querySelector('#previewPane .preview-content .preview-panel');
+        if (main) main.classList.add('active');
+      } else {
+        movePreviewPanel(key, 'main');
+        switchPreviewTab(key);
+      }
+      persistWorkspaceState();
+      draggedPreviewKey = null;
+    });
+  });
+}
+
+function initMultiPaneWorkspace() {
+  readWorkspaceState();
+  if (!workspaceInitDone) {
+    workspaceInitDone = true;
+    setupWorkspaceKeybindings();
+    setupEditorSplitterDrag();
+    setupPreviewPaneDropTargets();
+    window.addEventListener('resize', () => {
+      if (window.innerWidth < 1024 && activeLayoutPreset !== 'standard') applyLayoutPreset('standard');
+      layoutWorkspaceEditors();
+    });
+  }
+  if (editors.editor1 && !paneActiveFiles.editor1) {
+    paneActiveFiles.editor1 = window.currentActiveFile || 'schema.zen';
+    bindZenithModel(paneActiveFiles.editor1, editors.editor1.getModel());
+  }
+  applyLayoutPreset(activeLayoutPreset, false);
+}
+
+window.addEventListener('DOMContentLoaded', initMultiPaneWorkspace);
 
 

@@ -1,0 +1,262 @@
+config {
+    app: "TaskFlow"
+    package: "com.zenith.taskflow"
+    basePath: "/api/v2"
+    port: 4040
+    database: h2
+    auth: jwt
+    flyway:true
+    jwtSecret: "zenith-taskflow-secret-key-32chars"
+    jwtExpiration: 24h
+    mailHost : "smtp.gmail.com"
+    mailPort : 587
+    mailUsername : "werghia.1@gmail.Com"
+    mailPassword: "pwrc mcpb soxa grzn"
+    mailFrom : "werghia.1@gmail.com"
+    swagger: true
+    proxy: nginx
+    replicas: 1
+    ssl:true // ?
+}
+enum UserRole {
+    ADMIN,USER,MANAGER
+}
+enum TaskPriority{
+LOW,MEDIUM,HIGH,URGENT
+}
+enum TaskStatus {
+TODO,IN_PROGRESS,IN_REVIEW,COMPLETED
+}
+model UserEntity {
+    id : UUID @id @auto
+    username : String(min = 3,max=50)
+    email : String @email @unique
+    password : String(min=8,max=255) @password
+    role : UserRole = USER @role
+    isActive: Boolean = true
+    createdAt : DateTime @autoNow
+    updatedAt  : DateTime @autoUpdate
+    relations {
+        projects : List<Project> @relation(oneToMany,mappedBy ="owner")
+        tasks : List<Task> @relation(oneToMany,mappedBy="assignee")
+    }
+    endpoints {
+        crud {
+         paginate : true
+         filter : [email,username]
+         auth:true
+         role:ADMIN
+
+        }
+       
+    }
+}
+dto UserIds {
+    ids: List<UUID>
+}
+dto ActionMessage {
+    message: String
+}
+dto ProjectWithMembersResponse {
+    projectResponse:ProjectResponse 
+    userIds:UserIds
+}
+mail OwnerProjectConfirmation(project:Project) {
+to: project.owner.email
+subject: "new role "
+content: "you are the owner of this project: "+project.title
+}
+model Project {
+    id : UUID @id @auto
+    title: String(min=2,max=100)
+    description :String? @text
+    keyproject: String(length = 10) @unique
+    relations {
+        tasks: List<Task> @relation(oneToMany,mappedBy="project")
+        owner : UserEntity? @relation(manyToOne)
+    }
+    endpoints {
+        crud {
+            paginate : true
+            auth:true
+            roles:[ADMIN,MANAGER]
+         
+        }
+        post "/{id}/{ownerId}/assign_owner" -> ActionMessage {
+            description:"assigne project to owner"
+            params:{
+            ownerId:UUID
+            }
+            action {
+                owner = ownerId
+                send OwnerProjectConfirmation(project=entity)
+                return ActionMessage {
+                message = "u have associated the owner to the project"+ownerId
+                }
+            }
+            }
+        post "/{id}/associate_users" (body : UserIds) -> ActionMessage {
+            role :[ADMIN]
+            action {
+            for userId : body.ids {
+                try {
+                    var rea =create ProjectMembers {
+                                user = userId
+                                project = entity
+                            }       
+                } catch (Exception e) {
+                        fail "ADD_MEMBER_FAILED", status = 502, message = "Unable to add Member the project"
+                }
+            }
+            return ActionMessage {
+            message = "u have added all users to the project"
+            }
+            }
+        }
+        get "/with_members" -> List<ProjectResponse>
+        {
+        }
+
+    }
+
+}
+model ProjectMembers {
+    id : UUID @id @auto
+    relations {
+    user: UserEntity @relation(manyToOne)
+    project : Project @relation(manyToOne)
+    }
+}
+dto DeadlineDto {
+    deadline : DateTime
+}
+model Task {
+    id : UUID @id @auto
+    name: String(min=2,max=100)
+    status : TaskStatus =TODO
+    priority: TaskPriority = LOW
+    createdAt: DateTime @autoNow
+    updatedAt : DateTime @autoUpdate
+    deadline : DateTime?
+    relations {
+        project: Project @relation(manyToOne)
+        assignee: UserEntity? @relation(manyToOne)
+        comments : List<Comment> @relation(oneToMany,mappedBy="task")
+    }
+    endpoints {
+        crud {
+         paginate : true
+         filter:[status,priority]
+         auth:true
+         delete:ADMIN
+         list:public
+
+        }
+        post "/{id}/{userId}/associate_task_to_user"->ActionMessage {
+            params : {
+            id : UUID
+            userId : UUID
+            }
+            role :MANAGER
+            action {
+                assignee = userId
+                return ActionMessage {
+                message = "assigned the task to user "+ userId
+                }
+            }
+        }
+        post "/{id}/{projectId}/associate_task_to_project"->ActionMessage {
+            params : {
+            id : UUID
+            projectId : UUID
+            }
+            role :[ADMIN,MANAGER]
+            action {
+                project = projectId
+                return ActionMessage {
+                message = "assigned the task to project "+ projectId
+                }
+            }
+        }
+        put "/{id}/{new_status}/update_status"  -> TaskResponse {
+            params {
+            id :UUID
+            new_status: TaskStatus
+            }
+            roles:[ADMIN,MANAGER]
+            guard : status != new_status,"we cant use same status"
+            action {
+                status = new_status
+            }
+        }
+      
+        put "/{id}/{new_priority}/update_priority"  -> TaskResponse {
+            params {
+            id :UUID
+            new_priority: TaskPriority
+            }
+            roles:[ADMIN,MANAGER]
+            guard : priority != new_priority,"we cant use same priority"
+            action {
+                priority = new_priority
+            }
+        }
+        put "/{id}/set_deadline" (body : DeadlineDto) ->TaskResponse {
+            role :MANAGER
+            guard : body.deadline != null 
+            action {
+            
+            deadline = body.deadline
+            }
+        }
+    }
+}
+dto MakeComment {
+    content : String 
+    ownerId : UUID
+    taskId : UUID
+}
+model Comment {
+    id : UUID @id @auto
+    content : String @text
+    relations {
+    task : Task @relation(manyToOne)
+    owner: UserEntity @relation(manyToOne)
+    }
+    endpoints {
+    crud {
+         paginate : true
+         auth:true
+         delete:ADMIN
+         list:public
+         delete:ADMIN
+         
+
+    }
+    get "/{taskId}/get_comments_by_task" -> List<CommentResponse> {
+    auth:true
+    params {
+    taskId :UUID
+    }
+    }
+    get "/{ownerId}/my-comments" -> List<CommentResponse> {
+        params {
+        ownerId:UUID
+        }
+        auth:true
+        description : "get comments by user"
+       
+    
+    
+    }
+    post "/makecomment" (body: MakeComment) -> CommentResponse {
+        action {
+            var comment = create Comment {
+                task = body.taskId
+                owner = body.ownerId
+                content = body.content
+            }
+        }
+    }
+    }
+}

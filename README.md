@@ -8,9 +8,34 @@
 
 [![YouTube Architectural Walkthrough](https://img.shields.io/badge/YouTube-Watch%20Architectural%20Benchmark-red?logo=youtube&style=for-the-badge)](https://www.youtube.com/watch?v=2znqx9ANIKc)
 
-Zenith is a domain-specific language designed to abstract away the ceremony-heavy parts of enterprise Java. Instead of manually writing 7 to 9 separate files (Entity, DTOs, Repository, Service, ServiceImpl, Controller, Mapper, and Exception Handlers) and dozens of repetitive annotations for every database table, you declare your models, relationships, validation rules, and REST APIs in a single, clean `.zen` file.
+Zenith is a domain-specific language (DSL) for building Spring Boot APIs. Define models, relations, validation, and endpoints in `.zen` files. Zenith generates a standard Spring Boot 3 and Java 17 application.
 
-Zenith then transpiles your specification into **production-grade Spring Boot 3 + Java 17** code in milliseconds.
+## Quick Start
+
+Validate and generate the included one-to-one example:
+
+```cmd
+.\bin\zenith.bat validate zenith-exemples\one-to-one\main.zen
+.\bin\zenith.bat build zenith-exemples\one-to-one\main.zen -o generated\one-to-one
+cd generated\one-to-one
+mvn spring-boot:run
+```
+
+Useful links:
+
+- [Language and Studio reference](docs/index.html)
+- [One-to-one relation example](zenith-exemples/one-to-one/main.zen)
+- [TaskFlow example](zenith-exemples/taskflow/main.zen)
+- [CLI commands](#cli-commands--dx-phase-4)
+
+## Contents
+
+- [Overview](#the-zenith-solution)
+- [Quick start](#quick-start)
+- [CLI and Studio](#cli-commands--dx-phase-4)
+- [Language features](#enterprise-features-phase-2--3)
+- [Generated project and testing](#testing-the-generated-project)
+- [Contributing](#contributing)
 
 ---
 
@@ -176,18 +201,7 @@ Zenith includes self-contained launcher scripts in the `bin/` directory:
 Monitors your `.zen` file and automatically re-compiles the entire Spring Boot backend in milliseconds whenever you save:
 
 ```cmd
-.\bin\zenith.bat watch examples\ecommerce.zen -o generated\shopsphere
-```
-
-Output:
-
-```
->> Watching file: examples\ecommerce.zen
->> Target output: generated\shopsphere
-   [SUCCESS] Recompiled in 120ms -> 56 files up-to-date (4 models)
-
->> File changed at 22:15:20. Recompiling...
-   [SUCCESS] Recompiled in 115ms -> 56 files up-to-date (4 models)
+.\bin\zenith.bat watch zenith-exemples\taskflow\main.zen -o generated\taskflow
 ```
 
 ### 2. `zenith build <file.zen> [-o <output-dir>]`
@@ -211,18 +225,41 @@ Scaffolds a new starter schema file.
 Launches **Zenith Studio** — a full-featured visual architecture IDE running locally at `http://localhost:3000` or as a standalone native desktop app. Key capabilities include:
 
 - **Monaco Code Editor**: Real-time syntax diagnostics, auto-completion, and clickable file import navigation.
-- **Interactive Architecture ERD**: Live SVG relational diagrams, field types, primary keys, and foreign-key links.
+- **Interactive Architecture ERD**: Live relation diagrams with field types, primary keys, foreign keys, and `1:1`, `1:N`, and `M:N` cardinalities.
+- **Build Diagnostics**: Generated Java errors point to the matching schema endpoint when source mapping is available.
 - **Unified Multi-Window API Tester**: Simultaneous testing of HTTP REST requests and real-time STOMP WebSocket streams side-by-side with parameter injection, schema placeholders, and dual execution (`Simulate` vs `Send`).
 - **Visual Dependency Workflows (Community Feature)**: 2D interactive DAG canvas for chaining multi-step API journeys, manual pin-to-pin wiring, AST auto-wiring, declarative assertions, and animated pipeline execution.
-- **Embedded Interactive Terminal (Shell Runner)**: Fully-integrated terminal inside the Console panel for executing Maven (`mvn test`, `mvn compile`), Git (`git status`, `git diff`), Docker, and OS shell commands directly within the workspace or generated target directory with real-time ANSI streaming and command history.
+- **Zenith Command Terminal**: A dedicated terminal in the Console panel for running Zenith CLI commands such as `zenith validate`, `zenith build`, and `zenith inspect`, alongside Maven, Git, Docker, and shell commands. It supports the workspace or generated project directory and streams output with command history.
+- **Docker Compose Controls**: Use the Docker tab's **Compose Up** and **Compose Down** controls to start or stop the generated project's Docker Compose services, with container output available in Studio.
+- **VPS Deployment over SSH**: Register an SSH server profile, select it in the Docker tab, then deploy the generated project or inspect logs, status, and restart services from Studio. The VPS must have SSH access and Docker Compose available.
 - **Repository Tree & ZIP Export**: Emitted Java files inspection and one-click full Spring Boot ZIP export.
+
+#### Studio walkthrough: one-to-one API
+
+Watch a narrated 16:9 walkthrough of a one-to-one schema in Zenith Studio. It covers the ERD, generated Java repository tree, Spring Boot startup, and ten live Account and Profile CRUD requests. The [example schema](zenith-exemples/one-to-one/main.zen) is included in this repository.
+
+<video controls preload="none" width="100%" poster="docs/assets/one-to-one-studio-demo-poster.jpg">
+  <source src="docs/assets/one-to-one-studio-demo.mp4" type="video/mp4">
+  <track kind="captions" src="docs/assets/one-to-one-studio-demo.en.vtt" srclang="en" label="English" default>
+  Your browser does not support embedded video. [Open or download the MP4](docs/assets/one-to-one-studio-demo.mp4).
+</video>
+
+
+For example, register and check a VPS from the Zenith terminal:
+
+```sh
+zenith server add production --host <vps-ip> --user <ssh-user> --key <private-key-path>
+zenith server test production
+```
+
+Then select `production` in Studio's Docker tab and choose **Deploy**. Zenith transfers the generated project and runs `docker compose up -d --build` on the server. The same tab provides remote **Logs**, **Status**, and **Restart** actions.
 
 #### Web Mode (Default)
 
 Opens the studio inside your default web browser at `http://localhost:3000`:
 
 ```cmd
-.\bin\zenith.bat studio zenith-exemples\nexus-commerce\schema.zen
+.\bin\zenith.bat studio zenith-exemples\nexus-commerce\main.zen
 ```
 
 #### Native Desktop Mode (`--desktop` or `-d`)
@@ -230,7 +267,7 @@ Opens the studio inside your default web browser at `http://localhost:3000`:
 Launches a dedicated, frameless native desktop application window:
 
 ```cmd
-.\bin\zenith.bat studio zenith-exemples\nexus-commerce\schema.zen --desktop
+.\bin\zenith.bat studio zenith-exemples\nexus-commerce\main.zen --desktop
 ```
 
 ### 7. `zenith mcp` _(Model Context Protocol Server for AI Agents)_
@@ -242,6 +279,7 @@ Starts the native Zenith MCP server over standard I/O (JSON-RPC 2.0). Connects C
 ```
 
 **Exposed MCP Capabilities:**
+
 - **7 Tools**: `zenith_get_specification`, `zenith_get_examples`, `zenith_list_features`, `zenith_validate`, `zenith_explain_error`, `zenith_build`, `zenith_get_project_info`.
 - **Resources**: `zenith://specification/*`, `zenith://examples/*`.
 - **Prompts**: `create_crud_project`, `create_authentication_system`, `debug_zenith_project`, `extend_existing_project`.
@@ -295,6 +333,9 @@ Declare application-wide architecture, database dialect, authentication, and ext
 | `flyway`        | `Boolean`    | `false`             | Generates Flyway database migration scripts (`V1__initial_schema.sql`). Disabled by default; explicitly opt-in with `flyway: true`.                                                         |
 | `storage`       | `Identifier` | `minio`             | Unified object storage provider: `minio` (local S3-compatible dev storage) or `s3` (AWS S3 cloud production).                                                                               |
 | `storageBucket` | `String`     | `"zenith-bucket"`   | Default bucket name for media, images, and file uploads.                                                                                                                                    |
+| `proxy`         | `Identifier` | `none`              | Set to `nginx` to generate an Nginx reverse proxy and load balancer in Docker Compose.                                                                                                       |
+| `replicas`      | `Int`        | `2`                 | Number of Spring Boot app containers behind Nginx (1-100; used with the proxy).                                                                                                               |
+| `ssl`           | `Boolean`    | `false`             | Publishes host port `443` on the generated Nginx service. TLS certificates and an HTTPS listener are not generated yet; see below.                                                           |
 
 ```zen
 config {
@@ -308,8 +349,17 @@ config {
     flyway: true             // Opt-in Flyway versioned DDL migrations
     storage: minio           // minio | s3
     storageBucket: "pulse-media"
+    proxy: nginx             // Nginx reverse proxy and load balancer
+    replicas: 1              // Spring Boot containers behind Nginx
+    ssl: true                // publishes port 443; TLS setup is not generated yet
 }
 ```
+
+### Nginx Reverse Proxy & Load Balancer
+
+Set `proxy: nginx` to generate `nginx/nginx.conf` and an Nginx service in `docker-compose.yml`. Zenith creates the number of Spring Boot app containers set by `replicas` and configures Nginx to distribute requests across them with `least_conn`. The app containers stay on the Compose network; Nginx publishes HTTP on port 80. The generated upstream currently targets container port 8080; keep `port: 8080` or update `nginx/nginx.conf` if you change it. Start the stack with `docker compose up --build` and send requests through `http://localhost`.
+
+`ssl: true` currently adds a `443:443` port mapping to the Nginx service. **It does not configure HTTPS yet:** generated Nginx config only listens on port 80 and does not create or mount certificates. Configure a certificate and TLS server block yourself before serving HTTPS, or terminate TLS at an external load balancer and forward HTTP to Nginx.
 
 ### 1. Spring Security 6 & JWT Authentication
 
@@ -499,7 +549,7 @@ get "/my-products" -> List<ProductResponse> {
 
 ### 6. Declarative Logic & Domain Actions
 
-Zenith supports complete domain business logic: bind multi-entity operations to local variables (`var x = create / update`), instantiate secondary entities, update related models, record audit trails, notify owners, perform date calculations, and resolve authenticated users:
+Use actions for entity updates, related-record creation, notifications, guards, and date calculations. Bind created or updated records with `var` so later statements can use their generated IDs and values. For a non-void endpoint that creates its own model, Zenith maps the new record to the declared response DTO unless the action returns a value explicitly.
 
 ```zen
 post "/{id}/complete" -> Void {
@@ -531,6 +581,38 @@ post "/{id}/complete" -> Void {
 }
 ```
 
+#### Loop over a list
+
+Inside an endpoint action, `for item : listExpression { ... }` runs the body once per list item, in order. The loop variable is available inside the loop body. This example creates one audit row for every ID in the request:
+
+```zen
+dto BulkUserIdsRequest {
+    ids: List<UUID>
+}
+
+model User {
+    id: UUID @id @auto
+    endpoints {
+        post "/bulk-audit" (body: BulkUserIdsRequest) -> Void {
+            action: {
+                for userId : body.ids {
+                    var audit = create AuditEntry {
+                        userId = userId
+                        action = "BULK_PROCESSED"
+                    }
+                }
+            }
+        }
+    }
+}
+
+model AuditEntry {
+    id: UUID @id @auto
+    userId: UUID
+    action: String
+}
+```
+
 #### Strict Compile-Time Analysis & Error Prevention
 
 Zenith enforces strict static analysis across all action and job blocks:
@@ -538,7 +620,7 @@ Zenith enforces strict static analysis across all action and job blocks:
 - **Zero Silent Failures**: Any unrecognized method, unsupported statement, or misspelled property (e.g. updating a field that does not exist on the target model) immediately triggers a clear, descriptive compilation error.
 - **Valid Java Guarantee**: Unsupported logic is caught during the analysis phase, ensuring the compiler never produces invalid or broken Java output.
 
-### 6. File Uploads & Media Storage (`@file`, `@image`)
+### 7. File Uploads & Media Storage (`@file`, `@image`)
 
 Provider-independent object storage abstraction supporting **MinIO** for local development and **AWS S3** for production cloud deployments with zero code changes:
 
@@ -562,7 +644,7 @@ model Customer {
 - **Entity-Bound Endpoints**: `POST /api/v1/customers/{id}/avatar`, `GET ...`, `DELETE ...` (generated only when `endpoints` and `crud` exist on the model).
 - **Zero-code cloud migration**: Switch between local MinIO and AWS S3 via environment variables (`STORAGE_PROVIDER=s3`, `AWS_REGION`, etc.).
 
-### 7. Declarative Database Seeding
+### 8. Declarative Database Seeding
 
 Populate dev and staging environments with deterministic seed data and foreign key cross-referencing:
 
@@ -584,7 +666,7 @@ seed Task {
 }
 ```
 
-### 8. Modular Multi-File Schemas (`import`)
+### 9. Modular Multi-File Schemas (`import`)
 
 Decompose enterprise architectures into modular `.zen` domain files:
 
@@ -602,7 +684,29 @@ import "./customers.zen"  // Customer & Address
 import "./orders.zen"     // Order & OrderItems
 ```
 
-### 9. Custom Data Transfer Objects (DTO) & Endpoint Auto-Mapping
+### One-to-One Relations
+
+Declare the owning relation without `mappedBy`. Put `mappedBy` on the inverse relation. Zenith generates one unique foreign key on the owning side; the inverse side does not get a second column.
+
+```zen
+model Account {
+    id: UUID @id @auto
+    relations {
+        profile: Profile? @relation(oneToOne, mappedBy = "account")
+    }
+}
+
+model Profile {
+    id: UUID @id @auto
+    relations {
+        account: Account @relation(oneToOne)
+    }
+}
+```
+
+See the complete [one-to-one example](zenith-exemples/one-to-one/main.zen), including endpoints and Flyway configuration.
+
+### 10. Custom Data Transfer Objects (DTO) & Endpoint Auto-Mapping
 
 Define custom request and response payloads decoupled from JPA database models with strict typing and optionality:
 
@@ -649,7 +753,7 @@ Transpiles directly to explicit record instantiation in the service layer:
 
 ```java
 entity.setStatus(OrderStatus.PAID);
-entity = repository.save(entity);
+entity = orderRepository.save(entity);
 
 return new OrderSummaryResponse(
     entity.getOrderNumber(),
@@ -723,7 +827,7 @@ public class OrderMapper {
 }
 ```
 
-### 10. Background Workers & Scheduled Jobs (`job`, `@cron`)
+### 11. Background Workers & Scheduled Jobs (`job`, `@cron`)
 
 Define production-grade scheduled maintenance routines, cleanup jobs, and batch queues:
 
@@ -769,7 +873,7 @@ The Zenith transpiler automatically converts high-level temporal functions and b
 - **Null-Safe Temporal Operators**: Complete comparison operators (`<`, `<=`, `>`, `>=`, `==`, `!=`) compile into null-safe `.isBefore(...)`, `(!.isAfter(...))`, `.isAfter(...)`, `(!.isBefore(...))`, and `.isEqual(...)` method calls.
 - **Automatic Date Imports**: `java.time.LocalDateTime` and `java.time.LocalDate` are automatically imported in all affected controllers, services, repositories, and jobs.
 
-### 11. Transactional Email Service (`mail`, `send`)
+### 12. Transactional Email Service (`mail`, `send`)
 
 Declare typed transactional email contracts at the top level and trigger them asynchronously (`@Async`) from custom endpoint `action` blocks or scheduled `job` workers using the `send` statement:
 
@@ -816,7 +920,7 @@ model Order {
 - **Local Console Mode (`mail: console`)**: In local development, dispatched emails are logged directly to the console with complete headers, recipient address, and formatted HTML preview without requiring remote SMTP server credentials.
 - **Enterprise Spring Boot Setup**: Automatically configures `spring-boot-starter-mail`, `spring-boot-starter-thymeleaf`, `EmailService.java`, and `application.yml` mail properties bound to environment variables.
 
-### 12. Declarative Caching Layer (Redis / Spring Cache / Caffeine)
+### 13. Declarative Caching Layer (Redis / Spring Cache / Caffeine)
 
 Eliminate repetitive database load and achieve sub-millisecond response times with declarative caching:
 
@@ -850,7 +954,7 @@ model Product {
 - **Enterprise Serialization**: Configures `GenericJackson2JsonRedisSerializer` and `RedisCacheConfiguration` with explicit TTL mappings.
 - **Turnkey Containerization**: Automatically injects a `redis:7-alpine` service container and persistent `redisdata` volume into `docker-compose.yml`.
 
-### 13. Automated Unit & Integration Tests Generation
+### 14. Automated Unit & Integration Tests Generation
 
 Zenith completely eliminates manual test boilerplate by synthesizing complete **JUnit 5**, **Spring Boot Test**, and **MockMvc** test suites directly from your schema AST:
 
@@ -911,49 +1015,56 @@ class OrderControllerTest {
 }
 ```
 
-### 14. Real-Time WebSockets & STOMP Broker (`socket { ... }`)
+### 15. Real-Time WebSockets & STOMP Broker (`socket { ... }`)
 
-Zenith provides turnkey real-time pub/sub and peer-to-peer messaging powered by Spring Boot STOMP over WebSocket:
+The [`realtime-chat` example](zenith-exemples/realtime-chat/schema.zen) shows a complete chat schema with room broadcasts and direct user messages. Generate it with:
+
+```cmd
+.\bin\zenith.bat build zenith-exemples\realtime-chat\schema.zen -o generated\realtime-chat
+```
+
+Declare the STOMP endpoint and topic:
 
 ```zen
-// Declare a WebSocket broker
 socket ChatSocket {
     endpoint: "/ws"
     topic: "/topic/chat"
-    broker: simple
-}
-
-// Dispatch real-time events in custom actions
-POST "/rooms/{id}/messages"(body: MessageDto) {
-    guard: body.content.length > 0, "Message cannot be empty"
-
-    var msg = Message.create({
-        content: body.content,
-        roomId: path.id,
-        senderId: auth.userId
-    })
-
-    // Broadcast to all subscribers on this room's topic
-    broadcast "/topic/rooms/" + path.id {
-        id: msg.id,
-        content: msg.content,
-        senderId: msg.senderId
-    }
-
-    // Direct peer-to-peer notification to room owner
-    sendToUser (room.ownerId, "/queue/notifications") {
-        title: "New room activity",
-        message: body.content
-    }
-
-    return 201 msg
+    broker: "simple"
 }
 ```
 
-- **Spring Boot Components**: Generates `WebSocketConfig.java` with `@EnableWebSocketMessageBroker`, STOMP endpoints, SockJS fallback, and injects `SimpMessagingTemplate` into domain services.
-- **Selective Dependency**: Adds `spring-boot-starter-websocket` to `pom.xml` only when schemas declare `socket`.
+Clients connect to `/ws` and subscribe to `/topic/chat`. A custom action can broadcast a saved message:
 
-### 15. Unified API Tester & Simulator (REST & WebSocket Coexistence)
+```zen
+post "/{id}/send" -> ChatMessageResponse {
+    action: {
+        broadcast "/topic/chat" {
+            id = entity.id,
+            content = entity.content,
+            type = entity.type,
+            createdAt = entity.createdAt
+        }
+    }
+}
+```
+
+For a direct message, the example uses `sendToUser` with the recipient ID and a user queue:
+
+```zen
+post "/direct" (body: MessageDto) -> void {
+    action: {
+        sendToUser (body.recipientId, "/user/queue/messages") {
+            id = body.recipientId,
+            content = body.text,
+            senderId = body.senderId
+        }
+    }
+}
+```
+
+Zenith generates the Spring STOMP configuration and adds the WebSocket dependency when the schema declares a `socket` block.
+
+### 16. Unified API Tester & Simulator (REST & WebSocket Coexistence)
 
 The **API Tester** tab inside Zenith Studio provides a multi-window canvas combining HTTP REST execution and WebSocket streaming:
 
@@ -964,7 +1075,7 @@ The **API Tester** tab inside Zenith Studio provides a multi-window canvas combi
   - `Simulate`: In-memory micro-engine evaluation (~2ms) on the parsed AST without compiling Java or booting Tomcat.
   - `Send`: Dispatches real HTTP requests to the live running Spring Boot port on `localhost:8080`.
 
-### 16. Visual Dependency Workflows (Community Feature)
+### 17. Visual Dependency Workflows (Community Feature)
 
 **API Dependency Workflows** is fully available in the Community Edition to visually chain, test, and assert complex multi-endpoint scenarios on an interactive 2D canvas:
 
@@ -973,6 +1084,65 @@ The **API Tester** tab inside Zenith Studio provides a multi-window canvas combi
 - **Auto-Wire (Zenith AST)**: One-click AST relationship deduction automatically links all endpoints using schema relationships, foreign keys, and security roles.
 - **Declarative Assertions**: Define per-node expectations (e.g. HTTP `201 Created`, `body.status == "CONFIRMED"`).
 - **Animated Pipeline Execution**: Run or single-step through the pipeline with live visual wire pulses, latency indicators, and pass/fail checklists.
+
+### 18. Kafka & RabbitMQ Streams (Experimental)
+
+Zenith schemas can declare typed events and streams, publish events from endpoint actions, and define typed consumers with groups, retry/backoff, and dead-letter destinations:
+
+```zen
+config {
+    ...
+    broker: kafka
+    outbox: true
+    flyway: false
+}
+
+event OrderConfirmedEvent {
+    orderId: UUID
+    orderNumber: String
+}
+
+stream OrderConfirmedStream {
+    topic: "commerce.orders.confirmed.v1"
+    payload: OrderConfirmedEvent
+    partitions: 6
+}
+
+subscribe OrderAuditConsumer {
+    from: OrderConfirmedStream
+    group: "order-audit"
+    retry {
+        maxAttempts: 5
+        backoff: 2s
+    }
+    deadLetter: "commerce.orders.confirmed.dlq.v1"
+    action {
+        log payload.orderNumber
+    }
+}
+
+model Order {
+    id: UUID @id @auto
+    orderNumber: String @unique
+
+    endpoints {
+        post "/{id}/confirm" -> Void {
+            action {
+                publish OrderConfirmedStream(
+                    orderId = id,
+                    orderNumber = entity.orderNumber
+                )
+            }
+        }
+    }
+}
+```
+
+`outbox: true` connects streaming to a durable publication record: when an endpoint action publishes an event, Zenith records it through Spring Modulith's publication registry as part of the database transaction. After commit, the relay sends it to the configured broker. This helps recover publications if sending is interrupted after the business transaction commits; consumers should still handle duplicate delivery idempotently. The publication registry needs database tables. This example sets `flyway: false`, so ensure those tables are created by your database setup before running the generated application.
+
+For RabbitMQ, use `broker: rabbitmq` and omit the Kafka-only `partitions` setting. See the [Kafka outbox example](zenith-exemples/kafka-outbox-orders/README.md) and the [Kafka and RabbitMQ streaming guide](docs/native-streaming.md) for complete schemas and local broker setup.
+
+**Testing status:** Kafka and RabbitMQ streaming are not yet fully tested end to end. Verify delivery, retries, and dead-letter behavior in your deployment environment before relying on them.
 
 ---
 

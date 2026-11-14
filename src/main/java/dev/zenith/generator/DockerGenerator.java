@@ -55,6 +55,7 @@ public class DockerGenerator {
         String db = config.getDatabase().toLowerCase();
         String appName = config.getApp().toLowerCase().replaceAll("[^a-z0-9]", "");
         boolean useProxy = config.isProxyEnabled();
+        String broker = configuredBroker(file);
         int replicas = useProxy ? config.getProxyReplicas() : 1;
         if (replicas < 1) replicas = 2;
 
@@ -96,15 +97,13 @@ public class DockerGenerator {
                 sb.append("      interval: 10s\n");
                 sb.append("      timeout: 5s\n");
                 sb.append("      retries: 5\n");
-                sb.append("    depends_on:\n");
-                if ("postgres".equals(db) || "postgresql".equals(db)) {
-                    sb.append("      db:\n");
-                    sb.append("        condition: service_healthy\n\n");
-                } else if ("mysql".equals(db)) {
-                    sb.append("      - db\n\n");
-                } else {
-                    sb.append("      -\n"); // none or h2
-                    sb.append("        restart: always\n\n");
+                boolean appNeedsDependencies = "postgres".equals(db) || "postgresql".equals(db) || "mysql".equals(db) || broker != null;
+                if (appNeedsDependencies) {
+                    sb.append("    depends_on:\n");
+                    if ("postgres".equals(db) || "postgresql".equals(db)) sb.append("      db:\n        condition: service_healthy\n");
+                    else if ("mysql".equals(db)) sb.append("      db:\n        condition: service_started\n");
+                    appendBrokerDependsOn(sb, broker);
+                    sb.append("\n");
                 }
             }
         } else {
@@ -120,16 +119,14 @@ public class DockerGenerator {
 
             appendCommonEnv(sb, file, db, appName);
 
-            if ("postgres".equals(db) || "postgresql".equals(db)) {
+            boolean needsDependencies = "postgres".equals(db) || "postgresql".equals(db) || "mysql".equals(db) || broker != null;
+            if (needsDependencies) {
                 sb.append("    depends_on:\n");
-                sb.append("      db:\n");
-                sb.append("        condition: service_healthy\n\n");
-            } else if ("mysql".equals(db)) {
-                sb.append("    depends_on:\n");
-                sb.append("      - db\n\n");
-            } else {
-                sb.append("    restart: always\n\n");
-            }
+                if ("postgres".equals(db) || "postgresql".equals(db)) sb.append("      db:\n        condition: service_healthy\n");
+                else if ("mysql".equals(db)) sb.append("      db:\n        condition: service_started\n");
+                appendBrokerDependsOn(sb, broker);
+                sb.append("\n");
+            } else sb.append("    restart: always\n\n");
         }
 
         // Database service
@@ -187,6 +184,9 @@ public class DockerGenerator {
             sb.append("      - redisdata:/data\n\n");
         }
 
+        if ("kafka".equals(broker)) appendKafkaServices(sb);
+        else if ("rabbitmq".equals(broker)) appendRabbitServices(sb);
+
         List<String> volumes = new ArrayList<>();
         if ("postgres".equals(db) || "postgresql".equals(db)) {
             volumes.add("  pgdata:");
@@ -225,6 +225,14 @@ public class DockerGenerator {
             sb.append("      REDIS_PORT: 6379\n");
         }
 
+        String broker = configuredBroker(file);
+        if ("kafka".equals(broker)) sb.append("      KAFKA_BOOTSTRAP_SERVERS: kafka:29092\n");
+        else if ("rabbitmq".equals(broker)) {
+            sb.append("      RABBITMQ_HOST: rabbitmq\n");
+            sb.append("      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-zenith}\n");
+            sb.append("      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-zenith_local}\n");
+        }
+
         if ("postgres".equals(db) || "postgresql".equals(db)) {
             sb.append("      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/").append(appName).append("_db\n");
             sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
@@ -235,6 +243,57 @@ public class DockerGenerator {
             sb.append("      SPRING_DATASOURCE_USERNAME: zenith\n");
             sb.append("      SPRING_DATASOURCE_PASSWORD: zenith_secret\n");
         }
+    }
+
+    private static String configuredBroker(ZenithFile file) {
+        String broker = file.getConfig().getBroker();
+        if (broker == null && !file.getStreams().isEmpty()) broker = file.getStreams().get(0).getBroker();
+        return broker == null ? null : broker.trim().toLowerCase();
+    }
+
+    private static void appendBrokerDependsOn(StringBuilder sb, String broker) {
+        if ("kafka".equals(broker)) {
+            sb.append("      kafka:\n        condition: service_healthy\n");
+        } else if ("rabbitmq".equals(broker)) {
+            sb.append("      rabbitmq:\n        condition: service_healthy\n");
+        }
+    }
+
+    private static void appendKafkaServices(StringBuilder sb) {
+        sb.append("  zookeeper:\n")
+          .append("    image: confluentinc/cp-zookeeper:7.6.1\n")
+          .append("    environment:\n")
+          .append("      ZOOKEEPER_CLIENT_PORT: 2181\n")
+          .append("      ZOOKEEPER_TICK_TIME: 2000\n")
+          .append("    ports:\n      - \"2181:2181\"\n\n")
+          .append("  kafka:\n")
+          .append("    image: confluentinc/cp-kafka:7.6.1\n")
+          .append("    depends_on:\n      - zookeeper\n")
+          .append("    ports:\n      - \"9092:9092\"\n")
+          .append("    environment:\n")
+          .append("      KAFKA_BROKER_ID: 1\n")
+          .append("      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181\n")
+          .append("      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092\n")
+          .append("      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092\n")
+          .append("      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT\n")
+          .append("      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL\n")
+          .append("      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1\n")
+          .append("      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0\n")
+          .append("    healthcheck:\n")
+          .append("      test: [\"CMD-SHELL\", \"kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1\"]\n")
+          .append("      interval: 10s\n      timeout: 10s\n      retries: 10\n\n");
+    }
+
+    private static void appendRabbitServices(StringBuilder sb) {
+        sb.append("  rabbitmq:\n")
+          .append("    image: rabbitmq:3-management\n")
+          .append("    environment:\n")
+          .append("      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-zenith}\n")
+          .append("      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-zenith_local}\n")
+          .append("    ports:\n      - \"5672:5672\"\n      - \"15672:15672\"\n")
+          .append("    healthcheck:\n")
+          .append("      test: [\"CMD\", \"rabbitmq-diagnostics\", \"-q\", \"ping\"]\n")
+          .append("      interval: 10s\n      timeout: 5s\n      retries: 10\n\n");
     }
 
     private static JavaSourceFile generateDockerignore() {

@@ -25,19 +25,13 @@ if exist "src\main\resources" (
     xcopy /s /e /y /q "src\main\resources\*" "target\classes\" >nul 2>&1
 )
 
-:: 4. Update bin\zenith.jar with Manifest Main-Class
+:: 4. Update the existing executable jar. Preserve its manifest and report locked-file errors.
 echo [3/3] Updating bin\zenith.jar...
-(
-  echo Manifest-Version: 1.0
-  echo Main-Class: dev.zenith.cli.ZenithCli
-  echo.
-) > manifest.txt
-jar ufm bin\zenith.jar manifest.txt -C target\classes .
-if exist "manifest.txt" del manifest.txt
-if %ERRORLEVEL% NEQ 0 (
+jar uf bin\zenith.jar -C target\classes .
+if errorlevel 1 (
     echo [ERROR] Failed to update bin\zenith.jar.
-    echo Make sure any running "zenith studio" or background Java processes are closed!
-    exit /b %ERRORLEVEL%
+    echo Close any running Zenith Studio or CLI process that is using the jar, then run this build again.
+    exit /b 1
 )
 
 echo.

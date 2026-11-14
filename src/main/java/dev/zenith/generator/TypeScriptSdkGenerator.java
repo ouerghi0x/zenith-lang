@@ -537,7 +537,7 @@ public class TypeScriptSdkGenerator {
         if (type == null)
             return "any";
         if (type.isList()) {
-            return mapTsType(type.getGenericType()) + "[]";
+            return mapTsType(type.getElementTypeRef()) + "[]";
         }
         return mapTsType(type.getName());
     }

@@ -2,6 +2,7 @@ package dev.zenith.test;
 
 import dev.zenith.ast.*;
 import dev.zenith.lexer.Token;
+import dev.zenith.lexer.TokenType;
 
 import java.util.List;
 
@@ -316,5 +317,57 @@ public class Tier1FeatureCoverageTest {
                         "}\n");
         String serviceCode = TestHarness.generateServiceImplementation(dsl, "Task");
         TestHarness.assertContains(serviceCode, "TaskResponse", "Service method return type must be TaskResponse");
+    }
+
+    public static void T1_31_codegen_handles_list_of_uuid_in_custom_dto() {
+        String dsl = TestHarness.wrapInStandardSchema(
+                "dto UserIds {\n" +
+                        "    ids: List<UUID>\n" +
+                        "}\n");
+        List<dev.zenith.generator.JavaSourceFile> sources = TestHarness.generateAllSources(dsl);
+        String dtoCode = sources.stream()
+                .filter(source -> source.getRelativePath().endsWith("/UserIds.java"))
+                .map(dev.zenith.generator.JavaSourceFile::getContent)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("UserIds DTO was not generated"));
+        TestHarness.assertContains(dtoCode, "List<UUID> ids", "DTO should preserve List<UUID> field type");
+    }
+
+    public static void T1_32_custom_api_for_loop_supports_body_list_and_create_update_bindings() {
+        TestHarness.assertEquals(TokenType.FOR, TestHarness.tokenize("for x : xs { }").get(0).getType(),
+                "for should be lexed as a keyword");
+        String dsl = TestHarness.wrapInStandardSchema(
+                "dto BulkUserIdsRequest {\n" +
+                        "    ids: List<UUID>\n" +
+                        "}\n" +
+                        "model AuditEntry {\n" +
+                        "    id: UUID @id @auto\n" +
+                        "    userId: UUID\n" +
+                        "    action: String\n" +
+                        "}\n" +
+                        "model User {\n" +
+                        "    id: UUID @id @auto\n" +
+                        "    name: String\n" +
+                        "    endpoints {\n" +
+                        "        post \"/bulk-audit\" (body: BulkUserIdsRequest) -> Void {\n" +
+                        "            action: {\n" +
+                        "                for userId : body.ids {\n" +
+                        "                    var audit = create AuditEntry { userId = userId, action = \"SEEN\" }\n" +
+                        "                    var updatedUser = update User { where: id == userId, name = audit.action }\n" +
+                        "                }\n" +
+                        "            }\n" +
+                        "        }\n" +
+                        "    }\n" +
+                        "}\n");
+        List<dev.zenith.generator.JavaSourceFile> sources = TestHarness.generateAllSources(dsl);
+        String service = sources.stream()
+                .filter(source -> source.getRelativePath().endsWith("/UserServiceImpl.java"))
+                .map(dev.zenith.generator.JavaSourceFile::getContent)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("UserServiceImpl was not generated"));
+        TestHarness.assertContains(service, "for (var userId : java.util.Objects.requireNonNull(body.ids()",
+                "Loop should iterate the request DTO UUID list");
+        TestHarness.assertContains(service, "AuditEntry audit", "Loop should support var = create");
+        TestHarness.assertContains(service, "User updatedUser", "Loop should support var = update");
     }
 }

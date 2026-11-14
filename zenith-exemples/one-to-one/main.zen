@@ -1,0 +1,42 @@
+config {
+    app: "OneToOneExample"
+    package: "com.zenith.examples.onetoone"
+    basePath: "/api/v1"
+    database: h2
+    flyway: true
+    swagger: true
+    auth:jwt
+}
+
+// Account is the inverse side. It stores no profile_id column.
+model Account {
+    id: UUID @id @auto
+    email: String @email @unique
+    password :String @password
+
+    relations {
+        profile: Profile? @relation(oneToOne, mappedBy = "account")
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+        }
+    }
+}
+
+// Profile owns the relation and stores the unique account_id foreign key.
+model Profile {
+    id: UUID @id @auto
+    displayName: String(min = 1, max = 10)
+
+    relations {
+        account: Account @relation(oneToOne)
+    }
+
+    endpoints {
+        crud {
+            paginate: true
+        }
+    }
+}

@@ -65,7 +65,6 @@ public class GenerationManifest {
 
         GenerationMapping bestCovering = null;
         int bestCoveringRange = Integer.MAX_VALUE;
-        GenerationMapping fallbackFileMatch = null;
 
         for (GenerationMapping m : mappings) {
             String mapFile = m.getGeneratedFile();
@@ -74,17 +73,21 @@ public class GenerationManifest {
             if (pathMatches) {
                 if (m.coversLine(lineNumber)) {
                     int range = m.getEndLine() - m.getStartLine();
-                    if (range < bestCoveringRange) {
+                    boolean endpointMapping = m.getGeneratedElement() != null && m.getGeneratedElement().contains(".");
+                    boolean bestIsEndpoint = bestCovering != null && bestCovering.getGeneratedElement() != null
+                            && bestCovering.getGeneratedElement().contains(".");
+                    if (bestCovering == null || (endpointMapping && !bestIsEndpoint)
+                            || (endpointMapping == bestIsEndpoint && range < bestCoveringRange)) {
                         bestCoveringRange = range;
                         bestCovering = m;
                     }
                 }
-                if (fallbackFileMatch == null) {
-                    fallbackFileMatch = m;
-                }
             }
         }
-        return bestCovering != null ? bestCovering : fallbackFileMatch;
+        // Never attach an unrelated source declaration merely because it happened
+        // to be the only mapping for this generated file. An unmapped compiler
+        // location is more accurate than a misleading schema highlight.
+        return bestCovering;
     }
 
     public String toJson() {

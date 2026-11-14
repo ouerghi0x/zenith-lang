@@ -2,6 +2,8 @@ package dev.zenith.generator;
 
 import dev.zenith.ast.DtoDef;
 import dev.zenith.ast.ModelDef;
+import dev.zenith.ast.RelationDef;
+import dev.zenith.ast.RelationType;
 import dev.zenith.ast.ZenithFile;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,6 +31,18 @@ public class LogicTranspiler {
         if (stmt == null || stmt.trim().isEmpty()) return "";
         String s = stmt.trim();
 
+        if (s.startsWith("publish ")) return transpilePublishStatement(s, model, file);
+
+        if (s.startsWith("fail(")) {
+            Matcher fail = Pattern.compile("^fail\\(\\s*(\"(?:\\\\.|[^\"])*\")\\s*,\\s*(\\d+)\\s*,\\s*(\"(?:\\\\.|[^\"])*\")\\s*\\)$").matcher(s);
+            if (fail.matches()) {
+                String ex = file != null ? file.getConfig().getPackage() + ".exception.ZenithBusinessException" : "ZenithBusinessException";
+                return "throw new " + ex + "(" + fail.group(1) + ", " + fail.group(2) + ", " + fail.group(3) + ");";
+            }
+        }
+        if (s.startsWith("try {")) return transpileTryCatch(s, model, file);
+        if (s.startsWith("for ")) return transpileForEach(s, model, file);
+
         // 0. Handle "var <varName> = create/update ..."
         if (s.startsWith("var ")) {
             return transpileVarBindingStatement(s, model, file);
@@ -36,7 +50,7 @@ public class LogicTranspiler {
 
         // 1. Handle "create ModelName { ... }"
         if (s.startsWith("create ")) {
-            return transpileCreateStatement(s, model);
+            return transpileCreateStatement(s, model, file, null);
         }
 
         // 2. Handle "update ModelName [on ...] { ... }"
@@ -113,8 +127,7 @@ public class LogicTranspiler {
                     if ("null".equalsIgnoreCase(right)) {
                         return "entity.set" + cap + "(null);";
                     }
-                    String targetRepo = Character.toLowerCase(rel.getTargetModel().charAt(0))
-                            + rel.getTargetModel().substring(1) + "Repository";
+                    String targetRepo = rel.getTargetModel().toLowerCase() + "Repository";
                     return "if (" + right + " != null) {\n"
                             + "    entity.set" + cap + "(" + targetRepo + ".findById(" + right + ")\n"
                             + "        .orElseThrow(() -> new ResourceNotFoundException(\"" + rel.getTargetModel()
@@ -136,6 +149,143 @@ public class LogicTranspiler {
 
         throw new dev.zenith.analyzer.AnalysisException("Unsupported action statement or expression: '" + s + "'. "
                 + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'notify(to, message)', or 'return ...'.");
+    }
+
+    private static String transpilePublishStatement(String source, ModelDef model, ZenithFile file) {
+        if (file == null) throw new IllegalArgumentException("Stream declarations are required to compile publish statements");
+        int open = source.indexOf('(');
+        int close = source.lastIndexOf(')');
+        if (open < 0 || close <= open) throw new IllegalArgumentException("Invalid publish statement: " + source);
+        String name = source.substring("publish ".length(), open).trim();
+        var stream = file.getStreams().stream().filter(candidate -> candidate.getName().equalsIgnoreCase(name)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown stream '" + name + "'"));
+        var event = file.findEvent(stream.getPayload());
+        Map<String, String> values = new LinkedHashMap<>();
+        for (String assignment : splitTopLevelAssignments(source.substring(open + 1, close))) {
+            int eq = assignment.indexOf('=');
+            if (eq < 1) continue;
+            values.put(assignment.substring(0, eq).trim().toLowerCase(), assignment.substring(eq + 1).trim());
+        }
+        StringBuilder eventExpr = new StringBuilder("new ").append(event.getName()).append("(null, null, null");
+        for (var field : event.getFields()) {
+            String raw = values.get(field.getName().toLowerCase());
+            if (raw == null) raw = "null";
+            String expression = transpileValueExpression(raw, model, file);
+            eventExpr.append(", ").append(expression);
+        }
+        eventExpr.append(')');
+        return "this.eventPublisher.publishEvent(" + eventExpr + ");";
+    }
+
+    private static String transpileTryCatch(String source, ModelDef model, ZenithFile file) {
+        source = source.trim();
+        if (source.endsWith(";")) source = source.substring(0, source.length() - 1).trim();
+        StringBuilder out = new StringBuilder();
+        int cursor = skipWhitespace(source, 0);
+        cursor = skipWhitespace(source, cursor + 3);
+        if (cursor >= source.length() || source.charAt(cursor) != '{') return source;
+        int close = matchingBrace(source, cursor);
+        if (close < 0) throw new dev.zenith.analyzer.AnalysisException("Unclosed try block");
+        out.append("try {\n").append(transpileActionBody(source.substring(cursor + 1, close), model, file)).append("}\n");
+        cursor = close + 1;
+        while ((cursor = skipWhitespace(source, cursor)) < source.length()) {
+            if (!source.startsWith("catch", cursor)) throw new dev.zenith.analyzer.AnalysisException("Expected catch clause");
+            cursor = skipWhitespace(source, cursor + 5);
+            int parenClose = source.indexOf(')', cursor);
+            if (cursor >= source.length() || source.charAt(cursor) != '(' || parenClose < 0)
+                throw new dev.zenith.analyzer.AnalysisException("Invalid catch clause");
+            String[] binding = source.substring(cursor + 1, parenClose).trim().split("\\s+");
+            if (binding.length != 2) throw new dev.zenith.analyzer.AnalysisException("Catch requires an exception type and variable");
+            cursor = skipWhitespace(source, parenClose + 1);
+            if (cursor >= source.length() || source.charAt(cursor) != '{') throw new dev.zenith.analyzer.AnalysisException("Expected catch body");
+            close = matchingBrace(source, cursor);
+            if (close < 0) throw new dev.zenith.analyzer.AnalysisException("Unclosed catch body");
+            out.append("catch (").append(javaExceptionType(binding[0])).append(' ').append(binding[1]).append(") {\n")
+                    .append(transpileActionBody(source.substring(cursor + 1, close), model, file)).append("}\n");
+            cursor = close + 1;
+        }
+        return out.toString();
+    }
+
+    private static String transpileActionBody(String body, ModelDef model, ZenithFile file) {
+        StringBuilder result = new StringBuilder();
+        int start = 0, depth = 0;
+        boolean quoted = false, escaped = false;
+        for (int i = 0; i <= body.length(); i++) {
+            char c = i == body.length() ? ';' : body.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+            } else if (c == '"') quoted = true;
+            else if (c == '{') depth++;
+            else if (c == '}') depth--;
+            if (c == ';' && depth == 0 && !quoted) {
+                String statement = body.substring(start, i).trim();
+                if (!statement.isEmpty()) {
+                    statement = statement.replaceAll("\\b([A-Za-z_$][A-Za-z0-9_$]*)\\.message\\b", "$1.getMessage()");
+                    result.append(transpileStatement(statement, model, file)).append('\n');
+                }
+                start = i + 1;
+            }
+        }
+        return result.toString();
+    }
+
+    private static String transpileForEach(String source, ModelDef model, ZenithFile file) {
+        String s = source.trim();
+        if (s.endsWith(";")) s = s.substring(0, s.length() - 1).trim();
+        Matcher header = Pattern.compile("^for\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(.*?)\\s*\\{", Pattern.DOTALL).matcher(s);
+        if (!header.find()) throw new dev.zenith.analyzer.AnalysisException("Invalid for loop; expected for item : items { ... }");
+        int open = header.end() - 1;
+        int close = matchingBrace(s, open);
+        if (close < 0 || !s.substring(close + 1).trim().isEmpty()) {
+            throw new dev.zenith.analyzer.AnalysisException("Invalid or unclosed for loop body");
+        }
+        String variable = header.group(1);
+        String iterable = transpileValueExpression(header.group(2).trim(), model, file);
+        String body = transpileActionBody(s.substring(open + 1, close), model, file);
+        String indentedBody = java.util.Arrays.stream(body.split("\\n", -1))
+                .map(line -> line.isBlank() ? line : "    " + line)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return "for (var " + variable + " : java.util.Objects.requireNonNull(" + iterable
+                + ", \"for loop iterable cannot be null\")) {\n" + indentedBody + "}";
+    }
+
+    private static int matchingBrace(String value, int open) {
+        int depth = 0;
+        boolean quoted = false, escaped = false;
+        for (int i = open; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+            } else if (c == '"') quoted = true;
+            else if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
+    private static int skipWhitespace(String value, int i) {
+        while (i < value.length() && Character.isWhitespace(value.charAt(i))) i++;
+        return i;
+    }
+
+    private static String javaExceptionType(String type) {
+        switch (type) {
+            case "TimeoutException":
+            case "GatewayTimeoutException": return "java.lang.RuntimeException";
+            case "IOException": return "java.io.IOException";
+            case "SQLException": return "java.sql.SQLException";
+            case "ResourceNotFoundException": return "ResourceNotFoundException";
+            case "WebClientResponseException": return "org.springframework.web.reactive.function.client.WebClientResponseException";
+            case "Exception":
+            case "RuntimeException":
+            case "IllegalArgumentException": return "java.lang." + type;
+            default: return type;
+        }
     }
 
     private static String transpileVarBindingStatement(String s, ModelDef model, ZenithFile file) {
@@ -187,8 +337,7 @@ public class LogicTranspiler {
                 String rawVal = kv[1].trim();
                 String transVal = transpileValueExpression(rawVal, model, file);
                 transVal = qualifyEnumValue(fieldName, transVal, targetModelDef, file);
-                String setter = "set" + TypeHelper.capitalize(fieldName);
-                sb.append(varName).append(".").append(setter).append("(").append(transVal).append(");\n");
+                appendModelAssignment(sb, varName, fieldName, rawVal, transVal, targetModelDef, model, file, "");
             }
         }
 
@@ -350,7 +499,7 @@ public class LogicTranspiler {
                     String f = kv[0].trim();
                     String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model, file);
                     val = qualifyEnumValue(f, val, targetModelDef, file);
-                    sb.append(explicitVarName).append(".set").append(TypeHelper.capitalize(f)).append("(").append(val).append(");\n");
+                    appendModelAssignment(sb, explicitVarName, f, kv[1].trim(), val, targetModelDef, model, file, "");
                 }
             }
             sb.append(explicitVarName).append(" = ").append(repoVar).append(".save(").append(explicitVarName).append(");");
@@ -358,16 +507,7 @@ public class LogicTranspiler {
         }
 
         if (isSingleEntity || (whereCond != null && !whereCond.contains("and") && !whereCond.contains("or") && !whereCond.contains("<") && !whereCond.contains(">") && whereCond.contains("id"))) {
-            String lookupId = "id";
-            if (whereCond != null) {
-                if (whereCond.contains("==")) {
-                    String[] parts = whereCond.split("==", 2);
-                    lookupId = parts[1].trim();
-                } else if (whereCond.contains("=")) {
-                    String[] parts = whereCond.split("=", 2);
-                    lookupId = parts[1].trim();
-                }
-            }
+            String lookupId = resolveUpdateLookupId(whereCond, targetModelDef != null ? targetModelDef : model, file);
             lookupId = transpileValueExpression(lookupId, targetModelDef != null ? targetModelDef : model);
 
             sb.append(repoVar).append(".findById(").append(lookupId).append(").ifPresent(target -> {\n");
@@ -377,7 +517,7 @@ public class LogicTranspiler {
                     String f = kv[0].trim();
                     String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model, file);
                     val = qualifyEnumValue(f, val, targetModelDef, file);
-                    sb.append("    target.set").append(TypeHelper.capitalize(f)).append("(").append(val).append(");\n");
+                    appendModelAssignment(sb, "target", f, kv[1].trim(), val, targetModelDef, model, file, "    ");
                 }
             }
             sb.append("    ").append(repoVar).append(".save(target);\n");
@@ -395,13 +535,73 @@ public class LogicTranspiler {
                     String f = kv[0].trim();
                     String val = transpileValueExpression(kv[1].trim(), targetModelDef != null ? targetModelDef : model, file);
                     val = qualifyEnumValue(f, val, targetModelDef, file);
-                    sb.append("        target.set").append(TypeHelper.capitalize(f)).append("(").append(val).append(");\n");
+                    appendModelAssignment(sb, "target", f, kv[1].trim(), val, targetModelDef, model, file, "        ");
                 }
             }
             sb.append("        ").append(repoVar).append(".save(target);\n");
             sb.append("    });");
         }
         return sb.toString();
+    }
+
+    /** Emits relationship assignments from scalar identifiers as entity lookups. */
+    private static void appendModelAssignment(StringBuilder out, String receiver, String fieldName, String rawValue,
+            String javaValue, ModelDef targetModel, ModelDef currentModel, ZenithFile file, String indent) {
+        RelationDef relation = targetModel == null ? null : targetModel.findRelation(fieldName);
+        String setter = receiver + ".set" + TypeHelper.capitalize(fieldName);
+        if (relation == null || (relation.getRelationType() != RelationType.MANY_TO_ONE
+                && relation.getRelationType() != RelationType.ONE_TO_ONE)) {
+            out.append(indent).append(setter).append("(").append(javaValue).append(");\n");
+            return;
+        }
+
+        String targetName = relation.getTargetModel();
+        String value = rawValue == null ? "" : rawValue.trim();
+        // The current entity (and a plainly named entity variable) is already the
+        // relation value. Other values in relation assignments are foreign keys.
+        boolean isEntityValue = value.equalsIgnoreCase("entity") && currentModel != null
+                && currentModel.getName().equalsIgnoreCase(targetName)
+                || value.equalsIgnoreCase(targetName)
+                || value.equalsIgnoreCase(Character.toLowerCase(targetName.charAt(0)) + targetName.substring(1));
+        if (isEntityValue || "null".equals(javaValue)) {
+            out.append(indent).append(setter).append("(").append(javaValue).append(");\n");
+            return;
+        }
+
+        // ServiceGenerator injects relation repositories using the model name
+        // lower-cased in full (for example UserEntity -> userentityRepository).
+        String repository = targetName.toLowerCase() + "Repository";
+        out.append(indent).append("if (").append(javaValue).append(" != null) {\n")
+                .append(indent).append("    ").append(setter).append("(").append(repository)
+                .append(".findById(").append(javaValue).append(")\n")
+                .append(indent).append("        .orElseThrow(() -> new ResourceNotFoundException(\"")
+                .append(targetName).append(" not found with id: \" + ").append(javaValue).append(")));\n")
+                .append(indent).append("} else {\n")
+                .append(indent).append("    ").append(setter).append("(null);\n")
+                .append(indent).append("}\n");
+    }
+
+    private static String resolveUpdateLookupId(String whereCond, ModelDef targetModel, ZenithFile file) {
+        String condition = whereCond == null ? "" : whereCond.trim();
+        Matcher matcher = Pattern.compile("(?i)(?:^|\\bAND\\b)\\s*id\\s*(?:==|=)\\s*(.+?)\\s*(?=$|\\bAND\\b)").matcher(condition);
+        if (matcher.find()) return matcher.group(1).trim();
+        matcher = Pattern.compile("(?i)(?:^|\\bAND\\b)\\s*(.+?)\\s*(?:==|=)\\s*id\\s*(?=$|\\bAND\\b)").matcher(condition);
+        if (matcher.find()) return matcher.group(1).trim();
+        if (targetModel != null && file != null) {
+            for (RelationDef relation : targetModel.getRelations()) {
+                if (relation.getRelationType() != RelationType.MANY_TO_ONE && relation.getRelationType() != RelationType.ONE_TO_ONE) continue;
+                String foreignKey = relation.getFieldName() + "Id";
+                matcher = Pattern.compile("(?i)(?:^|\\bAND\\b)\\s*" + Pattern.quote(foreignKey)
+                        + "\\s*(?:==|=)\\s*(.+?)\\s*(?=$|\\bAND\\b)").matcher(condition);
+                if (matcher.find()) {
+                    String idExpr = matcher.group(1).trim();
+                    String repo = Character.toLowerCase(relation.getTargetModel().charAt(0)) + relation.getTargetModel().substring(1) + "Repository";
+                    return repo + ".findById(" + idExpr + ").orElseThrow(() -> new ResourceNotFoundException(\""
+                            + relation.getTargetModel() + " not found with id: \" + " + idExpr + ")).getId()";
+                }
+            }
+        }
+        return "id";
     }
 
     private static String qualifyEnumValue(String fieldName, String value, ModelDef targetModelDef, ZenithFile file) {
@@ -415,16 +615,22 @@ public class LogicTranspiler {
             var field = targetModelDef.findField(fieldName);
             if (field != null && file != null) {
                 for (var en : file.getEnums()) {
-                    if (en.getName().equalsIgnoreCase(field.getType().getName()) || en.getValues().contains(value)) {
-                        return en.getName() + "." + value;
+                    if (en.getName().equalsIgnoreCase(field.getType().getName())) {
+                        for (String constVal : en.getValues()) {
+                            if (constVal.equalsIgnoreCase(value)) {
+                                return en.getName() + "." + constVal;
+                            }
+                        }
                     }
                 }
             }
         }
         if (file != null) {
             for (var en : file.getEnums()) {
-                if (en.getValues().contains(value)) {
-                    return en.getName() + "." + value;
+                for (String constVal : en.getValues()) {
+                    if (constVal.equalsIgnoreCase(value)) {
+                        return en.getName() + "." + constVal;
+                    }
                 }
             }
         }
@@ -563,6 +769,12 @@ public class LogicTranspiler {
             }
         } else if (!rest.isEmpty()) {
             payloadExpr = transpileValueExpression(rest, model, file);
+        }
+
+        // `/user` is the client subscription prefix, not part of the destination
+        // passed to SimpMessagingTemplate.convertAndSendToUser.
+        if (queue.startsWith("/user/")) {
+            queue = queue.substring("/user".length());
         }
 
         return "this.messagingTemplate.convertAndSendToUser(String.valueOf(" + userExpr + "), \"" + queue + "\", " + payloadExpr + ");";
@@ -783,13 +995,10 @@ public class LogicTranspiler {
         code = code.replaceAll("\\bcurrentUser\\.[a-zA-Z0-9_]+\\b", "currentUsername");
         code = code.replaceAll("\\bcurrentUser\\b", "currentUsername");
 
-        // 3. Replace body.field with body.field() for Java record accessors
-        code = code.replaceAll("\\bbody\\.([a-zA-Z0-9_]+)(?!\\()", "body.$1()");
-
         // 4. Normalize date operations (now, today, daysAgo, daysFromNow, etc.)
         code = normalizeDateOperations(code);
 
-        // 5. Transform entity.prop1.prop2 into entity.getProp1().getProp2()
+        // 5. Transform DTO and entity property chains into their Java accessors.
         // and any boundVar.prop1 into boundVar.getProp1()
         Pattern chainedPattern = Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)(?:\\.[a-zA-Z0-9_]+)+");
         Matcher m = chainedPattern.matcher(code);
@@ -841,7 +1050,8 @@ public class LogicTranspiler {
                 String[] parts = match.split("\\.");
                 StringBuilder replacement = new StringBuilder(parts[0]);
                 for (int pIdx = 1; pIdx < parts.length; pIdx++) {
-                    replacement.append(".get").append(TypeHelper.capitalize(parts[pIdx])).append("()");
+                    replacement.append(root.equals("body") ? "." + parts[pIdx] + "()"
+                            : ".get" + TypeHelper.capitalize(parts[pIdx]) + "()");
                 }
                 chainSb.append(replacement);
             }

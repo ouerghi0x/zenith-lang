@@ -24,7 +24,7 @@ public class TypeHelper {
     public static String toJavaType(TypeRef type) {
         String name = type.getName();
         if (type.isList()) {
-            return "java.util.List<" + toJavaType(TypeRef.simple(type.getGenericType())) + ">";
+            return "java.util.List<" + toJavaType(type.getElementTypeRef()) + ">";
         }
         switch (name.toLowerCase()) {
             case "string":

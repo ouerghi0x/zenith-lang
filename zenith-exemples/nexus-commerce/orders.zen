@@ -4,7 +4,8 @@ enum OrderStatus {
     PROCESSING,
     SHIPPED,
     DELIVERED,
-    CANCELLED
+    CANCELLED,
+    OK
 }
 
 dto CheckoutItemDto {

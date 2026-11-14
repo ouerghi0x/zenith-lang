@@ -1,6 +1,8 @@
 package dev.zenith.generator;
 
 import dev.zenith.ast.ZenithFile;
+import dev.zenith.ast.StreamDef;
+import dev.zenith.ast.StreamConsumerDef;
 
 public class PropertiesGenerator {
 
@@ -22,6 +24,9 @@ public class PropertiesGenerator {
         String customPass = file.getConfig().getString("dbPassword", null);
 
         sb.append("spring:\n");
+        sb.append("  devtools:\n");
+        sb.append("    restart:\n");
+        sb.append("      trigger-file: .reloadtrigger\n");
         sb.append("  datasource:\n");
         if ("postgres".equalsIgnoreCase(db) || "postgresql".equalsIgnoreCase(db)) {
             String defaultUrl = "jdbc:postgresql://localhost:5432/" + defaultDbName;
@@ -129,6 +134,62 @@ public class PropertiesGenerator {
         }
         sb.append("\n");
 
+        if (file.getConfig().isOutboxEnabled()) {
+            sb.append("  modulith:\n");
+            sb.append("    events:\n");
+            sb.append("      registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener\n");
+            sb.append("      jdbc:\n");
+            sb.append("        schema-initialization:\n");
+            sb.append("          enabled: true\n");
+            sb.append("      republish-outstanding-events-on-restart: true\n\n");
+        }
+
+        if (file.hasStreamIntegration()) {
+            String broker = !file.getStreams().isEmpty() && file.getStreams().get(0).getBroker() != null ? file.getStreams().get(0).getBroker() : file.getConfig().getBroker();
+            if (broker == null) broker = file.getConfig().getBroker();
+            sb.append("  cloud:\n");
+            if (file.hasConsumers()) {
+                sb.append("    function:\n      definition: ");
+                for (int i = 0; i < file.getConsumers().size(); i++) {
+                    if (i > 0) sb.append(";");
+                    sb.append(functionName(file.getConsumers().get(i)));
+                }
+                sb.append("\n");
+            }
+            sb.append("    stream:\n      bindings:\n");
+            for (StreamDef stream : file.getStreams()) {
+                String binding = Character.toLowerCase(stream.getName().charAt(0)) + stream.getName().substring(1) + "-out-0";
+                sb.append("        ").append(binding).append(":\n          destination: ").append(stream.getTopic()).append("\n          content-type: application/json\n          producer:\n");
+                if (stream.getPartitions() != null) sb.append("            partition-count: ").append(stream.getPartitions()).append("\n");
+            }
+            for (StreamConsumerDef consumer : file.getConsumers()) {
+                StreamDef stream = file.getStreams().stream().filter(s -> s.getName().equalsIgnoreCase(consumer.getStream())).findFirst().orElse(null);
+                String binding = functionName(consumer) + "-in-0";
+                sb.append("        ").append(binding).append(":\n          destination: ").append(stream.getTopic()).append("\n          content-type: application/json\n          group: ").append(consumer.getGroup()).append("\n          consumer:\n            max-attempts: ").append(consumer.getMaxAttempts()).append("\n            back-off-initial-interval: ").append(consumer.getBackoffMs()).append("\n            back-off-multiplier: ").append(consumer.getBackoffMultiplier()).append("\n            back-off-max-interval: ").append(consumer.getMaxBackoffMs()).append("\n");
+                if (consumer.getConcurrency() != null) sb.append("            concurrency: ").append(consumer.getConcurrency()).append("\n");
+            }
+            if (file.getConsumers().stream().anyMatch(c -> c.getDeadLetter() != null)) {
+                if ("kafka".equalsIgnoreCase(broker)) {
+                    sb.append("      kafka:\n");
+                    sb.append("        binder:\n          brokers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}\n        bindings:\n");
+                    for (StreamConsumerDef consumer : file.getConsumers()) if (consumer.getDeadLetter() != null) {
+                        sb.append("          ").append(functionName(consumer)).append("-in-0:\n            consumer:\n              enable-dlq: true\n              dlq-name: ").append(consumer.getDeadLetter()).append("\n");
+                    }
+                } else {
+                    sb.append("      rabbit:\n");
+                    sb.append("        binder:\n          nodes: ${RABBITMQ_HOST:localhost}\n          username: ${RABBITMQ_USERNAME:guest}\n          password: ${RABBITMQ_PASSWORD:guest}\n        bindings:\n");
+                    for (StreamConsumerDef consumer : file.getConsumers()) if (consumer.getDeadLetter() != null) {
+                        sb.append("          ").append(functionName(consumer)).append("-in-0:\n            consumer:\n              auto-bind-dlq: true\n              dead-letter-queue-name: ").append(consumer.getDeadLetter()).append("\n");
+                    }
+                }
+            }
+            if (file.getConsumers().stream().noneMatch(c -> c.getDeadLetter() != null)) {
+                if ("kafka".equalsIgnoreCase(broker)) sb.append("      kafka:\n        binder:\n          brokers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}\n");
+                else sb.append("      rabbit:\n        binder:\n          nodes: ${RABBITMQ_HOST:localhost}\n          username: ${RABBITMQ_USERNAME:guest}\n          password: ${RABBITMQ_PASSWORD:guest}\n");
+            }
+            sb.append("\n");
+        }
+
         if (swagger) {
             sb.append("springdoc:\n");
             sb.append("  swagger-ui:\n");
@@ -187,5 +248,9 @@ public class PropertiesGenerator {
         }
 
         return new JavaSourceFile("src/main/resources/application.yml", sb.toString());
+    }
+
+    private static String functionName(StreamConsumerDef consumer) {
+        return "consume" + consumer.getName();
     }
 }

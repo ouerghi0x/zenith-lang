@@ -100,6 +100,13 @@ public class AppConfig {
         return getBoolean("flyway", false);
     }
 
+    public boolean isOutboxEnabled() {
+        return getBoolean("outbox", false);
+    }
+
+    public String getBroker() { return getString("broker", null); }
+    public String getBrokerUrl() { return getString("brokerUrl", null); }
+
     public String getJwtSecret() {
         String raw = getString("jwtSecret", null);
         if (raw == null || raw.trim().isEmpty() || "auto".equalsIgnoreCase(raw.trim())) {

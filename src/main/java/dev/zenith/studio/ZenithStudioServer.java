@@ -49,6 +49,11 @@ public class ZenithStudioServer {
     private final List<String> processLogs = new CopyOnWriteArrayList<>();
     private final List<CompilerDiagnostic> activeDiagnostics = new CopyOnWriteArrayList<>();
     private ZenithFile latestCompiledFile = null;
+    private final Object hotReloadLock = new Object();
+    private volatile boolean hotReloadPending = false;
+    private volatile boolean hotReloadRunning = false;
+    private volatile String activeMavenCommand = null;
+    private volatile Process runningHotReloadCompile = null;
 
     // Interactive Test Runner State (Spec #04 & Spec #27)
     private Process runningTestProcess = null;
@@ -85,6 +90,8 @@ public class ZenithStudioServer {
         server.createContext("/api/test/run", new TestRunHandler());
         server.createContext("/api/test/stop", new TestStopHandler());
         server.createContext("/api/test/results", new TestResultsHandler());
+        server.createContext("/api/servers", new ServerListHandler());
+        server.createContext("/api/deploy/action", new SshDeploymentHandler());
         server.createContext("/api/docker/status", new DockerStatusHandler());
         server.createContext("/api/docker/command", new DockerCommandHandler());
         server.createContext("/api/simulate/action", new SimulateActionHandler());
@@ -192,6 +199,7 @@ public class ZenithStudioServer {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String source = extractJsonField(body, "source");
             String currentFile = extractJsonField(body, "file");
+            boolean sourceChanged = extractJsonBooleanField(body, "sourceChanged");
             if (currentFile == null || currentFile.isBlank()) {
                 currentFile = schemaPath.getFileName().toString();
             }
@@ -220,6 +228,9 @@ public class ZenithStudioServer {
 
                 latestCompiledFile = analyzed;
                 List<JavaSourceFile> generated = ProjectGenerator.generateAll(analyzed);
+                if (sourceChanged) {
+                    scheduleRunningProjectRefresh(analyzed);
+                }
 
                 // Build JSON response
                 StringBuilder json = new StringBuilder();
@@ -529,9 +540,13 @@ public class ZenithStudioServer {
                 }
 
                 ProjectGenerator.writeToDirectory(latestCompiledFile, runDir);
+                Path reloadTrigger = runDir.resolve("target/classes/.reloadtrigger");
+                Files.createDirectories(reloadTrigger.getParent());
+                Files.writeString(reloadTrigger, "initial", StandardCharsets.UTF_8);
 
                 boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
                 String mavenCmd = resolveMavenCommand(isWindows);
+                activeMavenCommand = mavenCmd;
                 processLogs.add("[Zenith Studio] Using Maven executable: " + mavenCmd);
 
                 ProcessBuilder pb;
@@ -619,10 +634,113 @@ public class ZenithStudioServer {
         }
     }
 
+    /**
+     * Compile the latest generated Java into the running Maven project's classpath.
+     * Spring Boot DevTools observes target/classes and restarts the app after Maven
+     * finishes updating it. Compile requests are serialized and coalesced so editor
+     * saves cannot launch overlapping Maven builds.
+     */
+    private void scheduleRunningProjectRefresh(ZenithFile analyzed) {
+        Process app = runningSpringProcess;
+        String maven = activeMavenCommand;
+        if (app == null || !app.isAlive() || maven == null) {
+            return;
+        }
+        Path runDir = Paths.get("target/studio-run");
+        try {
+            ProjectGenerator.writeToDirectory(analyzed, runDir);
+        } catch (IOException e) {
+            processLogs.add("[Zenith Studio] Could not update generated project sources: " + e.getMessage());
+            return;
+        }
+
+        synchronized (hotReloadLock) {
+            hotReloadPending = true;
+            if (hotReloadRunning) {
+                return;
+            }
+            hotReloadRunning = true;
+        }
+
+        Thread refreshThread = new Thread(() -> {
+            try {
+                while (true) {
+                    synchronized (hotReloadLock) {
+                        if (!hotReloadPending) {
+                            hotReloadRunning = false;
+                            return;
+                        }
+                        hotReloadPending = false;
+                    }
+                    if (runningSpringProcess != app || !app.isAlive()) {
+                        return;
+                    }
+                    processLogs.add("[Zenith Studio] Compiling updated generated sources for DevTools restart...");
+                    ProcessBuilder builder;
+                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                        builder = new ProcessBuilder("cmd.exe", "/c", maven + " -q -DskipTests compile");
+                    } else {
+                        builder = new ProcessBuilder("sh", "-c", maven + " -q -DskipTests compile");
+                    }
+                    builder.directory(runDir.toFile());
+                    builder.redirectErrorStream(true);
+                    Process compile = builder.start();
+                    runningHotReloadCompile = compile;
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(compile.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            if (!line.isBlank()) processLogs.add("[Zenith Hot Reload] " + line);
+                        }
+                    }
+                    int exit = compile.waitFor();
+                    if (runningHotReloadCompile == compile) {
+                        runningHotReloadCompile = null;
+                    }
+                    processLogs.add(exit == 0
+                            ? triggerDevToolsRestart(runDir)
+                            : "[Zenith Studio] Hot reload compilation failed with exit code " + exit
+                                    + "; the running application was not updated.");
+
+                }
+            } catch (Exception e) {
+                processLogs.add("[Zenith Studio] Hot reload failed: " + e.getMessage());
+            } finally {
+                runningHotReloadCompile = null;
+                synchronized (hotReloadLock) {
+                    hotReloadRunning = false;
+                }
+            }
+        }, "zenith-studio-hot-reload");
+        refreshThread.setDaemon(true);
+        refreshThread.start();
+    }
+
+    private String triggerDevToolsRestart(Path runDir) {
+        try {
+            Path triggerFile = runDir.resolve("target/classes/.reloadtrigger");
+            Files.createDirectories(triggerFile.getParent());
+            Files.writeString(triggerFile, Long.toString(System.nanoTime()), StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+            return "[Zenith Studio] Generated sources compiled; signaled one Spring Boot DevTools restart.";
+        } catch (IOException e) {
+            return "[Zenith Studio] Generated sources compiled, but the DevTools restart trigger could not be updated: "
+                    + e.getMessage();
+        }
+    }
+
     // Stop Spring Boot Process
     private class StopHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            Process compile = runningHotReloadCompile;
+            if (compile != null && compile.isAlive()) {
+                compile.destroyForcibly();
+                runningHotReloadCompile = null;
+            }
+            synchronized (hotReloadLock) {
+                hotReloadPending = false;
+            }
             if (runningSpringProcess != null) {
                 runningSpringProcess.destroyForcibly();
                 runningSpringProcess = null;
@@ -1226,24 +1344,109 @@ public class ZenithStudioServer {
                 String action = extractJsonField(body, "action");
                 if ("create".equalsIgnoreCase(action)) {
                     String newFileName = extractJsonField(body, "fileName");
-                    if (newFileName == null || newFileName.isBlank()) {
-                        sendResponse(exchange, 400, "application/json", "{\"error\": \"Missing fileName\"}");
-                        return;
-                    }
-                    if (!newFileName.endsWith(".zen")) {
-                        newFileName = newFileName + ".zen";
-                    }
-                    Path newFilePath = baseDir.resolve(newFileName).normalize();
-                    if (!Files.exists(newFilePath)) {
+                    try {
+                        newFileName = normalizeManagedZenFileName(newFileName);
+                        Path newFilePath = resolveManagedZenFile(baseDir, newFileName);
+                        if (Files.exists(newFilePath)) {
+                            sendResponse(exchange, 409, "application/json", "{\"success\":false,\"error\":\"A schema file with that name already exists.\"}");
+                            return;
+                        }
                         String starter = "// " + newFileName + "\n\nmodel "
-                                + TypeHelper.capitalize(newFileName.replace(".zen", ""))
+                                + TypeHelper.capitalize(newFileName.substring(0, newFileName.length() - 4))
                                 + " {\n    id: UUID @id @auto\n}\n";
                         Files.writeString(newFilePath, starter, StandardCharsets.UTF_8);
+                    } catch (IllegalArgumentException e) {
+                        sendResponse(exchange, 400, "application/json", "{\"success\":false,\"error\":\"" + escape(e.getMessage()) + "\"}");
+                        return;
                     }
                     String filesJson = discoverZenFilesJson(baseDir, schemaPath);
                     sendResponse(exchange, 200, "application/json",
                             "{\"success\": true, \"fileName\": \"" + escape(newFileName) + "\", \"files\": " + filesJson
                                     + "}");
+                    return;
+                }
+
+                if ("rename".equalsIgnoreCase(action)) {
+                    String oldName = extractJsonField(body, "fileName");
+                    String newName = extractJsonField(body, "newFileName");
+                    try {
+                        oldName = normalizeManagedZenFileName(oldName);
+                        newName = normalizeManagedZenFileName(newName);
+                        Path oldPath = resolveManagedZenFile(baseDir, oldName);
+                        Path newPath = resolveManagedZenFile(baseDir, newName);
+                        if (oldPath.equals(schemaPath.toAbsolutePath().normalize())) {
+                            sendResponse(exchange, 400, "application/json", "{\"success\":false,\"error\":\"The root schema cannot be renamed.\"}");
+                            return;
+                        }
+                        if (!Files.isRegularFile(oldPath)) {
+                            sendResponse(exchange, 404, "application/json", "{\"success\":false,\"error\":\"Schema file not found.\"}");
+                            return;
+                        }
+                        if (Files.exists(newPath)) {
+                            sendResponse(exchange, 409, "application/json", "{\"success\":false,\"error\":\"A schema file with that name already exists.\"}");
+                            return;
+                        }
+                        Map<Path, String> rewrittenImports = rewriteManagedImports(baseDir, oldPath, newName);
+                        Map<Path, String> originalImports = new LinkedHashMap<>();
+                        for (Path importer : rewrittenImports.keySet()) originalImports.put(importer, Files.readString(importer, StandardCharsets.UTF_8));
+                        Files.move(oldPath, newPath);
+                        try {
+                            for (Map.Entry<Path, String> entry : rewrittenImports.entrySet()) {
+                                Files.writeString(entry.getKey(), entry.getValue(), StandardCharsets.UTF_8);
+                            }
+                        } catch (IOException writeFailure) {
+                            for (Map.Entry<Path, String> entry : originalImports.entrySet()) {
+                                try { Files.writeString(entry.getKey(), entry.getValue(), StandardCharsets.UTF_8); } catch (IOException ignored) {}
+                            }
+                            try { Files.move(newPath, oldPath); } catch (IOException ignored) {}
+                            throw writeFailure;
+                        }
+                        StringBuilder updatedFiles = new StringBuilder("[");
+                        int index = 0;
+                        for (Map.Entry<Path, String> entry : rewrittenImports.entrySet()) {
+                            if (index++ > 0) updatedFiles.append(',');
+                            updatedFiles.append("{\"fileName\":\"").append(escape(baseDir.relativize(entry.getKey()).toString().replace('\\', '/')))
+                                    .append("\",\"content\":\"").append(escape(entry.getValue())).append("\"}");
+                        }
+                        updatedFiles.append(']');
+                        String filesJson = discoverZenFilesJson(baseDir, schemaPath);
+                        sendResponse(exchange, 200, "application/json", "{\"success\":true,\"fileName\":\"" + escape(newName)
+                                + "\",\"updatedFiles\":" + updatedFiles + ",\"files\":" + filesJson + "}");
+                    } catch (IllegalArgumentException e) {
+                        sendResponse(exchange, 400, "application/json", "{\"success\":false,\"error\":\"" + escape(e.getMessage()) + "\"}");
+                    } catch (IOException e) {
+                        sendResponse(exchange, 500, "application/json", "{\"success\":false,\"error\":\"Unable to rename schema file: " + escape(e.getMessage()) + "\"}");
+                    }
+                    return;
+                }
+
+                if ("delete".equalsIgnoreCase(action)) {
+                    String deleteName = extractJsonField(body, "fileName");
+                    try {
+                        deleteName = normalizeManagedZenFileName(deleteName);
+                        Path deletePath = resolveManagedZenFile(baseDir, deleteName);
+                        if (deletePath.equals(schemaPath.toAbsolutePath().normalize())) {
+                            sendResponse(exchange, 400, "application/json", "{\"success\":false,\"error\":\"The root schema cannot be deleted.\"}");
+                            return;
+                        }
+                        if (!Files.isRegularFile(deletePath)) {
+                            sendResponse(exchange, 404, "application/json", "{\"success\":false,\"error\":\"Schema file not found.\"}");
+                            return;
+                        }
+                        Map<Path, String> importers = rewriteManagedImports(baseDir, deletePath, null);
+                        if (!importers.isEmpty()) {
+                            String names = importers.keySet().stream().map(p -> baseDir.relativize(p).toString().replace('\\', '/')).collect(Collectors.joining(", "));
+                            sendResponse(exchange, 409, "application/json", "{\"success\":false,\"error\":\"This schema is imported by: " + escape(names) + ". Remove those imports before deleting it.\"}");
+                            return;
+                        }
+                        Files.delete(deletePath);
+                        sendResponse(exchange, 200, "application/json", "{\"success\":true,\"fileName\":\"" + escape(deleteName)
+                                + "\",\"files\":" + discoverZenFilesJson(baseDir, schemaPath) + "}");
+                    } catch (IllegalArgumentException e) {
+                        sendResponse(exchange, 400, "application/json", "{\"success\":false,\"error\":\"" + escape(e.getMessage()) + "\"}");
+                    } catch (IOException e) {
+                        sendResponse(exchange, 500, "application/json", "{\"success\":false,\"error\":\"Unable to delete schema file: " + escape(e.getMessage()) + "\"}");
+                    }
                     return;
                 }
 
@@ -1269,6 +1472,56 @@ public class ZenithStudioServer {
                 sendResponse(exchange, 405, "application/json", "{\"error\": \"Method Not Allowed\"}");
             }
         }
+    }
+
+    private String normalizeManagedZenFileName(String input) {
+        if (input == null || input.isBlank()) throw new IllegalArgumentException("Enter a schema filename.");
+        String name = input.trim();
+        if (!name.toLowerCase(Locale.ROOT).endsWith(".zen")) name += ".zen";
+        if (!name.matches("[A-Za-z_][A-Za-z0-9_]*\\.zen")) {
+            throw new IllegalArgumentException("Use a simple filename such as 'orders.zen' (letters, numbers, and underscores only).");
+        }
+        return name;
+    }
+
+    private Path resolveManagedZenFile(Path baseDir, String name) {
+        Path normalizedBase = baseDir.toAbsolutePath().normalize();
+        Path target = normalizedBase.resolve(name).normalize();
+        if (!target.getParent().equals(normalizedBase) || !target.getFileName().toString().equals(name)) {
+            throw new IllegalArgumentException("Schema files must stay in the workspace root.");
+        }
+        return target;
+    }
+
+    /** Returns importer paths and either their rewritten text or unchanged text when replacement is null. */
+    private Map<Path, String> rewriteManagedImports(Path baseDir, Path targetPath, String replacementName) throws IOException {
+        Path normalizedTarget = targetPath.toAbsolutePath().normalize();
+        Map<Path, String> result = new LinkedHashMap<>();
+        java.util.regex.Pattern imports = java.util.regex.Pattern.compile("(?m)(^\\s*import\\s+[\\\"'])([^\\\"'\\r\\n]+)([\\\"'])");
+        try (var paths = Files.list(baseDir)) {
+            for (Path owner : paths.filter(path -> Files.isRegularFile(path)
+                    && path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zen")).toList()) {
+                String content = Files.readString(owner, StandardCharsets.UTF_8);
+                java.util.regex.Matcher matcher = imports.matcher(content);
+                StringBuffer updated = new StringBuffer();
+                boolean found = false;
+                while (matcher.find()) {
+                    Path imported = owner.getParent().resolve(matcher.group(2)).normalize().toAbsolutePath();
+                    if (!imported.toString().equalsIgnoreCase(normalizedTarget.toString())) continue;
+                    found = true;
+                    String importValue = matcher.group(2);
+                    String replacement = replacementName == null ? importValue
+                            : importValue.substring(0, Math.max(importValue.lastIndexOf('/'), importValue.lastIndexOf('\\')) + 1) + replacementName;
+                    matcher.appendReplacement(updated, java.util.regex.Matcher.quoteReplacement(
+                            matcher.group(1) + replacement + matcher.group(3)));
+                }
+                if (found) {
+                    matcher.appendTail(updated);
+                    result.put(owner.toAbsolutePath().normalize(), replacementName == null ? content : updated.toString());
+                }
+            }
+        }
+        return result;
     }
 
     private String discoverZenFilesJson(Path baseDir, Path rootPath) {
@@ -1387,6 +1640,13 @@ public class ZenithStudioServer {
             }
         }
         return sb.toString();
+    }
+
+    private static boolean extractJsonBooleanField(String json, String field) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("\\\"" + java.util.regex.Pattern.quote(field) + "\\\"\\s*:\\s*true\\b")
+                .matcher(json);
+        return matcher.find();
     }
 
     private static String resolveMavenCommand(boolean isWindows) {
@@ -1782,5 +2042,46 @@ public class ZenithStudioServer {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private class ServerListHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            Map<String, dev.zenith.deploy.ServerProfileManager.ServerConfig> servers = dev.zenith.deploy.ServerProfileManager.loadServers();
+            StringBuilder sb = new StringBuilder("[");
+            int i = 0;
+            for (Map.Entry<String, dev.zenith.deploy.ServerProfileManager.ServerConfig> e : servers.entrySet()) {
+                if (i++ > 0) sb.append(",");
+                sb.append("{\"name\": \"").append(escape(e.getKey())).append("\", \"host\": \"").append(escape(e.getValue().host)).append("\"}");
+            }
+            sb.append("]");
+            sendResponse(exchange, 200, "application/json", sb.toString());
+        }
+    }
+
+    private class SshDeploymentHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String action = extractJsonField(body, "action");
+            String server = extractJsonField(body, "server");
+            
+            if (action == null || server == null) {
+                sendResponse(exchange, 400, "application/json", "{\"success\": false, \"error\": \"Missing parameters\"}");
+                return;
+            }
+
+            new Thread(() -> {
+                try {
+                    switch (action.toLowerCase()) {
+                        case "deploy": dev.zenith.deploy.SshDeployer.deployProject(server, "generated-app"); break;
+                        case "logs": dev.zenith.deploy.SshDeployer.streamLogs(server, true); break;
+                        case "status": dev.zenith.deploy.SshDeployer.checkStatus(server); break;
+                        case "restart": dev.zenith.deploy.SshDeployer.restartApp(server); break;
+                    }
+                } catch (Exception e) { System.err.println("[ERROR] SSH action failed: " + e.getMessage()); }
+            }).start();
+            sendResponse(exchange, 200, "application/json", "{\"success\": true}");
+        }
     }
 }

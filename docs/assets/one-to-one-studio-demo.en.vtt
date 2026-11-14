@@ -1,0 +1,33 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:06.288
+Welcome to Zenith Studio. One concise schema defines this API and its data relationship.
+
+2
+00:00:06.468 --> 00:00:12.252
+Account is inverse. Profile owns the one-to-one link and its unique account ID foreign key.
+
+3
+00:00:12.432 --> 00:00:20.424
+The ERD confirms one-to-one. The repository tree shows generated entities. repositories. services. and controllers.
+
+4
+00:00:20.604 --> 00:00:27.492
+Run starts Spring Boot with an in-memory H2 database. The console shows Maven building and Spring starting.
+
+5
+00:00:27.672 --> 00:00:33.768
+When startup completes. we register a user and use its token to create. list. fetch. and update an account.
+
+6
+00:00:38.000 --> 00:00:42.920
+Then we create a linked profile. list it. fetch by ID. and update its display name.
+
+7
+00:00:46.000 --> 00:00:50.728
+Every request succeeds. We finish by deleting both records.
+
+8
+00:00:54.000 --> 00:00:58.224
+Ten CRUD routes passed. from schema to live API in Zenith Studio.

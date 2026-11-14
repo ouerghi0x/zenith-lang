@@ -80,6 +80,7 @@
           <li><a href="#mail" class="sidebar-link">14. Transactional Emails (mail/send)</a></li>
           <li><a href="#cache" class="sidebar-link">15. Caching Layer (Redis / Spring Cache)</a></li>
           <li><a href="#sockets" class="sidebar-link">16. WebSockets &amp; Real-Time (socket)</a></li>
+          <li><a href="native-streaming.md" class="sidebar-link">Native Kafka &amp; RabbitMQ Streams</a></li>
         </ul>
       </div>
 
@@ -101,51 +102,42 @@
     <!-- Main Content Area -->
     <main class="docs-main">
 
-      <h1 class="docs-page-title">Zenith DSL Documentation</h1>
-      <p class="docs-lead">
-        Zenith is a domain-specific language designed to eliminate the 9-file boilerplate ceremony of Java and Spring Boot. Declare your models, validation constraints, relations, security policies, background workers, and REST endpoints in clean <code>.zen</code> files and compile directly into production-ready Spring Boot 3 applications in milliseconds.
-      </p>
-
-      <!-- Video Callout Banner -->
-      <div style="margin: 18px 0 24px; padding: 14px 18px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-left: 4px solid #38bdf8; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-size: 22px;">📺</span>
-          <div>
-            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; font-weight: 700;">Architectural Deep Dive &amp; Benchmark</div>
-            <div style="font-size: 14px; font-weight: 600; color: #f1f5f9; margin-top: 2px;">The Problem With Spring Boot DSLs: Zenith Studio vs. ZenWave 360 &amp; JHipster</div>
+      <section class="docs-hero" aria-labelledby="docsHeroTitle">
+        <div class="docs-hero-copy">
+          <p class="docs-hero-kicker">Language guide</p>
+          <h1 id="docsHeroTitle">Spring Boot APIs,<br>defined in <code>.zen</code>.</h1>
+          <p class="docs-hero-summary">Write models, relationships, validation, and routes in one schema. Zenith generates a standard Java and Spring Boot project.</p>
+          <div class="docs-hero-actions">
+            <a class="docs-hero-primary" href="#config">Start with the language guide <span aria-hidden="true">→</span></a>
+            <a class="docs-hero-secondary" href="#zenith-studio">Explore Studio</a>
           </div>
+          <p class="docs-hero-meta">Java 17+ <span>·</span> Spring Boot 3 <span>·</span> Maven</p>
         </div>
-        <a href="https://www.youtube.com/watch?v=2znqx9ANIKc" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: #dc2626; color: #ffffff; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none; transition: opacity 0.15s ease;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-          Watch on YouTube
-        </a>
-      </div>
+        <div class="docs-hero-example">
+          <div class="docs-hero-example-head"><span>Schema example</span><span>main.zen</span></div>
+          <pre><code>model Product {
+    id: UUID @id @auto
+    name: String(min = 2, max = 80)
+    price: Decimal @positive
 
-      <!-- Quick Index Cards -->
-      <div class="cards-grid">
-        <a href="#config" class="feature-pill-card">
-          <div class="pill-card-title">1. Configuration</div>
-          <div class="pill-card-desc">Declare app package, port, PostgreSQL/H2, JWT auth, and Flyway.</div>
-        </a>
-        <a href="#crud" class="feature-pill-card">
-          <div class="pill-card-title">6. CRUD & Security</div>
-          <div class="pill-card-desc">Pagination, sorting, search, and method-level @PreAuthorize RBAC.</div>
-        </a>
-        <a href="#actions" class="feature-pill-card">
-          <div class="pill-card-title">8. Domain Actions</div>
-          <div class="pill-card-desc">Guards, entity state mutations, audit logs, and customer notifications.</div>
-        </a>
-        <a href="#testing" class="feature-pill-card">
-          <div class="pill-card-title">15. Automated Tests</div>
-          <div class="pill-card-desc">MockMvc controller suites, isolated H2 profile, and DataJpa slices.</div>
-        </a>
-      </div>
+    endpoints {
+        crud {
+            paginate: true
+        }
+    }
+}</code></pre>
+          <div class="docs-hero-example-foot">Generates a paginated CRUD API</div>
+        </div>
+      </section>
+
+      <p class="docs-repository-link"><a href="https://github.com/ouerghi0x/zenith-lang" target="_blank" rel="noopener noreferrer">Browse Zenith on GitHub <span aria-hidden="true">&#8599;</span></a></p>
 
       <!-- Overview -->
       <h2 class="section-heading" id="overview">Overview &amp; Philosophy</h2>
       <p>
         In traditional Spring Boot development, exposing a single validated, secured CRUD resource requires creating 7 to 9 separate files: <code>Entity.java</code>, <code>CreateRequest.java</code>, <code>UpdateRequest.java</code>, <code>Response.java</code>, <code>Repository.java</code>, <code>Mapper.java</code>, <code>Service.java</code>, <code>ServiceImpl.java</code>, and <code>Controller.java</code> (~350 lines of repetitive ceremony).
       </p>
+      <p class="overview-video-link"><a href="https://www.youtube.com/watch?v=2znqx9ANIKc" target="_blank" rel="noopener noreferrer">Watch the architectural overview on YouTube <span aria-hidden="true">↗</span></a></p>
       <p>
         Zenith unifies this into a single strongly-typed AST. When you modify your schema, all downstream artifacts—JPA entities, Flyway migrations, Spring Security filters, MockMvc test suites, and frontend TypeScript clients—update in complete lockstep.
       </p>
@@ -153,54 +145,36 @@
       <!-- CLI Tools -->
       <h2 class="section-heading" id="cli-tools">Installation &amp; CLI Commands</h2>
       <p>
-        The Zenith compiler is distributed as a single standalone executable JAR requiring Java 17+. Install via Scoop on Windows, download the standalone binary, or install the VS Code language extension.
+        Zenith CLI requires Java 17 or later. From a source checkout, run <code>.\bin\zenith.bat</code> in Command Prompt, <code>.\bin\zenith.ps1</code> in PowerShell, or <code>./bin/zenith</code> on Linux and macOS. Get the source and releases from <a href="https://github.com/ouerghi0x/zenith-lang" target="_blank" rel="noopener noreferrer">the GitHub repository</a>.
       </p>
+
+      <div class="code-block-wrap">
+        <div class="code-block-header"><span class="code-block-title">Quick start</span></div>
+        <pre class="code-content"><code># Create a starter schema, validate it, then generate the app
+zenith init schema.zen
+zenith validate schema.zen
+zenith build schema.zen -o generated-app</code></pre>
+      </div>
 
       <div class="table-wrap">
         <table class="docs-table">
-          <thead>
-            <tr>
-              <th>Command</th>
-              <th>Arguments</th>
-              <th>Description</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Command</th><th>Usage</th><th>Description</th></tr></thead>
           <tbody>
-            <tr>
-              <td><code>zenith build</code></td>
-              <td><code>&lt;file.zen&gt; [-o &lt;output-dir&gt;]</code></td>
-              <td>Transpiles the schema into a complete Spring Boot 3 Maven project.</td>
-            </tr>
-            <tr>
-              <td><code>zenith watch</code></td>
-              <td><code>&lt;file.zen&gt; [-o &lt;output-dir&gt;]</code></td>
-              <td>Starts hot-reload daemon; regenerates application code on file save (&lt; 150ms).</td>
-            </tr>
-            <tr>
-              <td><code>zenith validate</code></td>
-              <td><code>&lt;file.zen&gt;</code></td>
-              <td>Performs lexing, AST parsing, and semantic analysis; reports exact errors.</td>
-            </tr>
-            <tr>
-              <td><code>zenith inspect</code></td>
-              <td><code>&lt;file.zen&gt;</code></td>
-              <td>Prints an architectural summary of detected models, relations, DTOs, and endpoints.</td>
-            </tr>
-            <tr>
-              <td><code>zenith studio</code></td>
-              <td><code>&lt;file.zen&gt; [--desktop] [--port 3000]</code></td>
-              <td>Launches Zenith Studio — available both as a local web IDE and native standalone desktop app.</td>
-            </tr>
-            <tr>
-              <td><code>zenith mcp</code></td>
-              <td><code>—</code></td>
-              <td>Runs the native Model Context Protocol (MCP) server over standard I/O (JSON-RPC 2.0) for AI coding assistants (Claude Code, Cursor, Antigravity).</td>
-            </tr>
-            <tr>
-              <td><code>zenith init</code></td>
-              <td><code>[name]</code></td>
-              <td>Scaffolds a clean starter <code>schema.zen</code> file in the current directory.</td>
-            </tr>
+            <tr><td><code>zenith init</code></td><td><code>[file.zen]</code></td><td>Create a starter schema (defaults to <code>schema.zen</code>).</td></tr>
+            <tr><td><code>zenith build</code></td><td><code>&lt;file.zen&gt; [-o|--output &lt;dir&gt;]</code></td><td>Generate a Spring Boot 3 application; output defaults to <code>generated-app</code>.</td></tr>
+            <tr><td><code>zenith validate</code></td><td><code>&lt;file.zen&gt;</code></td><td>Check schema syntax and semantics.</td></tr>
+            <tr><td><code>zenith inspect</code></td><td><code>&lt;file.zen&gt;</code></td><td>Show schema models and generated endpoints.</td></tr>
+            <tr><td><code>zenith watch</code></td><td><code>&lt;file.zen&gt; [-o|--output &lt;dir&gt;]</code></td><td>Build once, then regenerate when the schema or imported files change.</td></tr>
+            <tr><td><code>zenith studio</code></td><td><code>[file.zen] [-p|--port &lt;port&gt;] [--desktop|-d] [--pro]</code></td><td>Launch Studio in a browser or desktop window; default port is 3000.</td></tr>
+            <tr><td><code>zenith server add</code></td><td><code>&lt;name&gt; --host &lt;host&gt; --user &lt;user&gt; [--port &lt;port&gt;] [--key &lt;path&gt;]</code></td><td>Save an SSH server profile for deployment.</td></tr>
+            <tr><td><code>zenith server test</code></td><td><code>&lt;name&gt;</code></td><td>Test a saved server profile connection.</td></tr>
+            <tr><td><code>zenith server ls</code></td><td><em>none</em></td><td>List saved server profiles.</td></tr>
+            <tr><td><code>zenith deploy deploy</code></td><td><code>--server &lt;name&gt; [--dir &lt;app-dir&gt;]</code></td><td>Deploy an application directory (defaults to <code>generated-app</code>).</td></tr>
+            <tr><td><code>zenith deploy logs|status|restart</code></td><td><code>--server &lt;name&gt;</code></td><td>Stream remote logs, check status, or restart the remote app.</td></tr>
+            <tr><td><code>zenith doctor</code></td><td><em>none</em></td><td>Diagnose Java, Maven, Docker, and system environment.</td></tr>
+            <tr><td><code>zenith mcp</code></td><td><em>none</em></td><td>Start the MCP server over standard input/output for AI tools.</td></tr>
+            <tr><td><code>zenith version</code> / <code>--version</code> / <code>-v</code></td><td><em>none</em></td><td>Display the installed Zenith version.</td></tr>
+            <tr><td><code>zenith help</code> / <code>--help</code> / <code>-h</code></td><td><em>none</em></td><td>Show CLI usage and commands.</td></tr>
           </tbody>
         </table>
       </div>
@@ -219,6 +193,17 @@
         <li><strong>Visual Dependency Workflows (Community)</strong>: 2D DAG canvas, pin-to-pin wiring, AST auto-wiring, and step-by-step pipeline assertions.</li>
         <li><strong>Repository Tree &amp; One-Click Run</strong>: Inspect emitted Java files and boot the backend with one click.</li>
       </ul>
+
+      <div class="studio-demo">
+        <h3>Studio walkthrough: one-to-one API</h3>
+        <p>See the one-to-one ERD, generated Java files, Spring Boot startup, and ten live Account and Profile CRUD requests. The <a href="../zenith-exemples/one-to-one/main.zen">example schema</a> is included.</p>
+        <video controls preload="none" poster="assets/one-to-one-studio-demo-poster.jpg" aria-label="Narrated Zenith Studio one-to-one API walkthrough">
+          <source src="assets/one-to-one-studio-demo.mp4" type="video/mp4">
+          <track kind="captions" src="assets/one-to-one-studio-demo.en.vtt" srclang="en" label="English" default>
+          Your browser does not support embedded video. <a href="assets/one-to-one-studio-demo.mp4">Open or download the MP4</a>.
+        </video>
+        <p class="studio-demo-caption"><a href="assets/one-to-one-studio-demo.mp4">Open the video file</a></p>
+      </div>
 
       <div style="margin: 22px 0; padding: 18px 24px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
         <div>
@@ -326,6 +311,9 @@ zenith studio schema.zen --desktop</code></pre>
               <td><code>true</code></td>
               <td>Enables SpringDoc OpenAPI 3 UI on <code>/swagger-ui.html</code>.</td>
             </tr>
+            <tr><td><code>proxy</code></td><td><code>nginx</code> | <code>none</code></td><td><code>none</code></td><td>With <code>nginx</code>, generates <code>nginx/nginx.conf</code> and an Nginx reverse proxy/load balancer in Docker Compose.</td></tr>
+            <tr><td><code>replicas</code></td><td>Integer (1-100)</td><td><code>2</code></td><td>Number of Spring Boot app containers Nginx balances across when the proxy is enabled.</td></tr>
+            <tr><td><code>ssl</code></td><td>Boolean</td><td><code>false</code></td><td>Adds a <code>443:443</code> mapping to Nginx. TLS certificates and an HTTPS listener are not generated yet.</td></tr>
             <tr>
               <td><code>rateLimit</code></td>
               <td>String (Optional)</td>
@@ -403,9 +391,16 @@ zenith studio schema.zen --desktop</code></pre>
     <span class="syn-prop">storage</span>: <span class="syn-str">minio</span>
     <span class="syn-prop">flyway</span>: <span class="syn-kw">true</span>
     <span class="syn-prop">swagger</span>: <span class="syn-kw">true</span>
+    <span class="syn-prop">proxy</span>: <span class="syn-kw">nginx</span>
+    <span class="syn-prop">replicas</span>: <span class="syn-num">1</span>
+    <span class="syn-prop">ssl</span>: <span class="syn-kw">true</span>  <span class="syn-com">// Publishes port 443; TLS setup is not generated yet</span>
     <span class="syn-prop">rateLimit</span>: <span class="syn-str">"500/minute"</span>  <span class="syn-com">// Global baseline token-bucket rate limit (HTTP 429 on exhaustion)</span>
 }</code></pre>
       </div>
+
+      <h3 class="subsection-heading">Nginx reverse proxy and load balancing</h3>
+      <p>With <code>proxy: nginx</code>, Zenith generates <code>nginx/nginx.conf</code> and a Docker Compose Nginx service. It balances requests across the number of Spring Boot containers set by <code>replicas</code> using <code>least_conn</code>. The generated upstream targets container port <code>8080</code>; keep that app port or update <code>nginx/nginx.conf</code> if you change it. Run the stack with <code>docker compose up --build</code>; send HTTP requests through Nginx on port 80.</p>
+      <p><strong>HTTPS status:</strong> <code>ssl: true</code> currently publishes port <code>443</code> on the Nginx service, but the generated config only listens on port 80 and does not provision certificates or TLS directives. Configure certificates and an HTTPS server block before using HTTPS, or terminate TLS at an external load balancer and forward traffic to Nginx over HTTP.</p>
 
       <!-- 2. Types -->
       <h2 class="section-heading" id="types">2. Data Types &amp; Nullability</h2>
@@ -904,6 +899,42 @@ zenith studio schema.zen --desktop</code></pre>
         <p>
           Zenith compiles <code>var &lt;name&gt; = create &lt;Model&gt; { ... }</code> and <code>var &lt;name&gt; = update &lt;Model&gt; { ... }</code> into strongly-typed local variable assignments in Java. The returned entity from <code>repository.save()</code> is captured, enabling you to access database-generated primary keys (<code>id</code>), timestamps (<code>createdAt</code>), and relationship fields in downstream statements within the same atomic <code>@Transactional</code> boundary.
         </p>
+      </div>
+
+      <h3>Iterating over a list in an action</h3>
+      <p>
+        Use <code>for item : listExpression { ... }</code> inside an endpoint <code>action</code> to run the body once for each list value. The loop is sequential, and the item variable is available inside the loop body. This example creates one audit row per supplied user ID.
+      </p>
+      <div class="code-block-wrap">
+        <div class="code-block-header">
+          <span class="code-block-title">bulk_action.zen</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre class="code-content"><code><span class="syn-kw">dto</span> <span class="syn-type">BulkUserIdsRequest</span> {
+    <span class="syn-prop">ids</span>: <span class="syn-type">List</span>&lt;<span class="syn-type">UUID</span>&gt;
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">User</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> @id @auto
+    <span class="syn-prop">endpoints</span> {
+        <span class="syn-kw">post</span> <span class="syn-str">"/bulk-audit"</span> (body: <span class="syn-type">BulkUserIdsRequest</span>) -&gt; <span class="syn-type">Void</span> {
+            <span class="syn-prop">action</span>: {
+                <span class="syn-kw">for</span> userId : body.ids {
+                    <span class="syn-kw">var</span> audit = <span class="syn-syn-fn">create</span> <span class="syn-type">AuditEntry</span> {
+                        <span class="syn-prop">userId</span> = userId
+                        <span class="syn-prop">action</span> = <span class="syn-str">"BULK_PROCESSED"</span>
+                    }
+                }
+            }
+        }
+    }
+}
+
+<span class="syn-kw">model</span> <span class="syn-type">AuditEntry</span> {
+    <span class="syn-prop">id</span>: <span class="syn-type">UUID</span> @id @auto
+    <span class="syn-prop">userId</span>: <span class="syn-type">UUID</span>
+    <span class="syn-prop">action</span>: <span class="syn-type">String</span>
+}</code></pre>
       </div>
 
       <!-- 9. DTO -->

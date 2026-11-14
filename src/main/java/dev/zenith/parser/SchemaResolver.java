@@ -55,6 +55,9 @@ public class SchemaResolver {
         List<JobDef> allJobs = new ArrayList<>(rootFile.getJobs());
         List<MailDef> allMails = new ArrayList<>(rootFile.getMails());
         List<SocketDef> allSockets = new ArrayList<>(rootFile.getSockets());
+        List<EventDef> allEvents = new ArrayList<>(rootFile.getEvents());
+        List<StreamDef> allStreams = new ArrayList<>(rootFile.getStreams());
+        List<StreamConsumerDef> allConsumers = new ArrayList<>(rootFile.getConsumers());
         List<ImportDef> allImports = new ArrayList<>(rootFile.getImports());
 
         for (ImportDef imp : rootFile.getImports()) {
@@ -81,6 +84,9 @@ public class SchemaResolver {
                 allJobs.addAll(importedFile.getJobs());
                 allMails.addAll(importedFile.getMails());
                 allSockets.addAll(importedFile.getSockets());
+                allEvents.addAll(importedFile.getEvents());
+                allStreams.addAll(importedFile.getStreams());
+                allConsumers.addAll(importedFile.getConsumers());
             }
         }
 
@@ -89,7 +95,7 @@ public class SchemaResolver {
             finalConfig = AppConfig.defaults();
         }
 
-        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allJobs, allMails, allSockets, allImports, hasConfig);
+        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allJobs, allMails, allSockets, allEvents, allStreams, allConsumers, allImports, hasConfig);
     }
 
     public Set<Path> getResolvedFiles() {
@@ -138,6 +144,9 @@ public class SchemaResolver {
         List<JobDef> allJobs = new ArrayList<>(currentFile.getJobs());
         List<MailDef> allMails = new ArrayList<>(currentFile.getMails());
         List<SocketDef> allSockets = new ArrayList<>(currentFile.getSockets());
+        List<EventDef> allEvents = new ArrayList<>(currentFile.getEvents());
+        List<StreamDef> allStreams = new ArrayList<>(currentFile.getStreams());
+        List<StreamConsumerDef> allConsumers = new ArrayList<>(currentFile.getConsumers());
         List<ImportDef> allImports = new ArrayList<>(currentFile.getImports());
 
         Path currentDir = normalizedPath.getParent();
@@ -170,6 +179,9 @@ public class SchemaResolver {
                 allJobs.addAll(importedFile.getJobs());
                 allMails.addAll(importedFile.getMails());
                 allSockets.addAll(importedFile.getSockets());
+                allEvents.addAll(importedFile.getEvents());
+                allStreams.addAll(importedFile.getStreams());
+                allConsumers.addAll(importedFile.getConsumers());
             }
         }
 
@@ -181,6 +193,6 @@ public class SchemaResolver {
             finalConfig = AppConfig.defaults();
         }
 
-        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allJobs, allMails, allSockets, allImports, hasConfig);
+        return new ZenithFile(finalConfig, allEnums, allModels, allDtos, allSeeds, allJobs, allMails, allSockets, allEvents, allStreams, allConsumers, allImports, hasConfig);
     }
 }

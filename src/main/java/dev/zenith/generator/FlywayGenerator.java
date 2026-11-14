@@ -11,6 +11,9 @@ import java.util.Set;
 public class FlywayGenerator {
 
     public static JavaSourceFile generate(ZenithFile file) {
+        if (!file.getConfig().isFlywayEnabled()) {
+            throw new IllegalStateException("FlywayGenerator requires Flyway to be enabled");
+        }
         String configuredDb = file.getConfig().getDatabase() != null ? file.getConfig().getDatabase().toLowerCase() : "postgres";
         boolean isMysql = "mysql".equals(configuredDb) || "mariadb".equals(configuredDb);
 
@@ -67,19 +70,27 @@ public class FlywayGenerator {
 
             // Foreign key columns for ManyToOne / OneToOne relations
             for (RelationDef rel : model.getRelations()) {
-                if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
+                boolean inverseOneToOne = rel.getRelationType() == RelationType.ONE_TO_ONE
+                        && rel.getMappedBy() != null && !rel.getMappedBy().isBlank();
+                if (!inverseOneToOne && (rel.getRelationType() == RelationType.MANY_TO_ONE
+                        || rel.getRelationType() == RelationType.ONE_TO_ONE)) {
                     String fkCol = TypeHelper.toSnakeCase(rel.getFieldName()) + "_id";
                     String fkSqlType = resolveTargetSqlIdType(rel.getTargetModel(), file, isMysql);
                     StringBuilder colDef = new StringBuilder("    ").append(fkCol).append(" ").append(fkSqlType);
                     if (!rel.isOptional()) {
                         colDef.append(" NOT NULL");
                     }
+                    if (rel.getRelationType() == RelationType.ONE_TO_ONE) {
+                        colDef.append(" UNIQUE");
+                    }
                     colDefs.add(colDef.toString());
 
                     String targetTable = TypeHelper.toSnakeCase(TypeHelper.pluralize(rel.getTargetModel()));
                     String fkName = "fk_" + tableName + "_" + fkCol;
                     foreignKeyStatements.add("ALTER TABLE " + tableName + " ADD CONSTRAINT " + fkName + " FOREIGN KEY (" + fkCol + ") REFERENCES " + targetTable + " (id) ON DELETE SET NULL;");
-                    addAutoIndex(indexStatements, indexedSignatures, tableName, fkCol, isMysql);
+                    if (rel.getRelationType() != RelationType.ONE_TO_ONE) {
+                        addAutoIndex(indexStatements, indexedSignatures, tableName, fkCol, isMysql);
+                    }
                 }
             }
 

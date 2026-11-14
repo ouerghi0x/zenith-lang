@@ -10,7 +10,7 @@
   <!-- Monaco Editor Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
   <link rel="icon" type="image/png" href="logo.png" />
-  <link rel="stylesheet" href="/studio.css?v=20261112_v11" />
+  <link rel="stylesheet" href="/studio.css?v=20261114_v20" />
 </head>
 <body>
   <!-- Header -->
@@ -100,6 +100,19 @@
         </div>
       </div>
 
+      <div class="workspace-layout-switcher" id="workspaceLayoutSwitcher">
+        <button class="btn btn-secondary workspace-layout-button" onclick="toggleLayoutPresetDropdown(event)" title="Switch workspace layout">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>
+          <span id="currentPresetLabel">Standard 1:1</span>
+        </button>
+        <div class="workspace-layout-menu" id="layoutPresetMenu">
+          <button id="presetItemStandard" onclick="applyLayoutPreset('standard')">Standard 1:1</button>
+          <button id="presetItemDualSchema" onclick="applyLayoutPreset('dual_schema')">Dual Schema</button>
+          <button id="presetItemHorizontal" onclick="applyLayoutPreset('horizontal')">Horizontal Stack</button>
+          <button id="presetItemQuad" onclick="applyLayoutPreset('quad')">Quad Multi-Grid</button>
+        </div>
+      </div>
+
       <!-- Hidden testBtn for programmatic backwards compatibility -->
       <button id="testBtn" style="display: none;" onclick="toggleRunTests()">
         <span id="testBtnText">Test</span>
@@ -136,6 +149,7 @@
         <div class="pane-actions" style="display:flex; align-items:center; gap:8px;">
           <span class="save-status" id="saveStatus" style="font-size: 11px; color: #a1a1aa;"><span style="color:#22c55e">✓</span> Saved</span>
           <span class="compile-badge" id="compileTimeBadge">Compiled in 12ms</span>
+          <button class="btn btn-ghost service-companion-toggle" id="serviceCompanionToggle" onclick="toggleServiceMethodCompanion()" title="Preview generated code for the custom API at the cursor" aria-pressed="false">API Preview</button>
           <button class="btn btn-ghost" onclick="resetToDefaultSchema()" title="Reset to default example" style="padding: 2px 7px; font-size: 11px; border: 1px solid #27272a; border-radius: 4px; color: #a1a1aa; cursor: pointer; background: transparent;">Reset</button>
           <button class="pane-action-btn" onclick="togglePreviewPane()" title="Maximize Editor / Hide Preview (Alt+])" id="togglePreviewBtn">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -186,6 +200,22 @@
 
     <!-- Draggable Resizer Bar (VS Code style) -->
     <div class="pane-resizer" id="paneResizer" title="Drag to resize panels (Double-click to reset 50/50)"></div>
+
+    <section class="pane editor-pane editor-pane-secondary" id="editorPane2" style="display:none">
+      <div class="pane-header">
+        <div class="editor-tabs-bar"><div class="file-tab active"><span id="currentFileName2">schema.zen</span><span class="tab-badge-imported">SPLIT</span></div></div>
+        <div class="pane-actions"><button class="pane-action-btn" onclick="closeSplitPane('editor2')" title="Close split editor (Ctrl+W)">×</button></div>
+      </div>
+      <div class="editor-content-layout">
+        <aside class="editor-vertical-tabs">
+          <div class="vertical-tabs-header"><span class="vertical-tabs-title">FILES</span></div>
+          <div class="vertical-tabs-list" id="verticalTabsList2"></div>
+        </aside>
+        <div class="editor-monaco-wrap"><div id="monacoEditorContainer2" class="editor-container"></div></div>
+      </div>
+    </section>
+    <div class="workspace-splitter workspace-splitter-vertical" id="editorSplitter" title="Drag to resize editors; double-click to reset"></div>
+    <div class="workspace-splitter workspace-splitter-horizontal" id="layoutHorizontalSplitter" title="Drag to resize rows; double-click to reset"></div>
 
     <!-- Right Pane: Output Views -->
     <section class="pane preview-pane" id="previewPane">
@@ -313,7 +343,7 @@
                       <text x="16" y="11.5" fill="#38bdf8" font-size="8" font-weight="900" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, monospace" text-anchor="middle" letter-spacing="-0.5">HTTP</text>
                     </svg>
                   </button>
-                  <button class="btn-proto-add btn-add-ws" onclick="addWsTestWindow()" title="Add WebSocket Client Window">
+                  <button class="btn-proto-add btn-add-ws" onclick="addWsTestWindow()" title="Add WebSocket Listener Window">
                     <span class="plus-glyph">+</span>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="proto-svg">
                       <path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/>
@@ -367,8 +397,12 @@
 
               <div class="wf-top-center">
                 <button class="btn wf-magic-btn" id="btnAutoWireAst" onclick="triggerAstAutoWire()" title="Automatically deduce and connect dependencies using Zenith Schema AST relationships and Auth">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-                  <span>Auto-Wire (Zenith AST)</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="5" cy="19" r="3"></circle>
+                    <circle cx="19" cy="5" r="3"></circle>
+                    <path d="M5 16V12a4 4 0 0 1 4-4h6"></path>
+                    <path d="M18 14v4M16 16h4"></path>
+                  </svg>
                 </button>
                 <button class="btn btn-secondary wf-toolbar-btn" onclick="clearAllWorkflowWires()" title="Disconnect all wires to manually connect APIs from scratch">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -624,6 +658,17 @@
                 <span class="docker-daemon-dot" id="dockerDaemonDot" title="Checking Docker engine status..."></span>
               </div>
               <div class="docker-ide-subbar-right">
+                <!-- SSH Deployment Controls -->
+                <div class="deployment-controls" style="display:flex; align-items:center; gap:8px;">
+                  <select id="serverSelect" class="ide-action-btn" style="padding: 2px 8px; border-radius: 4px; background: #27272a; border: 1px solid #3f3f46; color: white;">
+                    <option value="">Select Server...</option>
+                  </select>
+                  <button class="ide-action-btn" onclick="runSshAction('deploy')" title="Deploy to selected server">Deploy</button>
+                  <button class="ide-action-btn" onclick="runSshAction('logs')" title="Stream Logs">Logs</button>
+                  <button class="ide-action-btn" onclick="runSshAction('status')" title="Check Status">Status</button>
+                  <button class="ide-action-btn" onclick="runSshAction('restart')" title="Restart">Restart</button>
+                </div>
+                <div class="ide-divider"></div>
                 <button class="ide-action-btn" onclick="runDockerAction('build')" title="Build application image (docker build)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
                   <span>Build Image</span>
@@ -814,6 +859,14 @@
                 </div>
               </div>
 
+              <!-- VS Code-style command prompt stays at the top of the terminal. -->
+              <div class="terminal-prompt-bar">
+                <span class="terminal-prompt-label" id="terminalPromptDisplay">workspace ❯</span>
+                <div class="terminal-input-wrap">
+                  <input type="text" id="terminalInput" class="terminal-input" placeholder="Type a command and press Enter..." autocomplete="off" spellcheck="false" aria-label="Terminal command" onkeydown="handleTerminalKeydown(event)">
+                </div>
+              </div>
+
               <!-- Terminal Output Viewport -->
               <div class="terminal-box-container">
                 <div class="terminal-viewport" id="terminalOutput">
@@ -825,17 +878,6 @@
                 </button>
               </div>
 
-              <!-- Interactive Prompt Input Bar -->
-              <div class="terminal-prompt-bar">
-                <span class="terminal-prompt-label" id="terminalPromptDisplay">workspace ❯</span>
-                <div class="terminal-input-wrap">
-                  <input type="text" id="terminalInput" class="terminal-input" placeholder="Type shell command (e.g. mvn test, git status, curl)..." autocomplete="off" spellcheck="false" onkeydown="handleTerminalKeydown(event)">
-                </div>
-                <button class="btn btn-primary terminal-send-btn" id="terminalSendBtn" onclick="submitTerminalCommand()" title="Execute command (Enter)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                  <span>Run</span>
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -978,18 +1020,15 @@
                 <span class="notes-status" id="notesSaveStatus">Saved</span>
               </div>
               <div class="notes-toolbar-right">
-                <span class="notes-stats" id="notesStats">0 words • 0 chars</span>
+                <span class="notes-stats" id="notesStats">0 w • 0 c</span>
                 <button class="btn btn-ghost notes-action-btn" onclick="copyNotesToClipboard()" title="Copy all markdown text">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                  Copy
                 </button>
                 <button class="btn btn-ghost notes-action-btn" onclick="downloadNotesAsMarkdown()" title="Export notes as markdown file">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                  Export .md
                 </button>
                 <button class="btn btn-ghost notes-action-btn" onclick="clearNotes()" title="Clear all notes">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                  Clear
                 </button>
               </div>
             </div>
@@ -1050,8 +1089,9 @@
           <a href="#ref-mcp" class="guide-pill">18. Zenith MCP Server</a>
           <a href="#ref-micro-engine" class="guide-pill">19. Core Micro-Engine</a>
           <a href="#ref-sockets" class="guide-pill">20. WebSockets &amp; Real-Time</a>
-          <a href="#ref-api-tester" class="guide-pill">21. Interactive API Tester</a>
-          <a href="#ref-workflows" class="guide-pill">22. Dependency Workflows</a>
+          <a href="#ref-streams" class="guide-pill">21. Kafka &amp; RabbitMQ Streams</a>
+          <a href="#ref-api-tester" class="guide-pill">22. Interactive API Tester</a>
+          <a href="#ref-workflows" class="guide-pill">23. Dependency Workflows</a>
         </div>
 
         <!-- 1. Configuration Block -->
@@ -1122,11 +1162,20 @@
                 <td><code>false</code></td>
                 <td>Generates OpenAPI 3.0 / Swagger UI documentation at <code>/swagger-ui.html</code>. Disabled by default; explicitly opt-in with <code>swagger: true</code>.</td>
               </tr>
+              <tr><td><code>proxy</code></td><td><code>Identifier</code></td><td><code>none</code></td><td>Set to <code>nginx</code> to generate an Nginx reverse proxy and load balancer in Docker Compose.</td></tr>
+              <tr><td><code>replicas</code></td><td><code>Int</code> (1-100)</td><td><code>2</code></td><td>Number of generated Spring Boot app containers behind Nginx.</td></tr>
+              <tr><td><code>ssl</code></td><td><code>Boolean</code></td><td><code>false</code></td><td>Publishes port <code>443</code> on the Nginx service. TLS certificates and an HTTPS listener are not generated yet.</td></tr>
               <tr>
                 <td><code>flyway</code></td>
                 <td><code>Boolean</code></td>
                 <td><code>false</code></td>
                 <td>Generates Flyway database migration scripts (<code>V1__initial_schema.sql</code>). Disabled by default; explicitly opt-in with <code>flyway: true</code>.</td>
+              </tr>
+              <tr>
+                <td><code>outbox</code></td>
+                <td><code>Boolean</code></td>
+                <td><code>false</code></td>
+                <td>Enables Spring Modulith's JDBC event publication registry and publishes typed create events for generated CRUD resources. Use transactional listeners such as <code>@ApplicationModuleListener</code>; delivery can repeat. Not compatible with <code>flyway: true</code> in this initial implementation.</td>
               </tr>
               <tr>
                 <td><code>storage</code></td>
@@ -1207,11 +1256,17 @@
     jwtSecret: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" // optional min 32 chars
     jwtExpiration: 86400000  // optional token validity in ms (default: 24h)
     swagger: true            // true | false (default: false; opt-in OpenAPI 3.0)
+    proxy: nginx             // generate Nginx reverse proxy/load balancer
+    replicas: 1              // Spring Boot containers behind Nginx (1-100)
+    ssl: true                // publishes port 443; TLS configuration is not generated yet
     flyway: true             // true | false (default: false; opt-in Flyway DDL migrations)
+    outbox: false            // true | false; Spring Modulith JDBC registry (requires flyway: false)
     storage: minio           // minio (local dev) | s3 (AWS cloud)
     storageBucket: "taskpulse-uploads"
     rateLimit: "500/minute"  // optional global fallback token-bucket rate limit
 }</code></pre>
+
+        <p class="guide-note"><strong>Nginx:</strong> <code>proxy: nginx</code> generates the Nginx Compose service and <code>nginx/nginx.conf</code>, which balances requests across <code>replicas</code> app containers using <code>least_conn</code>. HTTP is served on port 80, and the generated upstream targets app port 8080. Keep <code>port: 8080</code> or update <code>nginx/nginx.conf</code> if you change it. <code>ssl: true</code> currently publishes port 443 only; the generated config does not include TLS listeners or certificates. Add those before using HTTPS, or terminate TLS at an external load balancer.</p>
 
         <!-- 2. Data Types -->
         <h3 class="guide-section-title" id="ref-types">2. Data Types <span class="guide-badge">types</span></h3>
@@ -1971,6 +2026,34 @@ dto OrderSummaryResponse {
     totalAmount: Decimal
     status: OrderStatus
     customerId: UUID?                 // Automatically mapped from entity.customer.id
+}</code></pre>
+
+        <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Bulk Actions with For Loops</h4>
+        <p style="font-size: 12px; margin-bottom: 8px;">Use <code>for item : listExpression { ... }</code> inside an endpoint action to run the body once for each list value. Iteration is sequential, and the item variable is scoped to the loop body. This example creates one audit row per supplied user ID.</p>
+        <pre class="guide-code"><code>dto BulkUserIdsRequest {
+    ids: List&lt;UUID&gt;
+}
+
+model User {
+    id: UUID @id @auto
+    endpoints {
+        post "/bulk-process" (body: BulkUserIdsRequest) -&gt; Void {
+            action: {
+                for userId : body.ids {
+                    var audit = create AuditEntry {
+                        userId = userId
+                        action = "PROCESSED"
+                    }
+                }
+            }
+        }
+    }
+}
+
+model AuditEntry {
+    id: UUID @id @auto
+    userId: UUID
+    action: String
 }</code></pre>
 
         <h4 style="font-size: 12px; font-weight: 600; color: #93c5fd; margin: 14px 0 6px;">Custom DTO Return Types on Endpoints &amp; Automatic Field Mapping</h4>
@@ -2890,49 +2973,144 @@ model CatalogItem {
               <tr>
                 <td><code>sendToUser (id, queue) { ... }</code></td>
                 <td>Action Side-Effect</td>
-                <td>Pushes a private peer-to-peer message to a specific authenticated user's private queue (e.g. <code>/user/{id}/queue/messages</code>).</td>
+                <td>Pushes a private message to the recipient ID's user destination, such as <code>/user/queue/messages</code>.</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <pre class="guide-code"><code>// Declarative WebSocket STOMP Broker
+        <pre class="guide-code"><code>// Declare the STOMP endpoint and broadcast topic
 socket ChatSocket {
     endpoint: "/ws"
     topic: "/topic/chat"
     broker: "simple"
 }
 
-// Emitting real-time events inside custom actions
-POST /rooms/{id}/messages(body: SendMessageDto) {
-    guard: body.content.length > 0, "Message cannot be empty"
+enum MessageType {
+    CHAT, JOIN, LEAVE
+}
 
-    // 1. Persist message in database
-    var msg = ChatMessage.create({
-        content: body.content,
-        roomId: path.id,
-        senderId: auth.userId
-    })
+dto MessageDto {
+    senderId: UUID
+    recipientId: UUID
+    text: String
+}
 
-    // 2. Broadcast to all active subscribers in room
-    broadcast "/topic/rooms/" + path.id {
-        id: msg.id,
-        content: msg.content,
-        senderId: msg.senderId,
-        sentAt: now()
+model ChatMessage {
+    id: UUID @id @auto
+    content: String(min = 1, max = 1000)
+    type: MessageType = CHAT
+    createdAt: DateTime @autoNow
+
+    endpoints {
+        post "/{id}/send" -> ChatMessageResponse {
+            description: "Broadcasts a saved message to chat subscribers"
+            guard: content != null &amp;&amp; content != "", "Message content cannot be empty"
+            action: {
+                broadcast "/topic/chat" {
+                    id = entity.id,
+                    content = entity.content,
+                    type = entity.type,
+                    createdAt = entity.createdAt
+                }
+            }
+        }
+
+        post "/direct" (body: MessageDto) -> void {
+            description: "Sends a direct message to a user queue"
+            action: {
+                sendToUser (body.recipientId, "/user/queue/messages") {
+                    id = body.recipientId,
+                    content = body.text,
+                    senderId = body.senderId
+                }
+            }
+        }
     }
-
-    // 3. Send direct push notification to room owner
-    sendToUser (room.ownerId, "/queue/notifications") {
-        title: "New activity in your room",
-        preview: body.content
-    }
-
-    return 201 msg
 }</code></pre>
 
-        <!-- 21. Interactive API Tester & Simulator -->
-        <h3 class="guide-section-title" id="ref-api-tester">21. Interactive API Tester &amp; Simulator <span class="guide-badge">tester</span></h3>
+        <!-- 21. Native Kafka and RabbitMQ Streams -->
+        <h3 class="guide-section-title" id="ref-streams">21. Native Kafka &amp; RabbitMQ Streams <span class="guide-badge">stream</span></h3>
+        <p style="font-size: 12px; margin-bottom: 8px;">Declare immutable events, broker destinations, and consumers in Zenith. The compiler generates typed event records and publisher/consumer classes, binder configuration, and an AsyncAPI contract. <strong>Kafka and RabbitMQ streaming are not yet fully tested end to end.</strong></p>
+        <pre class="guide-code"><code>config {
+    app: "CareService"
+    package: "com.example.care"
+    broker: kafka
+    outbox: true
+    flyway: false
+}
+
+event PatientDischargedEvent {
+    patientId: UUID
+    dischargedAt: DateTime
+    reason: String?
+}
+
+stream PatientDischargedStream {
+    topic: "healthcare.patients.discharged.v1"
+    payload: PatientDischargedEvent
+    partitions: 6
+}</code></pre>
+        <pre class="guide-code"><code>model Patient {
+    id: UUID @id @auto
+    status: String
+
+    endpoints {
+        post "/{id}/discharge" -&gt; Void {
+            action {
+                status = "DISCHARGED"
+                publish PatientDischargedStream(patientId = id, dischargedAt = now())
+            }
+        }
+    }
+}</code></pre>
+        <p style="font-size: 12px; margin: 8px 0;">A Kafka consumer uses <code>subscribe</code>; its action currently supports logging a payload field. For example:</p>
+        <pre class="guide-code"><code>subscribe OrderAuditConsumer {
+    from: OrderConfirmedStream
+    group: "order-audit"
+    concurrency: 2
+    retry {
+        maxAttempts: 5
+        backoff: 2s
+        multiplier: 2
+        maxBackoff: 30s
+    }
+    deadLetter: "commerce.orders.confirmed.dlq.v1"
+    action {
+        log payload.orderNumber
+    }
+}</code></pre>
+        <p style="font-size: 12px; margin: 8px 0;">For RabbitMQ, set <code>broker: rabbitmq</code> and declare a stream with <code>topic</code> and <code>payload</code>; omit Kafka-only <code>partitions</code>. The generated Compose file includes ZooKeeper and Kafka (host port 9092; API containers connect to <code>kafka:29092</code>) or RabbitMQ Management (ports 5672 and 15672). Run <code>docker compose up --build</code> to start the local stack. A service supports one broker type. Configure production endpoints and credentials through the environment.</p>
+        <pre class="guide-code"><code>config {
+    app: "NotificationService"
+    package: "com.example.notifications"
+    broker: rabbitmq
+}
+
+event AppointmentReminderEvent {
+    appointmentId: UUID
+    recipient: String
+    scheduledAt: DateTime
+}
+
+stream AppointmentReminderStream {
+    topic: "appointments.reminders.v1"
+    payload: AppointmentReminderEvent
+}</code></pre>
+        <div class="table-container">
+          <table class="guide-table">
+            <thead><tr><th>Generated artifact</th><th>Behavior</th></tr></thead>
+            <tbody>
+              <tr><td>Event record</td><td>Immutable typed payload with generated UUID event ID, <code>EventName.v1</code> type, and occurrence timestamp defaults.</td></tr>
+              <tr><td>Typed publisher</td><td>Per-stream adapter backed by Spring Cloud Stream <code>StreamBridge</code>.</td></tr>
+              <tr><td>AsyncAPI</td><td>Versioned contract at <code>docs/asyncapi.yaml</code>; no runtime Schema Registry is implied.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;"><strong>Outbox and Flyway:</strong> Set <code>outbox: true</code> to record the pending event publication in Spring Modulith's JDBC registry within the business database transaction; the relay sends it after commit. Duplicate delivery is still possible, so consumers should be idempotent. This sample sets <code>flyway: false</code>; create the publication registry tables with your own migration or database setup before startup. Without outbox, after-commit publishing is best-effort. <strong>Not yet fully tested:</strong> End-to-end Kafka and RabbitMQ delivery, including retries and dead-letter handling, still needs broader testing. Zenith does not automatically provision broker topology. See <a href="/docs/native-streaming.md" target="_blank" rel="noopener noreferrer">the complete streaming guide</a>.</p>
+
+        <!-- 22. Interactive API Tester & Simulator -->
+        <h3 class="guide-section-title" id="ref-api-tester">22. Interactive API Tester &amp; Simulator <span class="guide-badge">tester</span></h3>
         <p style="font-size: 12px; margin-bottom: 8px;">The Zenith Studio API Tester provides an integrated multi-window testing canvas where HTTP REST requests and WebSocket real-time streams coexist side-by-side, enabling full-cycle integration testing without external tools.</p>
 
         <div class="table-container">
@@ -2972,8 +3150,8 @@ POST /rooms/{id}/messages(body: SendMessageDto) {
               </tr>
               <tr>
                 <td><strong>STOMP Stream Viewer</strong></td>
-                <td>Connect / Subscribe / Send</td>
-                <td>Live color-coded STOMP frame inspector showing incoming/outgoing frames, subscription acknowledgments, headers, and payload latency.</td>
+                <td>Connect / Add subscription / Listen</td>
+                <td>Listen to user-entered STOMP destinations, add or remove subscriptions while connected, and inspect incoming messages and connection frames.</td>
               </tr>
             </tbody>
           </table>
@@ -3036,6 +3214,11 @@ POST /rooms/{id}/messages(body: SendMessageDto) {
       </div>
     </section>
 
+    <section class="pane preview-pane preview-pane-secondary" id="previewPane2" style="display:none">
+      <div class="pane-header preview-pane-header preview-secondary-header"><span id="previewPane2Title">Console</span></div>
+      <div class="preview-content" id="previewContent2"></div>
+    </section>
+
     <!-- Floating restore pills when a pane is collapsed -->
     <button class="pane-restore-docked restore-left" onclick="toggleEditorPane(false)" title="Restore Editor Pane (Split View)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
@@ -3047,6 +3230,26 @@ POST /rooms/{id}/messages(body: SendMessageDto) {
     </button>
   </div>
 
-  <script src="/studio.js?v=20261112_v11"></script>
+  <section id="serviceMethodCompanion" class="service-companion" aria-label="Generated API method" aria-hidden="true">
+    <header id="serviceCompanionHeader" class="service-companion-header">
+      <div class="service-companion-heading">
+        <strong id="serviceCompanionKind">API Method</strong>
+        <span id="serviceCompanionTitle">Action preview</span>
+      </div>
+      <div class="service-companion-controls">
+        <button type="button" id="serviceCompanionOpenTree" title="Open this method in Repository Tree" aria-label="Open in Repository Tree" onclick="openCompanionMethodInRepositoryTree()">Open</button>
+        <button type="button" title="Minimize API method panel" aria-label="Minimize API method panel" onclick="minimizeServiceMethodCompanion()">−</button>
+        <button type="button" title="Close API method panel" aria-label="Close API method panel" onclick="closeServiceMethodCompanion()">×</button>
+      </div>
+    </header>
+    <div class="service-companion-status" id="serviceCompanionStatus" role="status" aria-live="polite">Place the cursor inside a custom API to preview its controller method.</div>
+    <div id="serviceCompanionEditor" class="service-companion-editor"></div>
+    <div id="serviceCompanionError" class="service-companion-error" hidden>
+      <span id="serviceCompanionErrorText"></span>
+      <button type="button" onclick="jumpToServiceCompanionError()">Go to error</button>
+    </div>
+    <div class="service-companion-resize" title="Resize controller method panel" aria-hidden="true"></div>
+  </section>
+  <script src="/studio.js?v=20261114_v20"></script>
 </body>
 </html>

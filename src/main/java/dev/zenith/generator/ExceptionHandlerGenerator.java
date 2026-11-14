@@ -14,9 +14,26 @@ public class ExceptionHandlerGenerator {
 
         list.add(generateResourceNotFoundException(basePkg, pkgDir));
         list.add(generateErrorResponse(basePkg, pkgDir));
+        list.add(generateZenithBusinessException(basePkg, pkgDir));
         list.add(generateGlobalExceptionHandler(basePkg, pkgDir, file.hasAuth()));
 
         return list;
+    }
+
+    private static JavaSourceFile generateZenithBusinessException(String basePkg, String pkgDir) {
+        String content = "package " + basePkg + ".exception;\n\n" +
+                "public class ZenithBusinessException extends RuntimeException {\n" +
+                "    private final String errorCode;\n" +
+                "    private final int status;\n\n" +
+                "    public ZenithBusinessException(String errorCode, int status, String message) {\n" +
+                "        super(message);\n" +
+                "        this.errorCode = errorCode;\n" +
+                "        this.status = status;\n" +
+                "    }\n\n" +
+                "    public String getErrorCode() { return errorCode; }\n" +
+                "    public int getStatus() { return status; }\n" +
+                "}\n";
+        return new JavaSourceFile(pkgDir + "ZenithBusinessException.java", content);
     }
 
     private static JavaSourceFile generateResourceNotFoundException(String basePkg, String pkgDir) {
@@ -57,6 +74,7 @@ public class ExceptionHandlerGenerator {
         sb.append("package ").append(basePkg).append(".exception;\n\n");
         sb.append("import org.springframework.http.HttpStatus;\n");
         sb.append("import org.springframework.http.ResponseEntity;\n");
+        sb.append("import org.springframework.http.ProblemDetail;\n");
         sb.append("import org.springframework.validation.FieldError;\n");
         sb.append("import org.springframework.web.bind.MethodArgumentNotValidException;\n");
         sb.append("import org.springframework.web.bind.annotation.ExceptionHandler;\n");
@@ -66,9 +84,20 @@ public class ExceptionHandlerGenerator {
             sb.append("import org.springframework.security.core.AuthenticationException;\n");
         }
         sb.append("import java.util.HashMap;\n");
-        sb.append("import java.util.Map;\n\n");
+        sb.append("import java.util.Map;\n");
+        sb.append("import jakarta.servlet.http.HttpServletRequest;\n\n");
         sb.append("@RestControllerAdvice\n");
         sb.append("public class GlobalExceptionHandler {\n\n");
+        sb.append("    @ExceptionHandler(ZenithBusinessException.class)\n");
+        sb.append("    public ProblemDetail handleBusinessException(ZenithBusinessException ex, HttpServletRequest request) {\n");
+        sb.append("        org.springframework.http.HttpStatusCode status = org.springframework.http.HttpStatusCode.valueOf(ex.getStatus());\n");
+        sb.append("        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, ex.getMessage());\n");
+        sb.append("        problem.setTitle(\"Business error\");\n");
+        sb.append("        problem.setProperty(\"errorCode\", ex.getErrorCode());\n");
+        sb.append("        problem.setProperty(\"path\", request.getRequestURI());\n");
+        sb.append("        problem.setProperty(\"timestamp\", java.time.Instant.now().toString());\n");
+        sb.append("        return problem;\n");
+        sb.append("    }\n\n");
         sb.append("    @ExceptionHandler(ResourceNotFoundException.class)\n");
         sb.append("    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {\n");
         sb.append("        ErrorResponse error = ErrorResponse.of(HttpStatus.NOT_FOUND.value(), ex.getMessage());\n");

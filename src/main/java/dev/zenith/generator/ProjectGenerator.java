@@ -63,6 +63,8 @@ public class ProjectGenerator {
             files.addAll(WebSocketGenerator.generate(file));
         }
 
+        if (file.hasStreamIntegration()) files.addAll(StreamGenerator.generate(file));
+
         // 5. Enums
         for (EnumDef e : file.getEnums()) {
             files.add(EnumGenerator.generate(e, file));
@@ -202,6 +204,31 @@ public class ProjectGenerator {
         sb.append("mvn spring-boot:run\n");
         sb.append("```\n\n");
         sb.append("Server will start on port `").append(file.getConfig().getPort()).append("`.\n\n");
+
+        if (file.getConfig().isOutboxEnabled()) {
+            sb.append("## Transactional Events\n\n");
+            sb.append("Generated CRUD create methods publish a typed `<Model>CreatedEvent` inside the database transaction. ");
+            sb.append("The Spring Modulith JDBC registry persists delivery records for matching `@ApplicationModuleListener` methods. ");
+            sb.append("Add listeners explicitly; publishing without a matching transactional listener does not create a durable standalone event record. ");
+            sb.append("Listener delivery can repeat after failure or restart, so handlers must be idempotent.\n\n");
+            sb.append("```java\n");
+            sb.append("@Component\n");
+            sb.append("class OrderEventHandler {\n");
+            sb.append("    @ApplicationModuleListener\n");
+            sb.append("    void on(OrderCreatedEvent event) {\n");
+            sb.append("        // Handle the committed event. Make side effects idempotent.\n");
+            sb.append("    }\n");
+            sb.append("}\n");
+            sb.append("```\n\n");
+            sb.append("The initial generator uses Spring Modulith schema initialization and requires `flyway: false`.\n\n");
+        }
+
+        if (file.hasConsumers()) {
+            sb.append("## Stream Consumers\n\n");
+            sb.append("Consumers are generated as typed Spring Cloud Function `Consumer<Event>` beans. Their binding group controls broker load balancing; replicas in the same group share work, while a different group receives its own copy. Configured retries use the declared backoff, and a configured dead-letter destination receives messages after retries are exhausted (Kafka topic or RabbitMQ DLQ).\n\n");
+            sb.append("Broker delivery is at least once where the selected binder supports retry/DLQ, so a handler can run more than once. Keep side effects idempotent. The current consumer action subset supports `log payload.field`; application-specific database mutation actions are not generated yet.\n\n");
+            sb.append("Spring Modulith's transactional outbox is separate: it records transactional application events for publication after commit, while broker consumer acknowledgements, retries, and dead-letter routing are controlled by Spring Cloud Stream. Enabling the outbox does not make a consumer handler's database work and broker acknowledgement one atomic transaction.\n\n");
+        }
 
         if (file.getConfig().isSwaggerEnabled()) {
             sb.append("### 2. Interactive Swagger UI (OpenAPI 3)\n\n");

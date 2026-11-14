@@ -62,6 +62,10 @@ public class E2ETestSuiteRunner {
             Feature27TraceabilityTest.main(new String[0]);
             return;
         }
+        if (selectedFeature == 35) {
+            Feature35RemoteSshDeploymentTest.main(new String[0]);
+            return;
+        }
 
         System.out.println(BOLD + CYAN + "================================================================================" + RESET);
         System.out.println(BOLD + CYAN + "    Zenith Feature #1: Action Variable Binding (var x = create / update)         " + RESET);

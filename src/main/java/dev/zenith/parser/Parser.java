@@ -12,10 +12,10 @@ public class Parser {
     private final String sourceFile;
 
     private static final Set<String> ALLOWED_CONFIG_KEYS = Set.of(
-            "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "storage", "storagebucket",
+            "app", "package", "basepath", "port", "database", "auth", "swagger", "flyway", "outbox", "storage", "storagebucket",
             "usermodel", "jwtsecret", "jwtexpiration", "ratelimit", "mail", "mailprovider", "mailfrom", "cache",
             "cacheprovider", "cachettl",
-            "mailport", "mailhost", "mailusername", "mailpassword", "proxy", "replicas", "ssl"
+            "mailport", "mailhost", "mailusername", "mailpassword", "proxy", "replicas", "ssl", "broker", "brokerurl"
     );
 
     public Parser(List<Token> tokens) {
@@ -37,6 +37,9 @@ public class Parser {
         List<JobDef> jobs = new ArrayList<>();
         List<MailDef> mails = new ArrayList<>();
         List<SocketDef> sockets = new ArrayList<>();
+        List<EventDef> events = new ArrayList<>();
+        List<StreamDef> streams = new ArrayList<>();
+        List<StreamConsumerDef> consumers = new ArrayList<>();
         while (!isAtEnd()) {
             Token tok = peek();
             if (tok.getType() == TokenType.CONFIG) {
@@ -62,9 +65,15 @@ public class Parser {
                 mails.add(parseMail());
             } else if (tok.getType() == TokenType.SOCKET) {
                 sockets.add(parseSocket());
+            } else if (tok.getType() == TokenType.EVENT) {
+                events.add(parseEvent());
+            } else if (tok.getType() == TokenType.STREAM) {
+                streams.add(parseStream());
+            } else if (tok.getType() == TokenType.SUBSCRIBE) {
+                consumers.add(parseStreamConsumer());
             } else {
                 throw error(tok,
-                        "Expected 'import', 'config', 'enum', 'model', 'dto', 'seed', 'job', 'mail', or 'socket' but found '"
+                        "Expected a declaration (including event, stream, or subscribe) but found '"
                                 + tok.getValue()
                                 + "'");
             }
@@ -75,7 +84,119 @@ public class Parser {
             config = AppConfig.defaults();
         }
 
-        return new ZenithFile(config, enums, models, dtos, seeds, jobs, mails, sockets, imports, explicitConfig);
+        return new ZenithFile(config, enums, models, dtos, seeds, jobs, mails, sockets, events, streams, consumers, imports, explicitConfig);
+    }
+
+    private StreamConsumerDef parseStreamConsumer() {
+        Token start = consume(TokenType.SUBSCRIBE, "Expected 'subscribe'");
+        Token name = consume(TokenType.IDENTIFIER, "Expected consumer name");
+        consume(TokenType.LBRACE, "Expected '{' after consumer name");
+        StreamConsumerDef consumer = new StreamConsumerDef(name.getValue());
+        consumer.setSourceFile(sourceFile);
+        consumer.setSourceLine(start.getLine());
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+            Token key = peek().getType() == TokenType.ACTION ? advance() : consume(TokenType.IDENTIFIER, "Expected consumer property");
+            String property = key.getValue().toLowerCase(Locale.ROOT);
+            if ("retry".equals(property)) {
+                consume(TokenType.LBRACE, "Expected '{' after retry");
+                while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+                    Token retryKey = consume(TokenType.IDENTIFIER, "Expected retry setting");
+                    consume(TokenType.COLON, "Expected ':' after retry setting");
+                    String setting = retryKey.getValue().toLowerCase(Locale.ROOT);
+                    Object value = parseLiteralOrIdentifier();
+                    if (("backoff".equals(setting) || "maxbackoff".equals(setting)) && peek().getType() == TokenType.IDENTIFIER
+                            && Set.of("ms", "s", "m").contains(peek().getValue().toLowerCase(Locale.ROOT))) {
+                        value = value.toString() + advance().getValue();
+                    }
+                    try {
+                        if ("maxattempts".equals(setting)) consumer.setMaxAttempts(Integer.valueOf(value.toString()));
+                        else if ("backoff".equals(setting)) consumer.setBackoffMs(parseDurationMs(value, retryKey));
+                        else if ("multiplier".equals(setting)) consumer.setBackoffMultiplier(Double.valueOf(value.toString()));
+                        else if ("maxbackoff".equals(setting)) consumer.setMaxBackoffMs(parseDurationMs(value, retryKey));
+                        else throw error(retryKey, "Unknown retry setting '" + retryKey.getValue() + "'");
+                    } catch (NumberFormatException ex) { throw error(retryKey, "Invalid value for retry setting '" + retryKey.getValue() + "'"); }
+                    match(TokenType.COMMA);
+                }
+                consume(TokenType.RBRACE, "Expected '}' closing retry settings");
+            } else if ("action".equals(property)) {
+                consume(TokenType.LBRACE, "Expected '{' after action");
+                while (!isAtEnd() && peek().getType() != TokenType.RBRACE) consumer.addAction(parseConsumerAction());
+                consume(TokenType.RBRACE, "Expected '}' closing consumer action");
+            } else {
+                consume(TokenType.COLON, "Expected ':' after consumer property");
+                Object value = parseLiteralOrIdentifier();
+                switch (property) {
+                    case "from": consumer.setStream(value.toString()); break;
+                    case "group": consumer.setGroup(value.toString()); break;
+                    case "concurrency":
+                        try { consumer.setConcurrency(Integer.valueOf(value.toString())); }
+                        catch (NumberFormatException ex) { throw error(key, "concurrency must be a positive integer"); }
+                        break;
+                    case "deadletter": consumer.setDeadLetter(value.toString()); break;
+                    default: throw error(key, "Unknown consumer property '" + key.getValue() + "'");
+                }
+            }
+            match(TokenType.COMMA);
+        }
+        consume(TokenType.RBRACE, "Expected '}' closing consumer declaration");
+        return consumer;
+    }
+
+    private String parseConsumerAction() {
+        Token action = consume(TokenType.IDENTIFIER, "Consumer actions currently support 'log payload.field'");
+        if (!"log".equalsIgnoreCase(action.getValue())) throw error(action, "Consumer actions currently support 'log payload.field'");
+        Token payload = consume(TokenType.IDENTIFIER, "Expected payload.field after log");
+        if (!"payload".equalsIgnoreCase(payload.getValue())) throw error(payload, "Expected payload.field after log");
+        consume(TokenType.DOT, "Expected '.' after payload");
+        Token field = consume(TokenType.IDENTIFIER, "Expected event field after payload.");
+        return "log payload." + field.getValue();
+    }
+
+    private long parseDurationMs(Object value, Token token) {
+        String raw = value.toString().trim().toLowerCase(Locale.ROOT);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d+)(ms|s|m)?$").matcher(raw);
+        if (!matcher.matches()) throw error(token, "Duration must be an integer followed by ms, s, or m");
+        long amount = Long.parseLong(matcher.group(1));
+        String unit = matcher.group(2);
+        return amount * ("s".equals(unit) ? 1000L : "m".equals(unit) ? 60000L : 1L);
+    }
+
+    private EventDef parseEvent() {
+        Token start = consume(TokenType.EVENT, "Expected 'event'");
+        Token name = consume(TokenType.IDENTIFIER, "Expected event name");
+        consume(TokenType.LBRACE, "Expected '{' after event name");
+        List<FieldDef> fields = new ArrayList<>();
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) fields.add(parseField());
+        consume(TokenType.RBRACE, "Expected '}' closing event");
+        EventDef event = new EventDef(name.getValue(), fields);
+        event.setSourceFile(sourceFile); event.setSourceLine(start.getLine());
+        return event;
+    }
+
+    private StreamDef parseStream() {
+        Token start = consume(TokenType.STREAM, "Expected 'stream'");
+        Token name = consume(TokenType.IDENTIFIER, "Expected stream name");
+        consume(TokenType.LBRACE, "Expected '{' after stream name");
+        String topic = null, payload = null, broker = null;
+        Integer partitions = null;
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+            Token key = consume(TokenType.IDENTIFIER, "Expected stream property");
+            consume(TokenType.COLON, "Expected ':' after stream property");
+            String k = key.getValue().toLowerCase();
+            Object value = parseLiteralOrIdentifier();
+            if ("topic".equals(k)) topic = String.valueOf(value);
+            else if ("payload".equals(k)) payload = String.valueOf(value);
+            else if ("broker".equals(k)) broker = String.valueOf(value);
+            else if ("partitions".equals(k)) {
+                try { partitions = Integer.valueOf(String.valueOf(value)); }
+                catch (NumberFormatException ex) { throw error(key, "partitions must be a positive integer"); }
+            } else throw error(key, "Unknown stream property '" + key.getValue() + "'");
+            match(TokenType.COMMA);
+        }
+        consume(TokenType.RBRACE, "Expected '}' closing stream");
+        StreamDef stream = new StreamDef(name.getValue(), topic, payload, broker, partitions);
+        stream.setSourceFile(sourceFile); stream.setSourceLine(start.getLine());
+        return stream;
     }
 
     private SocketDef parseSocket() {
@@ -432,7 +553,7 @@ public class Parser {
 
             if (!ALLOWED_CONFIG_KEYS.contains(keyLower)) {
                 throw error(keyToken, "Invalid configuration key '" + key + "'. Supported configuration keys are: "
-                        + "app, package, basePath, port, database, auth, swagger, flyway, storage, storageBucket, userModel, jwtSecret, jwtExpiration, rateLimit, mail, mailProvider, mailFrom, mailHost, mailPort, mailUsername, mailPassword, cache, cacheProvider, cacheTtl.");
+                        + "app, package, basePath, port, database, auth, swagger, flyway, outbox, storage, storageBucket, userModel, jwtSecret, jwtExpiration, rateLimit, mail, mailProvider, mailFrom, mailHost, mailPort, mailUsername, mailPassword, cache, cacheProvider, cacheTtl.");
             }
 
             boolean isDuplicate = props.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(key));
@@ -481,7 +602,7 @@ public class Parser {
                         throw error(keyToken,
                                 "Invalid storage provider '" + valStr + "'. Supported options are: minio, s3.");
                     }
-                } else if ("swagger".equals(keyLower) || "flyway".equals(keyLower)) {
+                } else if ("swagger".equals(keyLower) || "flyway".equals(keyLower) || "outbox".equals(keyLower)) {
                     String b = valStr.toLowerCase();
                     if (!b.equals("true") && !b.equals("false")) {
                         throw error(keyToken,
@@ -611,7 +732,7 @@ public class Parser {
                         : (ann.getArguments().containsKey("0") ? ann.getArguments().get("0").toString() : "manyToOne");
                 String mappedBy = ann.getArgument("mappedBy") != null ? ann.getArgument("mappedBy").toString() : null;
 
-                String target = f.getType().isList() ? f.getType().getGenericType() : f.getType().getName();
+                String target = f.getType().isList() ? f.getType().getElementTypeRef().getName() : f.getType().getName();
                 relations.add(new RelationDef(f.getName(), target, RelationType.fromString(relTypeStr), mappedBy,
                         f.isOptional()));
             }
@@ -739,9 +860,9 @@ public class Parser {
         String name = typeNameTok.getValue();
 
         if ("List".equalsIgnoreCase(name) && match(TokenType.LT)) {
-            Token genericTok = consume(TokenType.IDENTIFIER, "Expected generic type inside List<...>");
+            TypeRef elementType = parseTypeRef();
             consume(TokenType.GT, "Expected '>' after generic type");
-            return TypeRef.list(genericTok.getValue());
+            return TypeRef.list(elementType);
         }
 
         Map<String, Object> params = new HashMap<>();
@@ -1262,8 +1383,12 @@ public class Parser {
                 } else if (key.getType() == TokenType.IDENTIFIER || key.getType() == TokenType.AUTH
                         || key.getType() == TokenType.PUBLIC) {
                     Token idTok = advance();
-                    consume(TokenType.COLON, "Expected ':' after '" + idTok.getValue() + "'");
                     String k = idTok.getValue().toLowerCase();
+                    if ("params".equalsIgnoreCase(k) || "param".equalsIgnoreCase(k) || "types".equalsIgnoreCase(k)) {
+                        match(TokenType.COLON); // optional colon e.g. 'params:' or 'params {'
+                    } else {
+                        consume(TokenType.COLON, "Expected ':' after '" + idTok.getValue() + "'");
+                    }
                     if ("description".equalsIgnoreCase(k)) {
                         description = consume(TokenType.STRING_LITERAL, "Expected string for description").getValue();
                     } else if ("auth".equalsIgnoreCase(k)) {
@@ -1362,6 +1487,18 @@ public class Parser {
     }
 
     private String parseActionStatement() {
+        if (peek().getType() == TokenType.FOR) {
+            return parseForEachStatement();
+        }
+        if (peek().getType() == TokenType.PUBLISH) {
+            return parsePublishStatement();
+        }
+        if (peek().getType() == TokenType.TRY) {
+            return parseTryCatchStatement();
+        }
+        if (peek().getType() == TokenType.FAIL) {
+            return parseFailStatement();
+        }
         if (peek().getType() == TokenType.VAR) {
             advance(); // consume 'var'
             Token varName = consumeFieldName();
@@ -1419,6 +1556,165 @@ public class Parser {
             }
             return stmt.toString().trim();
         }
+    }
+
+    private String parseForEachStatement() {
+        consume(TokenType.FOR, "Expected 'for'");
+        Token variable = consume(TokenType.IDENTIFIER, "Expected loop variable after 'for'");
+        consume(TokenType.COLON, "Expected ':' after loop variable");
+
+        StringBuilder iterable = new StringBuilder();
+        int parenDepth = 0;
+        int bracketDepth = 0;
+        Token last = null;
+        while (!isAtEnd()) {
+            Token token = peek();
+            if (parenDepth == 0 && bracketDepth == 0 && token.getType() == TokenType.LBRACE) break;
+            if (token.getType() == TokenType.RBRACE || token.getType() == TokenType.COMMA) {
+                throw error(token, "Expected iterable expression and '{' in for loop");
+            }
+            if (iterable.length() > 0 && last != null && token.getLine() > last.getLine()
+                    && !isContinuationToken(last) && !isBinaryOperator(token)) break;
+            token = advance();
+            last = token;
+            if (token.getType() == TokenType.LPAREN) parenDepth++;
+            else if (token.getType() == TokenType.RPAREN) parenDepth--;
+            else if (token.getType() == TokenType.LBRACKET) bracketDepth++;
+            else if (token.getType() == TokenType.RBRACKET) bracketDepth--;
+            iterable.append(token.getValue()).append(' ');
+        }
+        String source = iterable.toString().trim();
+        if (source.isEmpty()) throw error(variable, "Expected iterable expression after ':' in for loop");
+
+        consume(TokenType.LBRACE, "Expected '{' before for loop body");
+        StringBuilder result = new StringBuilder("for ").append(variable.getValue()).append(" : ")
+                .append(source).append(" {");
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+            Token start = peek();
+            String statement = parseActionStatement();
+            if (statement == null || statement.trim().isEmpty()) {
+                throw error(start, "Expected a statement in for loop body");
+            }
+            result.append('\n').append(statement).append(';');
+            match(TokenType.COMMA);
+        }
+        consume(TokenType.RBRACE, "Expected '}' to close for loop body");
+        if (result.charAt(result.length() - 1) != '{') result.append('\n');
+        return result.append('}').toString();
+    }
+
+    private String parsePublishStatement() {
+        consume(TokenType.PUBLISH, "Expected 'publish'");
+        Token stream = consume(TokenType.IDENTIFIER, "Expected stream name after 'publish'");
+        consume(TokenType.LPAREN, "Expected '(' after stream name");
+        StringBuilder out = new StringBuilder("publish ").append(stream.getValue()).append('(');
+        boolean first = true;
+        while (!isAtEnd() && peek().getType() != TokenType.RPAREN) {
+            Token field = consume(TokenType.IDENTIFIER, "Expected payload field name");
+            consume(TokenType.EQUAL, "Expected '=' after payload field");
+            StringBuilder expr = new StringBuilder();
+            int depth = 0;
+            Token last = null;
+            while (!isAtEnd()) {
+                Token token = peek();
+                if (depth == 0 && (token.getType() == TokenType.COMMA || token.getType() == TokenType.RPAREN)) break;
+                if (expr.length() > 0 && last != null && token.getLine() > last.getLine()
+                        && !isContinuationToken(last) && !isBinaryOperator(token)) break;
+                token = advance(); last = token;
+                if (token.getType() == TokenType.LPAREN) depth++;
+                else if (token.getType() == TokenType.RPAREN) depth--;
+                if (token.getType() == TokenType.STRING_LITERAL) expr.append('"').append(token.getValue().replace("\"", "\\\"")).append(' ');
+                else expr.append(token.getValue()).append(' ');
+            }
+            if (expr.toString().trim().isEmpty()) throw error(field, "Expected a value for payload field '" + field.getValue() + "'");
+            if (!first) out.append(", ");
+            out.append(field.getValue()).append(" = ").append(expr.toString().trim());
+            first = false;
+            if (!match(TokenType.COMMA)) break;
+        }
+        consume(TokenType.RPAREN, "Expected ')' after publish payload");
+        return out.append(')').toString();
+    }
+
+    private String parseTryCatchStatement() {
+        consume(TokenType.TRY, "Expected 'try'");
+        String tryBody = parseActionBlock("try");
+        StringBuilder result = new StringBuilder("try {").append(tryBody).append("}");
+        int catches = 0;
+        boolean hasGeneralCatch = false;
+        Set<String> caughtTypes = new HashSet<>();
+        while (match(TokenType.CATCH)) {
+            consume(TokenType.LPAREN, "Expected '(' after 'catch'");
+            Token exceptionType = consume(TokenType.IDENTIFIER, "Expected exception type in catch clause");
+            Token variable = consume(TokenType.IDENTIFIER, "Expected exception variable in catch clause");
+            consume(TokenType.RPAREN, "Expected ')' after catch variable");
+            String type = exceptionType.getValue();
+            Set<String> knownTypes = Set.of("Throwable", "Exception", "RuntimeException", "IllegalArgumentException", "IllegalStateException",
+                    "NullPointerException", "TimeoutException", "IOException", "SQLException", "InterruptedException",
+                    "ResourceNotFoundException", "GatewayTimeoutException", "WebClientResponseException");
+            if (!knownTypes.contains(type) && !type.contains(".")) {
+                throw error(exceptionType, "Unknown exception type '" + type + "' in catch clause");
+            }
+            if (!caughtTypes.add(type)) throw error(exceptionType, "Duplicate catch type '" + type + "'");
+            if (hasGeneralCatch) throw error(exceptionType, "Unreachable catch clause: a general exception type was already caught");
+            if (type.equals("Exception") || type.equals("Throwable") || type.equals("RuntimeException")) hasGeneralCatch = true;
+            String body = parseActionBlock("catch");
+            result.append(" catch (").append(type).append(' ')
+                    .append(variable.getValue()).append(") {").append(body).append('}');
+            catches++;
+        }
+        if (catches == 0) {
+            throw error(peek(), "A 'try' block must be followed by at least one catch clause");
+        }
+        return result.toString();
+    }
+
+    private String parseActionBlock(String kind) {
+        consume(TokenType.LBRACE, "Expected '{' after '" + kind + "'");
+        StringBuilder body = new StringBuilder();
+        while (!isAtEnd() && peek().getType() != TokenType.RBRACE) {
+            Token start = peek();
+            String statement = parseActionStatement();
+            if (statement == null || statement.trim().isEmpty()) {
+                throw error(start, "Expected a statement in " + kind + " block");
+            }
+            body.append('\n').append(statement).append(';');
+            match(TokenType.COMMA);
+        }
+        consume(TokenType.RBRACE, "Expected '}' to close " + kind + " block");
+        if (body.length() > 0) body.append('\n');
+        return body.toString();
+    }
+
+    private String parseFailStatement() {
+        consume(TokenType.FAIL, "Expected 'fail'");
+        Token code = consume(TokenType.STRING_LITERAL, "Expected a quoted error code after 'fail'");
+        int status = 400;
+        String message = code.getValue();
+        if (match(TokenType.COMMA)) {
+            if (peek().getType() == TokenType.IDENTIFIER && "status".equalsIgnoreCase(peek().getValue())) {
+                advance();
+                consume(TokenType.EQUAL, "Expected '=' after status");
+            }
+            Token statusToken = consume(TokenType.NUMBER_LITERAL, "Expected an HTTP status code");
+            try { status = Integer.parseInt(statusToken.getValue()); }
+            catch (NumberFormatException ex) { throw error(statusToken, "HTTP status code must be an integer"); }
+            if (status < 400 || status > 599) {
+                throw error(statusToken, "HTTP status code for fail must be between 400 and 599");
+            }
+            if (match(TokenType.COMMA)) {
+                if (peek().getType() == TokenType.IDENTIFIER && "message".equalsIgnoreCase(peek().getValue())) {
+                    advance();
+                    consume(TokenType.EQUAL, "Expected '=' after message");
+                }
+                message = consume(TokenType.STRING_LITERAL, "Expected a quoted fail message").getValue();
+            }
+        }
+        return "fail(" + quoteJava(code.getValue()) + ", " + status + ", " + quoteJava(message) + ")";
+    }
+
+    private String quoteJava(String value) {
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
     }
 
     private boolean isContinuationToken(Token t) {

@@ -16,6 +16,10 @@ public class ApplicationGenerator {
         sb.append("import org.springframework.boot.SpringApplication;\n");
         sb.append("import org.springframework.boot.autoconfigure.SpringBootApplication;\n\n");
         sb.append("@SpringBootApplication\n");
+        if (file.getConfig().isOutboxEnabled()) {
+            sb.append("// Publishes typed domain events inside transactional services;\n");
+            sb.append("// consumers that require durable asynchronous delivery use @ApplicationModuleListener.\n");
+        }
         sb.append("public class ").append(appName).append(" {\n\n");
         sb.append("    public static void main(String[] args) {\n");
         sb.append("        SpringApplication.run(").append(appName).append(".class, args);\n");

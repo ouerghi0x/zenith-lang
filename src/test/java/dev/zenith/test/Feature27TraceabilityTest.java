@@ -273,7 +273,38 @@ public class Feature27TraceabilityTest {
             assertFalse(serviceFile.getMappings().isEmpty(), "InvoiceServiceImpl has mappings");
         });
 
-        test("T3_02_writeToDirectory_emits_valid_generation_manifest_json", () -> {
+        test("T3_02_controller_custom_endpoint_diagnostics_map_to_endpoint_not_crud", () -> {
+            String schema = "config { app: \"TraceApp\" package: \"com.trace.app\" auth: jwt }\n" +
+                    "model Task {\n" +
+                    "  id: UUID @id @auto\n" +
+                    "  status: String\n" +
+                    "  endpoints {\n" +
+                    "    crud { paginate: true }\n" +
+                    "    put \"/{id}/update_status\" -> TaskResponse { action { status = \"done\" } }\n" +
+                    "  }\n" +
+                    "}";
+            SchemaResolver resolver = new SchemaResolver();
+            ZenithFile file = new SemanticAnalyzer().analyze(resolver.resolveSource(schema, Path.of(".")));
+            List<JavaSourceFile> generated = ProjectGenerator.generateAll(file);
+            GenerationManifest manifest = ProjectGenerator.buildManifest(file, generated);
+            JavaSourceFile controller = generated.stream()
+                    .filter(f -> f.getRelativePath().endsWith("TaskController.java"))
+                    .findFirst().orElseThrow();
+            int methodLine = 1;
+            for (String line : controller.getContent().split("\\n")) {
+                if (line.contains("public ResponseEntity<TaskResponse> updateStatus")) break;
+                methodLine++;
+            }
+            GenerationMapping mapping = manifest.findMapping(controller.getRelativePath(), methodLine);
+            assertTrue(mapping != null, "custom endpoint line has a mapping");
+            assertTrue(mapping.getSourceOrigin().getStartLine() > 0, "endpoint source location exists");
+            assertTrue(mapping.getSourceOrigin().getStartLine() != 6, "diagnostic does not point at the CRUD block");
+            assertTrue(mapping.getGeneratedElement().contains("updateStatus"), "mapping identifies custom endpoint: " + mapping.getGeneratedElement());
+            assertEquals(null, manifest.findMapping(controller.getRelativePath(), controller.getContent().split("\\n").length + 2),
+                    "unmapped generated line has no guessed source location");
+        });
+
+        test("T3_03_writeToDirectory_emits_valid_generation_manifest_json", () -> {
             try {
                 String schema = "config {\n" +
                         "    app: \"ManifestApp\"\n" +
@@ -302,6 +333,94 @@ public class Feature27TraceabilityTest {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
+        });
+
+        test("T3_04_create_action_returns_created_entity_as_declared_dto", () -> {
+            String schema = "config { app: \"CommentApp\" package: \"com.comment.app\" }\n" +
+                    "dto MakeComment { content: String }\n" +
+                    "dto CommentResponse { content: String }\n" +
+                    "model Comment {\n" +
+                    "  id: UUID @id @auto\n" +
+                    "  content: String\n" +
+                    "  endpoints {\n" +
+                    "    post \"/addcomment\" (body: MakeComment) -> CommentResponse {\n" +
+                    "      action { var comment = create Comment { content = body.content } }\n" +
+                    "    }\n" +
+                    "  }\n" +
+                    "}";
+            SchemaResolver resolver = new SchemaResolver();
+            ZenithFile file = new SemanticAnalyzer().analyze(resolver.resolveSource(schema, Path.of(".")));
+            List<JavaSourceFile> generated = ProjectGenerator.generateAll(file);
+            String serviceImpl = generated.stream()
+                    .filter(f -> f.getRelativePath().endsWith("CommentServiceImpl.java"))
+                    .findFirst().orElseThrow().getContent();
+            assertTrue(serviceImpl.contains("private final CommentRepository commentRepository;"),
+                    "service exposes its model-named repository field");
+            assertTrue(serviceImpl.contains("comment = commentRepository.save(comment);"),
+                    "create action saves through the declared repository field");
+            assertTrue(serviceImpl.contains("return mapper.toResponse(comment);"),
+                    "endpoint returns the created entity mapped to CommentResponse");
+            assertFalse(serviceImpl.contains("return commentRepository.findAll().stream()"),
+                    "create endpoint does not return an arbitrary existing record");
+        });
+
+        test("T3_05_action_relation_back_to_service_model_does_not_duplicate_repository", () -> {
+            String schema = "config { app: \"ProjectApp\" package: \"com.project.app\" }\n" +
+                    "dto ActionMessage { message: String }\n" +
+                    "model Project {\n" +
+                    "  id: UUID @id @auto\n" +
+                    "  endpoints {\n" +
+                    "    post \"/members\" -> ActionMessage {\n" +
+                    "      action { var member = create ProjectMembers { project = entity } }\n" +
+                    "    }\n" +
+                    "  }\n" +
+                    "}\n" +
+                    "model ProjectMembers {\n" +
+                    "  id: UUID @id @auto\n" +
+                    "  relations { project: Project @relation(manyToOne) }\n" +
+                    "}";
+            SchemaResolver resolver = new SchemaResolver();
+            ZenithFile file = new SemanticAnalyzer().analyze(resolver.resolveSource(schema, Path.of(".")));
+            List<JavaSourceFile> generated = ProjectGenerator.generateAll(file);
+            String serviceImpl = generated.stream()
+                    .filter(f -> f.getRelativePath().endsWith("ProjectServiceImpl.java"))
+                    .findFirst().orElseThrow().getContent();
+            assertEquals(1, countOccurrences(serviceImpl, "private final ProjectRepository projectRepository;"),
+                    "service declares its own repository once");
+            assertEquals(3, countOccurrences(serviceImpl, "ProjectRepository"),
+                    "ProjectRepository appears in its import, field, and constructor parameter only");
+            assertEquals(1, countOccurrences(serviceImpl, "ProjectRepository projectRepository"),
+                    "no duplicate model-named repository constructor parameter is generated");
+            assertTrue(serviceImpl.contains("ProjectMembersRepository projectMembersRepository"),
+                    "action target repository remains injected");
+        });
+
+        test("T3_06_one_to_one_example_generates_owner_and_inverse_mapping", () -> {
+            Path schemaPath = Path.of("zenith-exemples", "one-to-one", "main.zen");
+            String schema = Files.readString(schemaPath);
+            SchemaResolver resolver = new SchemaResolver();
+            ZenithFile file = new SemanticAnalyzer().analyze(resolver.resolveSource(schema, schemaPath.getParent()));
+            List<JavaSourceFile> generated = ProjectGenerator.generateAll(file);
+            String accountEntity = generated.stream()
+                    .filter(f -> f.getRelativePath().endsWith("/entity/Account.java"))
+                    .findFirst().orElseThrow().getContent();
+            String profileEntity = generated.stream()
+                    .filter(f -> f.getRelativePath().endsWith("/entity/Profile.java"))
+                    .findFirst().orElseThrow().getContent();
+            String migration = generated.stream()
+                    .filter(f -> f.getRelativePath().endsWith("V1__initial_schema.sql"))
+                    .findFirst().orElseThrow().getContent();
+
+            assertTrue(accountEntity.contains("@OneToOne(mappedBy = \"account\", fetch = FetchType.LAZY)"),
+                    "inverse JPA side uses mappedBy");
+            assertFalse(accountEntity.contains("@JoinColumn(name = \"profile_id\""),
+                    "inverse side has no foreign-key column");
+            assertTrue(profileEntity.contains("@JoinColumn(name = \"account_id\", unique = true)"),
+                    "owning JPA side has a unique join column");
+            assertTrue(migration.contains("account_id UUID NOT NULL UNIQUE"),
+                    "migration enforces one-to-one uniqueness on the owning foreign key");
+            assertFalse(migration.contains("profile_id UUID"),
+                    "migration creates no inverse-side foreign-key column");
         });
     }
 
@@ -339,6 +458,16 @@ public class Feature27TraceabilityTest {
 
     private static void assertFalse(boolean cond, String msg) {
         if (cond) throw new AssertionError(msg);
+    }
+
+    private static int countOccurrences(String source, String needle) {
+        int count = 0;
+        int index = 0;
+        while ((index = source.indexOf(needle, index)) >= 0) {
+            count++;
+            index += needle.length();
+        }
+        return count;
     }
 }
 

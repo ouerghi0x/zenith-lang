@@ -15,11 +15,28 @@ public class ZenithFile {
     private final List<JobDef> jobs;
     private final List<MailDef> mails;
     private final List<SocketDef> sockets;
+    private final List<EventDef> events;
+    private final List<StreamDef> streams;
+    private final List<StreamConsumerDef> consumers;
     private final List<ImportDef> imports;
     private final boolean explicitConfig;
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
-            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<SocketDef> sockets, List<ImportDef> imports, boolean explicitConfig) {
+            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<SocketDef> sockets,
+            List<ImportDef> imports, boolean explicitConfig) {
+        this(config, enums, models, dtos, seeds, jobs, mails, sockets, Collections.emptyList(), Collections.emptyList(),
+                imports, explicitConfig);
+    }
+
+    public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
+            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<SocketDef> sockets,
+            List<EventDef> events, List<StreamDef> streams, List<ImportDef> imports, boolean explicitConfig) {
+        this(config, enums, models, dtos, seeds, jobs, mails, sockets, events, streams, Collections.emptyList(), imports, explicitConfig);
+    }
+
+    public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
+            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<SocketDef> sockets,
+            List<EventDef> events, List<StreamDef> streams, List<StreamConsumerDef> consumers, List<ImportDef> imports, boolean explicitConfig) {
         this.config = config != null ? config : AppConfig.defaults();
         this.enums = enums != null ? enums : new ArrayList<>();
         this.models = models != null ? models : new ArrayList<>();
@@ -28,12 +45,16 @@ public class ZenithFile {
         this.jobs = jobs != null ? jobs : new ArrayList<>();
         this.mails = mails != null ? mails : new ArrayList<>();
         this.sockets = sockets != null ? sockets : new ArrayList<>();
+        this.events = events != null ? events : new ArrayList<>();
+        this.streams = streams != null ? streams : new ArrayList<>();
+        this.consumers = consumers != null ? consumers : new ArrayList<>();
         this.imports = imports != null ? imports : new ArrayList<>();
         this.explicitConfig = explicitConfig;
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos,
-            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<ImportDef> imports, boolean explicitConfig) {
+            List<SeedDef> seeds, List<JobDef> jobs, List<MailDef> mails, List<ImportDef> imports,
+            boolean explicitConfig) {
         this(config, enums, models, dtos, seeds, jobs, mails, Collections.emptyList(), imports, explicitConfig);
     }
 
@@ -58,11 +79,13 @@ public class ZenithFile {
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models, List<DtoDef> dtos) {
-        this(config, enums, models, dtos, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), config != null);
+        this(config, enums, models, dtos, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
+                config != null);
     }
 
     public ZenithFile(AppConfig config, List<EnumDef> enums, List<ModelDef> models) {
-        this(config, enums, models, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), config != null);
+        this(config, enums, models, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), config != null);
     }
 
     public boolean hasExplicitConfig() {
@@ -78,11 +101,14 @@ public class ZenithFile {
     }
 
     public boolean hasCache() {
-        if (config != null && config.hasCache()) return true;
+        if (config != null && config.hasCache())
+            return true;
         for (ModelDef m : models) {
-            if (m.getCrudConfig() != null && m.getCrudConfig().hasCache()) return true;
+            if (m.getCrudConfig() != null && m.getCrudConfig().hasCache())
+                return true;
             for (CustomEndpointDef ep : m.getCustomEndpoints()) {
-                if (ep.hasCache()) return true;
+                if (ep.hasCache())
+                    return true;
             }
         }
         return false;
@@ -105,9 +131,11 @@ public class ZenithFile {
     }
 
     public MailDef findMail(String name) {
-        if (name == null) return null;
+        if (name == null)
+            return null;
         for (MailDef m : mails) {
-            if (m.getName().equalsIgnoreCase(name)) return m;
+            if (m.getName().equalsIgnoreCase(name))
+                return m;
         }
         return null;
     }
@@ -116,13 +144,40 @@ public class ZenithFile {
         return Collections.unmodifiableList(sockets);
     }
 
+    public List<EventDef> getEvents() {
+        return Collections.unmodifiableList(events);
+    }
+
+    public List<StreamDef> getStreams() {
+        return Collections.unmodifiableList(streams);
+    }
+
+    public boolean hasStreams() {
+        return !streams.isEmpty();
+    }
+
+    public List<StreamConsumerDef> getConsumers() { return Collections.unmodifiableList(consumers); }
+    public boolean hasConsumers() { return !consumers.isEmpty(); }
+    public boolean hasStreamIntegration() { return hasStreams() || hasConsumers(); }
+
+    public EventDef findEvent(String name) {
+        if (name == null)
+            return null;
+        for (EventDef event : events)
+            if (event.getName().equalsIgnoreCase(name))
+                return event;
+        return null;
+    }
+
     public boolean hasSockets() {
-        if (sockets != null && !sockets.isEmpty()) return true;
+        if (sockets != null && !sockets.isEmpty())
+            return true;
         for (ModelDef m : models) {
             for (CustomEndpointDef ep : m.getCustomEndpoints()) {
                 for (String stmt : ep.getActionStatements()) {
                     String trimmed = stmt.trim();
-                    if (trimmed.startsWith("broadcast ") || trimmed.startsWith("broadcast\"") || trimmed.startsWith("broadcast'")
+                    if (trimmed.startsWith("broadcast ") || trimmed.startsWith("broadcast\"")
+                            || trimmed.startsWith("broadcast'")
                             || trimmed.startsWith("sendToUser ") || trimmed.matches("^sendToUser\\s*\\(.*")) {
                         return true;
                     }
@@ -133,9 +188,11 @@ public class ZenithFile {
     }
 
     public SocketDef findSocket(String name) {
-        if (name == null) return null;
+        if (name == null)
+            return null;
         for (SocketDef s : sockets) {
-            if (s.getName().equalsIgnoreCase(name)) return s;
+            if (s.getName().equalsIgnoreCase(name))
+                return s;
         }
         return null;
     }
@@ -157,7 +214,8 @@ public class ZenithFile {
     }
 
     public DtoDef findDto(String name) {
-        if (name == null) return null;
+        if (name == null)
+            return null;
         for (DtoDef d : dtos) {
             if (d.getName().equalsIgnoreCase(name)) {
                 return d;
@@ -208,8 +266,10 @@ public class ZenithFile {
     public boolean hasStorage() {
         if (config.getProperties().containsKey("storage")) {
             Object s = config.getProperties().get("storage");
-            if (s instanceof Boolean && (Boolean) s) return true;
-            if (s instanceof String && !"none".equalsIgnoreCase((String) s) && !"false".equalsIgnoreCase((String) s)) return true;
+            if (s instanceof Boolean && (Boolean) s)
+                return true;
+            if (s instanceof String && !"none".equalsIgnoreCase((String) s) && !"false".equalsIgnoreCase((String) s))
+                return true;
         }
         for (ModelDef m : models) {
             for (FieldDef f : m.getFields()) {
@@ -242,7 +302,8 @@ public class ZenithFile {
         ModelDef userModel = getUserModel();
         if (userModel != null) {
             for (FieldDef f : userModel.getFields()) {
-                if (f.hasAnnotation("role") || f.getName().equalsIgnoreCase("role") || f.getName().toLowerCase().endsWith("role")) {
+                if (f.hasAnnotation("role") || f.getName().equalsIgnoreCase("role")
+                        || f.getName().toLowerCase().endsWith("role")) {
                     if (f.getDefaultValue() != null) {
                         return f.getDefaultValue().toString();
                     }
@@ -261,7 +322,8 @@ public class ZenithFile {
         for (EnumDef e : enums) {
             if (e.getName().toLowerCase().contains("role")) {
                 for (String val : e.getValues()) {
-                    if (val.equalsIgnoreCase("USER") || val.equalsIgnoreCase("CUSTOMER") || val.equalsIgnoreCase("PATIENT") || val.equalsIgnoreCase("MEMBER")) {
+                    if (val.equalsIgnoreCase("USER") || val.equalsIgnoreCase("CUSTOMER")
+                            || val.equalsIgnoreCase("PATIENT") || val.equalsIgnoreCase("MEMBER")) {
                         return val;
                     }
                 }
@@ -270,7 +332,8 @@ public class ZenithFile {
                         return v;
                     }
                 }
-                if (!e.getValues().isEmpty()) return e.getValues().get(0);
+                if (!e.getValues().isEmpty())
+                    return e.getValues().get(0);
             }
         }
         return "USER";
@@ -279,7 +342,8 @@ public class ZenithFile {
     public String getDefaultAdminRole() {
         for (EnumDef e : enums) {
             for (String val : e.getValues()) {
-                if (val.equalsIgnoreCase("ADMIN") || val.equalsIgnoreCase("ADMINISTRATOR") || val.equalsIgnoreCase("SUPERADMIN") || val.equalsIgnoreCase("SUPER_ADMIN")) {
+                if (val.equalsIgnoreCase("ADMIN") || val.equalsIgnoreCase("ADMINISTRATOR")
+                        || val.equalsIgnoreCase("SUPERADMIN") || val.equalsIgnoreCase("SUPER_ADMIN")) {
                     return val;
                 }
             }
@@ -292,7 +356,8 @@ public class ZenithFile {
         ModelDef userModel = getUserModel();
         if (userModel != null) {
             for (FieldDef f : userModel.getFields()) {
-                if (f.hasAnnotation("role") || f.getName().equalsIgnoreCase("role") || f.getName().toLowerCase().endsWith("role")) {
+                if (f.hasAnnotation("role") || f.getName().equalsIgnoreCase("role")
+                        || f.getName().toLowerCase().endsWith("role")) {
                     EnumDef ed = findEnum(f.getType().getName());
                     if (ed != null) {
                         roles.addAll(ed.getValues());

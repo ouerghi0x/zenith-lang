@@ -152,7 +152,10 @@ public class WebSocketGenerator {
             sb.append("            if (authHeader != null && !authHeader.isBlank()) {\n");
             sb.append("                String token = authHeader.startsWith(\"Bearer \") ? authHeader.substring(7) : authHeader;\n");
             sb.append("                try {\n");
-            sb.append("                    username = jwtService.extractUsername(token);\n");
+            sb.append("                    username = jwtService.extractUserId(token);\n");
+            sb.append("                    if (username == null || username.isBlank()) {\n");
+            sb.append("                        username = jwtService.extractUsername(token);\n");
+            sb.append("                    }\n");
             sb.append("                } catch (Exception ignored) {\n");
             sb.append("                    // Fallback to direct user identifier headers if token parsing fails\n");
             sb.append("                }\n");

@@ -139,6 +139,10 @@ public class SecurityGenerator {
         sb.append("        return extractClaim(token, Claims::getSubject);\n");
         sb.append("    }\n\n");
 
+        sb.append("    public String extractUserId(String token) {\n");
+        sb.append("        return extractClaim(token, claims -> claims.get(\"userId\", String.class));\n");
+        sb.append("    }\n\n");
+
         sb.append("    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {\n");
         sb.append("        final Claims claims = extractAllClaims(token);\n");
         sb.append("        return claimsResolver.apply(claims);\n");
@@ -453,9 +457,9 @@ public class SecurityGenerator {
         sb.append("            new UsernamePasswordAuthenticationToken(request.email(), request.password())\n");
         sb.append("        );\n");
         sb.append("        UserDetails userDetails = userDetailsService.loadUserByUsername(request.email());\n");
-        sb.append("        String token = jwtService.generateToken(userDetails);\n");
         sb.append("        ").append(userClass).append(" entity = userRepository.findBy").append(idCap)
                 .append("(request.email()).orElseThrow();\n");
+        sb.append("        String token = jwtService.generateToken(java.util.Map.of(\"userId\", String.valueOf(entity.getId())), userDetails);\n");
         if (roleField != null) {
             sb.append("        String role = entity.get").append(roleCap).append("() != null ? entity.get")
                     .append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");
@@ -487,7 +491,7 @@ public class SecurityGenerator {
         sb.append("        ").append(userClass).append(" saved = userRepository.save(entity);\n");
         sb.append("        UserDetails userDetails = userDetailsService.loadUserByUsername(saved.get").append(idCap)
                 .append("());\n");
-        sb.append("        String token = jwtService.generateToken(userDetails);\n");
+        sb.append("        String token = jwtService.generateToken(java.util.Map.of(\"userId\", String.valueOf(saved.getId())), userDetails);\n");
         if (roleField != null) {
             sb.append("        String role = saved.get").append(roleCap).append("() != null ? saved.get")
                     .append(roleCap).append("().toString() : \"").append(defaultRole).append("\";\n");

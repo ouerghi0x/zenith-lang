@@ -40,11 +40,19 @@ public class Lexer {
         KEYWORDS.put("create", TokenType.CREATE);
         KEYWORDS.put("update", TokenType.UPDATE);
         KEYWORDS.put("var", TokenType.VAR);
+        KEYWORDS.put("try", TokenType.TRY);
+        KEYWORDS.put("catch", TokenType.CATCH);
+        KEYWORDS.put("fail", TokenType.FAIL);
+        KEYWORDS.put("for", TokenType.FOR);
         KEYWORDS.put("cron", TokenType.CRON);
         KEYWORDS.put("mail", TokenType.MAIL);
         KEYWORDS.put("send", TokenType.SEND);
         KEYWORDS.put("socket", TokenType.SOCKET);
         KEYWORDS.put("broadcast", TokenType.BROADCAST);
+        KEYWORDS.put("event", TokenType.EVENT);
+        KEYWORDS.put("stream", TokenType.STREAM);
+        KEYWORDS.put("subscribe", TokenType.SUBSCRIBE);
+        KEYWORDS.put("publish", TokenType.PUBLISH);
     }
 
     public Lexer(String source) {

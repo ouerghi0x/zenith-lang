@@ -23,6 +23,10 @@ public enum TokenType {
     CREATE,
     UPDATE,
     VAR,
+    TRY,
+    CATCH,
+    FAIL,
+    FOR,
     TRUE,
     FALSE,
     SEED,
@@ -61,5 +65,5 @@ public enum TokenType {
     STAR, // *
 
     // Special
-    EOF, BODY, JOB, CRON, MAIL, SEND, SOCKET, BROADCAST
+    EOF, BODY, JOB, CRON, MAIL, SEND, SOCKET, BROADCAST, EVENT, STREAM, SUBSCRIBE, PUBLISH
 }

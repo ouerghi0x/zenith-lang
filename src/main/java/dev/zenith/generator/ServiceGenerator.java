@@ -5,6 +5,7 @@ import dev.zenith.generator.trace.TraceableSourceWriter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class ServiceGenerator {
 
@@ -16,8 +17,23 @@ public class ServiceGenerator {
 
         list.add(generateInterface(model, file, pkgDir, basePkg, className));
         list.add(generateImplementation(model, file, pkgDir, basePkg, className));
+        if (file.getConfig().isOutboxEnabled() && model.getCrudConfig() != null) {
+            list.add(generateCreatedEvent(model, pkgDir, basePkg));
+        }
 
         return list;
+    }
+
+    private static JavaSourceFile generateCreatedEvent(ModelDef model, String pkgDir, String basePkg) {
+        FieldDef idField = model.getIdField();
+        String idType = idField != null ? TypeHelper.toSimpleJavaType(idField.getType()) : "Long";
+        String eventName = model.getName() + "CreatedEvent";
+        String modelIdName = Character.toLowerCase(model.getName().charAt(0)) + model.getName().substring(1) + "Id";
+        String source = "package " + basePkg + ".event;\n\n"
+                + "import java.util.UUID;\n\n"
+                + "/** Published transactionally after an entity is created. */\n"
+                + "public record " + eventName + "(UUID eventId, " + idType + " " + modelIdName + ") {}\n";
+        return new JavaSourceFile(pkgDir.replace("/service/", "/event/") + eventName + ".java", source);
     }
 
     private static JavaSourceFile generateInterface(ModelDef model, ZenithFile file, String pkgDir, String basePkg,
@@ -114,6 +130,7 @@ public class ServiceGenerator {
         String serviceName = className + "Service";
         String implName = className + "ServiceImpl";
         String repoName = className + "Repository";
+        String repoVar = Character.toLowerCase(className.charAt(0)) + className.substring(1) + "Repository";
         String mapperName = className + "Mapper";
         FieldDef idField = model.getIdField();
         String idType = idField != null ? TypeHelper.toSimpleJavaType(idField.getType()) : "Long";
@@ -150,40 +167,56 @@ public class ServiceGenerator {
         java.util.Set<String> extraRepos = new java.util.LinkedHashSet<>();
         for (CustomEndpointDef custom : model.getCustomEndpoints()) {
             for (String stmt : custom.getActionStatements()) {
-                String t = stmt.trim();
-                if (t.startsWith("var ")) {
-                    int eq = t.indexOf('=');
-                    if (eq > 0) {
-                        t = t.substring(eq + 1).trim();
-                    }
-                }
-                if (t.startsWith("create ")) {
-                    String rest = t.substring(7).trim();
-                    int space = rest.indexOf(' ');
-                    int brace = rest.indexOf('{');
-                    int end = space > 0 ? (brace > 0 ? Math.min(space, brace) : space) : (brace > 0 ? brace : rest.length());
-                    String mName = rest.substring(0, end).trim();
-                    if (!mName.isEmpty() && !mName.equalsIgnoreCase(className)) {
-                        extraRepos.add(mName);
-                    }
-                } else if (t.startsWith("update ")) {
-                    String rest = t.substring(7).trim();
-                    int space = rest.indexOf(' ');
-                    int brace = rest.indexOf('{');
-                    int end = space > 0 ? (brace > 0 ? Math.min(space, brace) : space) : (brace > 0 ? brace : rest.length());
-                    String mName = rest.substring(0, end).trim();
-                    if (!mName.isEmpty() && !mName.equalsIgnoreCase(className)) {
-                        extraRepos.add(mName);
-                    }
+                collectActionRepositories(stmt, className, extraRepos);
+            }
+        }
+        // Action-created or updated entities may have owning relations of their
+        // own. Their target repositories are needed to turn supplied foreign
+        // keys (including each loop item) into entity references.
+        java.util.Set<String> actionModels = new java.util.LinkedHashSet<>(extraRepos);
+        for (String actionModelName : actionModels) {
+            ModelDef actionModel = file.findModel(actionModelName);
+            if (actionModel == null) continue;
+            for (RelationDef relation : actionModel.getRelations()) {
+                if (relation.getRelationType() == RelationType.MANY_TO_ONE
+                        || relation.getRelationType() == RelationType.ONE_TO_ONE) {
+                    extraRepos.add(relation.getTargetModel());
                 }
             }
         }
         for (RelationDef rel : model.getRelations()) {
             extraRepos.remove(rel.getTargetModel());
         }
+        // The service's primary repository is already injected above. An action
+        // that creates a related model can point back to this model and otherwise
+        // causes the same repository to be injected a second time.
+        extraRepos.removeIf(extra -> extra.equalsIgnoreCase(className));
+        java.util.Set<String> injectedRepositoryNames = model.getRelations().stream()
+                .filter(rel -> rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE)
+                .map(rel -> rel.getTargetModel().toLowerCase())
+                .collect(java.util.stream.Collectors.toSet());
+        extraRepos.removeIf(extra -> injectedRepositoryNames.contains(extra.toLowerCase()));
+        java.util.Set<String> extraEntityImports = new java.util.LinkedHashSet<>();
+        for (String actionModelName : actionModels) {
+            ModelDef actionModel = file.findModel(actionModelName);
+            if (actionModel == null) continue;
+            for (RelationDef relation : actionModel.getRelations()) {
+                if (relation.getRelationType() == RelationType.MANY_TO_ONE
+                        || relation.getRelationType() == RelationType.ONE_TO_ONE) {
+                    extraEntityImports.add(relation.getTargetModel());
+                }
+            }
+        }
         for (String extra : extraRepos) {
             sb.append("import ").append(basePkg).append(".repository.").append(extra).append("Repository;\n");
             sb.append("import ").append(basePkg).append(".entity.").append(extra).append(";\n");
+        }
+        for (String entityName : extraEntityImports) {
+            if (extraRepos.contains(entityName) || model.getRelations().stream().anyMatch(rel ->
+                    rel.getTargetModel().equalsIgnoreCase(entityName)
+                            && (rel.getRelationType() == RelationType.MANY_TO_ONE
+                                    || rel.getRelationType() == RelationType.ONE_TO_ONE))) continue;
+            sb.append("import ").append(basePkg).append(".entity.").append(entityName).append(";\n");
         }
 
         boolean hasStorageFields = model.hasStorageEndpoints();
@@ -227,7 +260,8 @@ public class ServiceGenerator {
         if (usesWebSocket) {
             sb.append("import org.springframework.messaging.simp.SimpMessagingTemplate;\n");
         }
-
+        boolean publishesStream = model.getCustomEndpoints().stream().flatMap(endpoint -> endpoint.getActionStatements().stream())
+                .anyMatch(statement -> statement.trim().startsWith("publish "));
         CrudConfig crudConfig = model.getCrudConfig();
         boolean modelHasCache = (crudConfig != null && crudConfig.hasCache()) || model.getCustomEndpoints().stream().anyMatch(CustomEndpointDef::hasCache);
         if (modelHasCache) {
@@ -244,15 +278,31 @@ public class ServiceGenerator {
         sb.append("import org.springframework.data.jpa.domain.Specification;\n");
         sb.append("import jakarta.persistence.criteria.Predicate;\n");
         sb.append("import java.util.ArrayList;\n");
-        sb.append("import java.util.List;\n\n");
-
+        sb.append("import java.util.List;\n");
+        boolean publishesCreatedEvent = file.getConfig().isOutboxEnabled() && crudConfig != null;
+        if (publishesStream) {
+            if (!publishesCreatedEvent) sb.append("import org.springframework.context.ApplicationEventPublisher;\n");
+            for (String statement : model.getCustomEndpoints().stream().flatMap(endpoint -> endpoint.getActionStatements().stream()).filter(s -> s.trim().startsWith("publish ")).toList()) {
+                int open = statement.indexOf('(');
+                if (open > 8) {
+                    String streamName = statement.substring(8, open).trim();
+                    file.getStreams().stream().filter(stream -> stream.getName().equalsIgnoreCase(streamName)).findFirst()
+                            .ifPresent(stream -> sb.append("import ").append(basePkg).append(".event.").append(stream.getPayload()).append(";\n"));
+                }
+            }
+        }
+        if (publishesCreatedEvent) {
+            sb.append("import org.springframework.context.ApplicationEventPublisher;\n");
+            sb.append("import ").append(basePkg).append(".event.").append(className).append("CreatedEvent;\n");
+            sb.append("import java.util.UUID;\n");
+        }
+        sb.append("\n");
         sb.append("@Service\n");
         sb.append("@Transactional\n");
         sb.append("public class ").append(implName).append(" implements ").append(serviceName).append(" {\n\n");
 
-        sb.append("    private final ").append(repoName).append(" repository;\n");
+        sb.append("    private final ").append(repoName).append(" ").append(repoVar).append(";\n");
         sb.append("    private final ").append(mapperName).append(" mapper;\n");
-
         for (RelationDef rel : model.getRelations()) {
             if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
                 sb.append("    private final ").append(rel.getTargetModel()).append("Repository ")
@@ -271,6 +321,12 @@ public class ServiceGenerator {
         }
         if (usesWebSocket) {
             sb.append("    private final SimpMessagingTemplate messagingTemplate;\n");
+        }
+        if (publishesCreatedEvent) {
+            sb.append("    private final ApplicationEventPublisher eventPublisher;\n");
+        }
+        if (publishesStream && !publishesCreatedEvent) {
+            sb.append("    private final ApplicationEventPublisher eventPublisher;\n");
         }
         sb.append("\n");
 
@@ -297,9 +353,17 @@ public class ServiceGenerator {
         if (usesWebSocket) {
             sb.append(",\n        SimpMessagingTemplate messagingTemplate");
         }
+        if (publishesCreatedEvent) {
+            sb.append(",\n        ApplicationEventPublisher eventPublisher");
+        }
+        if (publishesStream && !publishesCreatedEvent) sb.append(",\n        ApplicationEventPublisher eventPublisher");
         sb.append("\n    ) {\n");
-        sb.append("        this.repository = repository;\n");
+        sb.append("        this.").append(repoVar).append(" = repository;\n");
         sb.append("        this.mapper = mapper;\n");
+        if (publishesCreatedEvent) {
+            sb.append("        this.eventPublisher = eventPublisher;\n");
+        }
+        if (publishesStream && !publishesCreatedEvent) sb.append("        this.eventPublisher = eventPublisher;\n");
         for (RelationDef rel : model.getRelations()) {
             if (rel.getRelationType() == RelationType.MANY_TO_ONE || rel.getRelationType() == RelationType.ONE_TO_ONE) {
                 sb.append("        this.").append(rel.getTargetModel().toLowerCase()).append("Repository = ")
@@ -399,7 +463,7 @@ public class ServiceGenerator {
 
             sb.append("            return cb.and(predicates.toArray(new Predicate[0]));\n");
             sb.append("        };\n\n");
-            sb.append("        Page<").append(className).append("> entityPage = repository.findAll(spec, pageable);\n");
+            sb.append("        Page<").append(className).append("> entityPage = ").append(repoVar).append(".findAll(spec, pageable);\n");
             sb.append("        return PageResponse.of(entityPage.map(mapper::toResponse));\n");
             sb.append("    }\n\n");
 
@@ -410,7 +474,7 @@ public class ServiceGenerator {
                 sb.append("    @Cacheable(value = \"").append(cacheSlug).append("\", key = \"#id\")\n");
             }
             sb.append("    public ").append(className).append("Response getById(").append(idType).append(" id) {\n");
-            sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+            sb.append("        ").append(className).append(" entity = ").append(repoVar).append(".findById(id)\n");
             sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
                     .append(" not found with id: \" + id));\n");
             sb.append("        return mapper.toResponse(entity);\n");
@@ -438,7 +502,11 @@ public class ServiceGenerator {
                     sb.append("        }\n");
                 }
             }
-            sb.append("        ").append(className).append(" saved = repository.save(entity);\n");
+            sb.append("        ").append(className).append(" saved = ").append(repoVar).append(".save(entity);\n");
+            if (publishesCreatedEvent) {
+                sb.append("        eventPublisher.publishEvent(new ").append(className)
+                        .append("CreatedEvent(UUID.randomUUID(), saved.getId()));\n");
+            }
             sb.append("        return mapper.toResponse(saved);\n");
             sb.append("    }\n\n");
 
@@ -449,7 +517,7 @@ public class ServiceGenerator {
             }
             sb.append("    public ").append(className).append("Response update(").append(idType).append(" id, Update")
                     .append(className).append("Request request) {\n");
-            sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+            sb.append("        ").append(className).append(" entity = ").append(repoVar).append(".findById(id)\n");
             sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
                     .append(" not found with id: \" + id));\n");
             sb.append("        mapper.updateEntity(entity, request);\n");
@@ -467,7 +535,7 @@ public class ServiceGenerator {
                     sb.append("        }\n");
                 }
             }
-            sb.append("        ").append(className).append(" updated = repository.save(entity);\n");
+            sb.append("        ").append(className).append(" updated = ").append(repoVar).append(".save(entity);\n");
             sb.append("        return mapper.toResponse(updated);\n");
             sb.append("    }\n\n");
 
@@ -477,11 +545,11 @@ public class ServiceGenerator {
                 sb.append("    @CacheEvict(value = {\"").append(cacheSlug).append("\", \"").append(cacheSlug).append("_list\"}, allEntries = true)\n");
             }
             sb.append("    public void delete(").append(idType).append(" id) {\n");
-            sb.append("        if (!repository.existsById(id)) {\n");
+            sb.append("        if (!").append(repoVar).append(".existsById(id)) {\n");
             sb.append("            throw new ResourceNotFoundException(\"").append(className)
                     .append(" not found with id: \" + id);\n");
             sb.append("        }\n");
-            sb.append("        repository.deleteById(id);\n");
+            sb.append("        ").append(repoVar).append(".deleteById(id);\n");
             sb.append("    }\n\n");
         }
 
@@ -561,12 +629,12 @@ public class ServiceGenerator {
                 }
                 String relCap = TypeHelper.capitalize(matchingRel.getFieldName());
                 if (ret.startsWith("List<")) {
-                    sb.append("        return repository.findBy").append(relCap).append("Id(").append(varName)
+                    sb.append("        return ").append(repoVar).append(".findBy").append(relCap).append("Id(").append(varName)
                             .append(").stream()\n");
                     sb.append("                .map(mapper::toResponse)\n");
                     sb.append("                .toList();\n");
                 } else {
-                    sb.append("        return repository.findBy").append(relCap).append("Id(").append(varName)
+                    sb.append("        return ").append(repoVar).append(".findBy").append(relCap).append("Id(").append(varName)
                             .append(").stream()\n");
                     sb.append("                .findFirst()\n");
                     sb.append("                .map(mapper::toResponse)\n");
@@ -579,7 +647,7 @@ public class ServiceGenerator {
 
                 if (ret.startsWith("List<")) {
                     String fieldCap = TypeHelper.capitalize(matchingField.getName());
-                    sb.append("        return repository.findBy").append(fieldCap).append("(").append(varName)
+                    sb.append("        return ").append(repoVar).append(".findBy").append(fieldCap).append("(").append(varName)
                             .append(").stream()\n");
                     sb.append("                .map(mapper::toResponse)\n");
                     sb.append("                .toList();\n");
@@ -588,7 +656,7 @@ public class ServiceGenerator {
                     String lookupMethod = isId ? "findById"
                             : ("findBy" + TypeHelper.capitalize(matchingField.getName()));
 
-                    sb.append("        ").append(className).append(" entity = repository.").append(lookupMethod)
+                    sb.append("        ").append(className).append(" entity = ").append(repoVar).append(".").append(lookupMethod)
                             .append("(").append(varName).append(")\n");
                     sb.append("            .orElseThrow(() -> new ResourceNotFoundException(\"").append(className)
                             .append(" not found with ").append(matchingField.getName()).append(": \" + ")
@@ -636,7 +704,7 @@ public class ServiceGenerator {
                             if (t.startsWith("return ") || t.equals("return")) {
                                 explicitReturnStmt = stmt;
                             } else {
-                                boolean isSecondary = t.startsWith("var ") || t.startsWith("create ") || t.startsWith("update ") || t.matches("^notify\\s*\\(.*");
+                                boolean isSecondary = t.startsWith("var ") || t.startsWith("create ") || t.startsWith("update ") || t.startsWith("for ") || t.startsWith("publish ") || t.matches("^notify\\s*\\(.*");
                                 if (!isSecondary) {
                                     modifiedEntity = true;
                                 }
@@ -660,7 +728,7 @@ public class ServiceGenerator {
                             }
                         }
                         if (modifiedEntity) {
-                            sb.append("        entity = repository.save(entity);\n\n");
+                            sb.append("        entity = ").append(repoVar).append(".save(entity);\n\n");
                         }
 
                         if (explicitReturnStmt != null) {
@@ -735,6 +803,15 @@ public class ServiceGenerator {
                         }
                     }
 
+                    if (explicitReturnStmt == null && !"void".equals(ret)) {
+                        String createdVar = findCreatedActionVariable(custom, className);
+                        if (createdVar != null) {
+                            String mapperCall = getMapperCall(ret, className, file);
+                            String resultExpr = mapperCall.isEmpty() ? createdVar : mapperCall + "(" + createdVar + ")";
+                            explicitReturnStmt = "return " + resultExpr;
+                        }
+                    }
+
                     if (explicitReturnStmt != null) {
                         String javaStmt = LogicTranspiler.transpileStatement(explicitReturnStmt, model, file);
                         if (!javaStmt.isEmpty()) {
@@ -773,12 +850,12 @@ public class ServiceGenerator {
                         sb.append(
                                 "        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n");
                         if (ret.startsWith("List<")) {
-                            sb.append("        return repository.findBy").append(relCap).append(idName)
+                            sb.append("        return ").append(repoVar).append(".findBy").append(relCap).append(idName)
                                     .append("(currentUsername).stream()\n");
                             sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .toList();\n");
                         } else {
-                            sb.append("        return repository.findBy").append(relCap).append(idName)
+                            sb.append("        return ").append(repoVar).append(".findBy").append(relCap).append(idName)
                                     .append("(currentUsername).stream()\n");
                             sb.append("                .findFirst()\n");
                             sb.append("                .map(").append(methodRef).append(")\n");
@@ -796,23 +873,23 @@ public class ServiceGenerator {
                         sb.append(
                                 "        String currentUsername = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();\n");
                         if (ret.startsWith("List<")) {
-                            sb.append("        return repository.findBy").append(idName)
+                            sb.append("        return ").append(repoVar).append(".findBy").append(idName)
                                     .append("(currentUsername).stream()\n");
                             sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .toList();\n");
                         } else {
-                            sb.append("        return repository.findBy").append(idName).append("(currentUsername)\n");
+                            sb.append("        return ").append(repoVar).append(".findBy").append(idName).append("(currentUsername)\n");
                             sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"")
                                     .append(className).append(" not found for user: \" + currentUsername));\n");
                         }
                     } else {
                         if (ret.startsWith("List<")) {
-                            sb.append("        return repository.findAll().stream()\n");
+                            sb.append("        return ").append(repoVar).append(".findAll().stream()\n");
                             sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .toList();\n");
                         } else {
-                            sb.append("        return repository.findAll().stream()\n");
+                            sb.append("        return ").append(repoVar).append(".findAll().stream()\n");
                             sb.append("                .findFirst()\n");
                             sb.append("                .map(").append(methodRef).append(")\n");
                             sb.append("                .orElse(null);\n");
@@ -839,7 +916,7 @@ public class ServiceGenerator {
                     sb.append("    @Override\n");
                     sb.append("    public ").append(className).append("Response upload").append(fieldCap)
                             .append("(").append(idType).append(" id, MultipartFile file) {\n");
-                    sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+                    sb.append("        ").append(className).append(" entity = ").append(repoVar).append(".findById(id)\n");
                     sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(className).append(" not found with id: \" + id));\n");
 
                     if (isImage) {
@@ -865,7 +942,7 @@ public class ServiceGenerator {
                     sb.append("            storageService.delete(entity.get").append(fieldCap).append("());\n");
                     sb.append("        }\n");
                     sb.append("        entity.set").append(fieldCap).append("(stored.getFileKey());\n");
-                    sb.append("        ").append(className).append(" saved = repository.save(entity);\n");
+                    sb.append("        ").append(className).append(" saved = ").append(repoVar).append(".save(entity);\n");
                     sb.append("        return mapper.toResponse(saved);\n");
                     sb.append("    }\n\n");
 
@@ -873,7 +950,7 @@ public class ServiceGenerator {
                     sb.append("    @Override\n");
                     sb.append("    @Transactional(readOnly = true)\n");
                     sb.append("    public FileResource download").append(fieldCap).append("(").append(idType).append(" id) {\n");
-                    sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+                    sb.append("        ").append(className).append(" entity = ").append(repoVar).append(".findById(id)\n");
                     sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(className).append(" not found with id: \" + id));\n");
                     sb.append("        if (entity.get").append(fieldCap).append("() == null) {\n");
                     sb.append("            throw new ResourceNotFoundException(\"No ").append(fieldName).append(" file uploaded for ").append(className).append(" with id: \" + id);\n");
@@ -884,12 +961,12 @@ public class ServiceGenerator {
                     // delete
                     sb.append("    @Override\n");
                     sb.append("    public void delete").append(fieldCap).append("(").append(idType).append(" id) {\n");
-                    sb.append("        ").append(className).append(" entity = repository.findById(id)\n");
+                    sb.append("        ").append(className).append(" entity = ").append(repoVar).append(".findById(id)\n");
                     sb.append("                .orElseThrow(() -> new ResourceNotFoundException(\"").append(className).append(" not found with id: \" + id));\n");
                     sb.append("        if (entity.get").append(fieldCap).append("() != null) {\n");
                     sb.append("            storageService.delete(entity.get").append(fieldCap).append("());\n");
                     sb.append("            entity.set").append(fieldCap).append("(null);\n");
-                    sb.append("            repository.save(entity);\n");
+                    sb.append("            ").append(repoVar).append(".save(entity);\n");
                     sb.append("        }\n");
                     sb.append("    }\n\n");
                 }
@@ -910,6 +987,66 @@ public class ServiceGenerator {
         return new JavaSourceFile(targetPath, writer.getContent(), writer.getMappings());
     }
 
+    private static void collectActionRepositories(String statement, String currentModel, java.util.Set<String> repositories) {
+        if (statement == null) return;
+        String source = statement.trim();
+        java.util.regex.Matcher binding = java.util.regex.Pattern.compile("^var\\s+[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*(create|update)\\s+([A-Za-z_][A-Za-z0-9_]*)").matcher(source);
+        java.util.regex.Matcher direct = java.util.regex.Pattern.compile("^(create|update)\\s+([A-Za-z_][A-Za-z0-9_]*)").matcher(source);
+        java.util.regex.Matcher match = binding.find() ? binding : direct;
+        if (match.find(0)) {
+            String name = match.group(2);
+            if (!name.equalsIgnoreCase(currentModel)) repositories.add(name);
+        }
+        int open = source.indexOf('{');
+        while (open >= 0) {
+            int close = matchingActionBrace(source, open);
+            if (close < 0) break;
+            String nested = source.substring(open + 1, close);
+            for (String nestedStatement : splitNestedActionStatements(nested)) {
+                collectActionRepositories(nestedStatement, currentModel, repositories);
+            }
+            open = source.indexOf('{', close + 1);
+        }
+    }
+
+    private static List<String> splitNestedActionStatements(String source) {
+        List<String> statements = new ArrayList<>();
+        int start = 0, depth = 0;
+        boolean quoted = false, escaped = false;
+        for (int i = 0; i <= source.length(); i++) {
+            char c = i == source.length() ? ';' : source.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+            } else if (c == '"') quoted = true;
+            else if (c == '{') depth++;
+            else if (c == '}') depth--;
+            if ((c == ';' || c == '\n' || c == ',') && depth == 0 && !quoted) {
+                String statement = source.substring(start, i).trim();
+                if (!statement.isEmpty()) statements.add(statement);
+                start = i + 1;
+            }
+        }
+        return statements;
+    }
+
+    private static int matchingActionBrace(String source, int open) {
+        int depth = 0;
+        boolean quoted = false, escaped = false;
+        for (int i = open; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+            } else if (c == '"') quoted = true;
+            else if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
     private static String getMapperCall(String ret, String className, ZenithFile file) {
         if (ret == null || "void".equals(ret)) return "";
         if (ret.equalsIgnoreCase(className + "Response")) {
@@ -922,6 +1059,18 @@ public class ServiceGenerator {
             return "";
         }
         return "mapper.toResponse";
+    }
+
+    private static String findCreatedActionVariable(CustomEndpointDef endpoint, String currentModel) {
+        java.util.regex.Pattern createBinding = java.util.regex.Pattern.compile(
+                "(?i)^var\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*create\\s+([A-Za-z_][A-Za-z0-9_]*)\\b");
+        for (String statement : endpoint.getActionStatements()) {
+            java.util.regex.Matcher matcher = createBinding.matcher(statement.trim());
+            if (matcher.find() && matcher.group(2).equalsIgnoreCase(currentModel)) {
+                return matcher.group(1);
+            }
+        }
+        return null;
     }
 
     private static String getMapperMethodRef(String ret, String className, ZenithFile file) {

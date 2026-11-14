@@ -30,7 +30,21 @@ public class PomGenerator {
         sb.append("    <description>Generated with Zenith DSL</description>\n\n");
         sb.append("    <properties>\n");
         sb.append("        <java.version>").append(javaVer).append("</java.version>\n");
+        if (file.getConfig().isOutboxEnabled()) {
+            sb.append("        <spring-modulith.version>1.1.6</spring-modulith.version>\n");
+        }
+        if (file.hasStreamIntegration()) {
+            sb.append("        <spring-cloud.version>2023.0.1</spring-cloud.version>\n");
+        }
         sb.append("    </properties>\n\n");
+        if (file.getConfig().isOutboxEnabled() || file.hasStreamIntegration()) {
+            sb.append("    <dependencyManagement>\n");
+            sb.append("        <dependencies>\n");
+            if (file.getConfig().isOutboxEnabled()) sb.append("            <dependency>\n                <groupId>org.springframework.modulith</groupId>\n                <artifactId>spring-modulith-bom</artifactId>\n                <version>${spring-modulith.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n");
+            if (file.hasStreamIntegration()) sb.append("            <dependency>\n                <groupId>org.springframework.cloud</groupId>\n                <artifactId>spring-cloud-dependencies</artifactId>\n                <version>${spring-cloud.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n");
+            sb.append("        </dependencies>\n");
+            sb.append("    </dependencyManagement>\n\n");
+        }
         sb.append("    <dependencies>\n");
         sb.append("        <dependency>\n");
         sb.append("            <groupId>org.springframework.boot</groupId>\n");
@@ -44,6 +58,23 @@ public class PomGenerator {
         sb.append("            <groupId>org.springframework.boot</groupId>\n");
         sb.append("            <artifactId>spring-boot-starter-validation</artifactId>\n");
         sb.append("        </dependency>\n");
+        sb.append("        <dependency>\n");
+        sb.append("            <groupId>org.springframework.boot</groupId>\n");
+        sb.append("            <artifactId>spring-boot-devtools</artifactId>\n");
+        sb.append("            <optional>true</optional>\n");
+        sb.append("        </dependency>\n");
+
+        if (file.getConfig().isOutboxEnabled()) {
+            sb.append("        <dependency>\n");
+            sb.append("            <groupId>org.springframework.modulith</groupId>\n");
+            sb.append("            <artifactId>spring-modulith-starter-jdbc</artifactId>\n");
+            sb.append("        </dependency>\n");
+        }
+        if (file.hasStreamIntegration()) {
+            String broker = !file.getStreams().isEmpty() && file.getStreams().get(0).getBroker() != null ? file.getStreams().get(0).getBroker() : file.getConfig().getBroker();
+            if (broker == null && !file.getStreams().isEmpty()) broker = file.getConfig().getBroker();
+            sb.append("        <dependency>\n            <groupId>org.springframework.cloud</groupId>\n            <artifactId>spring-cloud-starter-stream-" + ("kafka".equalsIgnoreCase(broker) ? "kafka" : "rabbit") + "</artifactId>\n        </dependency>\n");
+        }
 
         if (file.getConfig().isSwaggerEnabled()) {
             sb.append("        <dependency>\n");
@@ -195,6 +226,9 @@ public class PomGenerator {
         sb.append("            <plugin>\n");
         sb.append("                <groupId>org.springframework.boot</groupId>\n");
         sb.append("                <artifactId>spring-boot-maven-plugin</artifactId>\n");
+        sb.append("                <configuration>\n");
+        sb.append("                    <excludeDevtools>true</excludeDevtools>\n");
+        sb.append("                </configuration>\n");
         sb.append("            </plugin>\n");
         sb.append("        </plugins>\n");
         sb.append("    </build>\n");

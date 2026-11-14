@@ -64,7 +64,7 @@ public class DtoGenerator {
             for (String v : validations) {
                 comp.append("    ").append(v).append("\n");
             }
-            comp.append("    ").append(TypeHelper.toSimpleJavaType(field.getType())).append(" ")
+            comp.append("    ").append(TypeHelper.toJavaType(field.getType())).append(" ")
                     .append(field.getName());
             recordComponents.add(comp.toString());
         }
@@ -144,7 +144,7 @@ public class DtoGenerator {
             for (String v : validations) {
                 comp.append("    ").append(v).append("\n");
             }
-            comp.append("    ").append(TypeHelper.toSimpleJavaType(field.getType())).append(" ")
+            comp.append("    ").append(TypeHelper.toJavaType(field.getType())).append(" ")
                     .append(field.getName());
             recordComponents.add(comp.toString());
         }
@@ -207,7 +207,7 @@ public class DtoGenerator {
             for (String v : validations) {
                 comp.append("    ").append(v).append("\n");
             }
-            comp.append("    ").append(TypeHelper.toSimpleJavaType(field.getType())).append(" ")
+            comp.append("    ").append(TypeHelper.toJavaType(field.getType())).append(" ")
                     .append(field.getName());
             recordComponents.add(comp.toString());
         }
@@ -255,7 +255,7 @@ public class DtoGenerator {
             if (field.hasAnnotation("password")) {
                 continue; // Never expose passwords in response DTOs
             }
-            recordComponents.add("    " + TypeHelper.toSimpleJavaType(field.getType()) + " " + field.getName());
+            recordComponents.add("    " + TypeHelper.toJavaType(field.getType()) + " " + field.getName());
         }
 
         for (RelationDef rel : model.getRelations()) {

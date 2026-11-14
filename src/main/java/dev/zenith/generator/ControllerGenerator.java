@@ -154,6 +154,7 @@ public class ControllerGenerator {
 
         // Custom endpoints
         for (CustomEndpointDef custom : model.getCustomEndpoints()) {
+            int endpointStartLine = TraceableSourceWriter.countLines(sb.toString());
             String path = custom.getPath().startsWith("/") ? custom.getPath() : "/" + custom.getPath();
             String springPath = TypeHelper.sanitizePath(path);
             String springMethod = "@" + TypeHelper.capitalize(custom.getMethod().toLowerCase()) + "Mapping(\""
@@ -225,6 +226,12 @@ public class ControllerGenerator {
                         .append(callArgs).append("));\n");
                 sb.append("    }\n\n");
             }
+
+            int endpointEndLine = TraceableSourceWriter.countLines(sb.toString()) - 1;
+            writer.addMapping(controllerName + "." + methodName, endpointStartLine, endpointEndLine,
+                    ControllerGenerator.class.getName(), "generate", 162,
+                    custom.getSourceLocation(), custom.getMethod().toLowerCase() + " \"" + custom.getPath() + "\"");
+
         }
 
         if (model.hasStorageEndpoints()) {

@@ -16,9 +16,19 @@ public class SemanticAnalyzer {
             "softDelete", "audited", "encrypted", "tenant", "owner");
 
     public ZenithFile analyze(ZenithFile file) {
+        validateStreams(file);
         if (file.getConfig() != null) {
             Map<String, Object> props = file.getConfig().getProperties();
-            boolean hasExplicitAuth = file.hasAuth();
+            // This validation concerns whether JWT auth was declared in config.
+            // ZenithFile.hasAuth() also requires a user model, which is a
+            // separate generation capability and must not invalidate JWT
+            // settings in schemas that do not define one yet.
+            boolean hasExplicitAuth = file.getConfig().isAuthEnabled();
+
+            if (file.getConfig().isOutboxEnabled() && file.getConfig().isFlywayEnabled()) {
+                throw new AnalysisException(
+                        "Configuration 'outbox: true' currently uses Spring Modulith JDBC schema initialization and cannot be combined with 'flyway: true'. Disable Flyway or disable the outbox.");
+            }
 
             boolean declaresJwtSecret = props.keySet().stream().anyMatch(k -> k.equalsIgnoreCase("jwtSecret"));
             boolean declaresJwtExpiration = props.keySet().stream().anyMatch(k -> k.equalsIgnoreCase("jwtExpiration"));
@@ -240,6 +250,19 @@ public class SemanticAnalyzer {
                 }
 
                 Map<String, String> actionVariables = new HashMap<>();
+                if (endpoint.hasBody()) actionVariables.put("body", endpoint.getBodyType());
+                if (endpoint.getParamTypes() != null) {
+                    actionVariables.putAll(endpoint.getParamTypes());
+                }
+                if (endpoint.getPath() != null) {
+                    java.util.regex.Matcher pm = java.util.regex.Pattern.compile("\\{([a-zA-Z0-9_]+)\\}").matcher(endpoint.getPath());
+                    while (pm.find()) {
+                        String pName = pm.group(1);
+                        if (!actionVariables.containsKey(pName)) {
+                            actionVariables.put(pName, "Object");
+                        }
+                    }
+                }
                 var actionDefs = endpoint.getActionStatementDefs();
                 for (int ai = 0; ai < endpoint.getActionStatements().size(); ai++) {
                     String stmt = endpoint.getActionStatements().get(ai);
@@ -248,7 +271,7 @@ public class SemanticAnalyzer {
                             : epLine;
                     validateActionStatement(stmt, model, file, modelNames,
                             "endpoint '" + endpoint.getMethod() + " " + endpoint.getPath() + "'", epFile, stmtLine,
-                            actionVariables);
+                            actionVariables, endpoint.getBodyType());
                 }
 
                 if (endpoint.hasRateLimit()) {
@@ -381,7 +404,60 @@ public class SemanticAnalyzer {
         validateMailDefinitions(file, modelNames);
 
         return new ZenithFile(file.getConfig(), file.getEnums(), validatedModels, file.getDtos(), file.getSeeds(),
-                file.getJobs(), file.getMails(), file.getSockets(), file.getImports(), file.hasExplicitConfig());
+                file.getJobs(), file.getMails(), file.getSockets(), file.getEvents(), file.getStreams(), file.getConsumers(), file.getImports(), file.hasExplicitConfig());
+    }
+
+    private void validateStreams(ZenithFile file) {
+        Set<String> eventNames = new HashSet<>();
+        for (EventDef event : file.getEvents()) {
+            if (!eventNames.add(event.getName().toLowerCase())) throw new AnalysisException("Duplicate event defined: '" + event.getName() + "'", event.getSourceFile(), event.getSourceLine(), 1);
+            Set<String> fields = new HashSet<>();
+            for (FieldDef field : event.getFields()) {
+                if (!fields.add(field.getName().toLowerCase())) throw new AnalysisException("Duplicate field '" + field.getName() + "' in event '" + event.getName() + "'", event.getSourceFile(), event.getSourceLine(), 1);
+                if (!field.getAnnotations().isEmpty()) throw new AnalysisException("Event fields cannot use persistence or mutable-value annotations", event.getSourceFile(), event.getSourceLine(), 1);
+                if (field.getType().isList() || "list".equalsIgnoreCase(field.getType().getName())) throw new AnalysisException("Collection fields are not supported in event contracts", event.getSourceFile(), event.getSourceLine(), 1);
+                String type = field.getType().getName();
+                if (!isScalarReturnType(type) && !"DateTime".equalsIgnoreCase(type) && file.findEnum(type) == null) throw new AnalysisException("Unsupported event field type '" + type + "'", event.getSourceFile(), event.getSourceLine(), 1);
+            }
+        }
+        Set<String> streamNames = new HashSet<>();
+        Set<String> brokers = new HashSet<>();
+        String appBroker = file.getConfig().getBroker();
+        for (StreamDef stream : file.getStreams()) {
+            if (!streamNames.add(stream.getName().toLowerCase())) throw new AnalysisException("Duplicate stream defined: '" + stream.getName() + "'", stream.getSourceFile(), stream.getSourceLine(), 1);
+            String broker = stream.getBroker() != null ? stream.getBroker() : appBroker;
+            if (broker == null || !(broker.equalsIgnoreCase("kafka") || broker.equalsIgnoreCase("rabbitmq"))) throw new AnalysisException("Stream '" + stream.getName() + "' requires broker kafka or rabbitmq", stream.getSourceFile(), stream.getSourceLine(), 1);
+            brokers.add(broker.toLowerCase());
+            if (stream.getTopic() == null || !stream.getTopic().matches("[A-Za-z0-9._-]+")) throw new AnalysisException("Invalid or missing stream destination name", stream.getSourceFile(), stream.getSourceLine(), 1);
+            if (stream.getPayload() == null || file.findEvent(stream.getPayload()) == null) throw new AnalysisException("Stream payload must reference a declared event", stream.getSourceFile(), stream.getSourceLine(), 1);
+            if (stream.getPartitions() != null && (stream.getPartitions() < 1 || !broker.equalsIgnoreCase("kafka"))) throw new AnalysisException("Partitions must be positive and are supported only by Kafka", stream.getSourceFile(), stream.getSourceLine(), 1);
+            if (stream.getBroker() != null && appBroker != null && !stream.getBroker().equalsIgnoreCase(appBroker)) throw new AnalysisException("Mixed brokers in one service are not supported", stream.getSourceFile(), stream.getSourceLine(), 1);
+        }
+        if (brokers.size() > 1) throw new AnalysisException("Mixed brokers in one service are not supported");
+        Set<String> consumerNames = new HashSet<>();
+        for (StreamConsumerDef consumer : file.getConsumers()) {
+            String contextFile = consumer.getSourceFile();
+            int contextLine = consumer.getSourceLine();
+            if (!consumerNames.add(consumer.getName().toLowerCase())) throw new AnalysisException("Duplicate stream consumer defined: '" + consumer.getName() + "'", contextFile, contextLine, 1);
+            StreamDef source = null;
+            for (StreamDef candidate : file.getStreams()) if (candidate.getName().equalsIgnoreCase(consumer.getStream())) source = candidate;
+            if (source == null) throw new AnalysisException("Consumer '" + consumer.getName() + "' must reference a declared stream with 'from'", contextFile, contextLine, 1);
+            if (consumer.getGroup() == null || !consumer.getGroup().matches("[A-Za-z0-9._-]+")) throw new AnalysisException("Consumer group must be a non-empty broker-safe name", contextFile, contextLine, 1);
+            if (consumer.getConcurrency() != null && consumer.getConcurrency() < 1) throw new AnalysisException("Consumer concurrency must be positive", contextFile, contextLine, 1);
+            if (consumer.getMaxAttempts() == null || consumer.getMaxAttempts() < 1) throw new AnalysisException("Retry maxAttempts must be positive", contextFile, contextLine, 1);
+            if (consumer.getBackoffMs() == null || consumer.getBackoffMs() < 1 || consumer.getMaxBackoffMs() == null || consumer.getMaxBackoffMs() < consumer.getBackoffMs()) throw new AnalysisException("Retry backoff must be positive and maxBackoff must be at least backoff", contextFile, contextLine, 1);
+            if (consumer.getBackoffMultiplier() == null || consumer.getBackoffMultiplier() < 1) throw new AnalysisException("Retry multiplier must be at least 1", contextFile, contextLine, 1);
+            if (consumer.getDeadLetter() != null && !consumer.getDeadLetter().matches("[A-Za-z0-9._-]+")) throw new AnalysisException("Invalid dead-letter destination", contextFile, contextLine, 1);
+            if (consumer.getActions().isEmpty()) throw new AnalysisException("Consumer requires at least one action", contextFile, contextLine, 1);
+            EventDef payload = file.findEvent(source.getPayload());
+            for (String action : consumer.getActions()) {
+                java.util.regex.Matcher log = java.util.regex.Pattern.compile("^log payload\\.([A-Za-z_][A-Za-z0-9_]*)$").matcher(action);
+                if (!log.matches()) throw new AnalysisException("Unsupported consumer action; expected 'log payload.field'", contextFile, contextLine, 1);
+                boolean found = false;
+                for (FieldDef field : payload.getFields()) if (field.getName().equalsIgnoreCase(log.group(1))) found = true;
+                if (!found) throw new AnalysisException("Consumer action references unknown payload field '" + log.group(1) + "'", contextFile, contextLine, 1);
+            }
+        }
     }
 
     private void validateRoleReferences(ZenithFile file, List<ModelDef> models) {
@@ -454,9 +530,39 @@ public class SemanticAnalyzer {
 
     private void validateActionStatement(String stmt, ModelDef model, ZenithFile file, Set<String> modelNames,
             String context, String srcFile, int srcLine, Map<String, String> localVars) {
+        validateActionStatement(stmt, model, file, modelNames, context, srcFile, srcLine, localVars, null);
+    }
+
+    private void validateActionStatement(String stmt, ModelDef model, ZenithFile file, Set<String> modelNames,
+            String context, String srcFile, int srcLine, Map<String, String> localVars, String bodyType) {
         if (stmt == null || stmt.trim().isEmpty())
             return;
         String s = stmt.trim();
+
+        if (s.startsWith("fail(")) {
+            java.util.regex.Matcher fail = java.util.regex.Pattern
+                    .compile("^fail\\(\\s*\"(?:\\\\.|[^\"])*\"\\s*,\\s*(\\d+)\\s*,\\s*\"(?:\\\\.|[^\"])*\"\\s*\\)$")
+                    .matcher(s);
+            if (!fail.matches()) throw new AnalysisException("Invalid fail statement; expected fail(code, status, message)", srcFile, srcLine, 1);
+            int status = Integer.parseInt(fail.group(1));
+            if (status < 400 || status > 599) throw new AnalysisException("HTTP status code for fail must be between 400 and 599", srcFile, srcLine, 1);
+            return;
+        }
+
+        if (s.startsWith("try {")) {
+            validateTryCatchStatement(s, model, file, modelNames, context, srcFile, srcLine, localVars);
+            return;
+        }
+
+        if (s.startsWith("for ")) {
+            validateForEachStatement(s, model, file, modelNames, context, srcFile, srcLine, localVars, bodyType);
+            return;
+        }
+
+        if (s.startsWith("publish ")) {
+            validatePublishStatement(s, model, file, localVars, context, srcFile, srcLine);
+            return;
+        }
 
         if (s.startsWith("var ")) {
             String rest = s.substring(4).trim();
@@ -476,7 +582,7 @@ public class SemanticAnalyzer {
                         "Variable name '" + varName + "' in " + context + " collides with a reserved keyword", srcFile,
                         srcLine, 1);
             }
-            if (localVars.containsKey(varName)) {
+            if (localVars.containsKey(varName) && !"body".equals(varName)) {
                 throw new AnalysisException("Duplicate variable declaration '" + varName + "' in " + context, srcFile,
                         srcLine, 1);
             }
@@ -562,6 +668,7 @@ public class SemanticAnalyzer {
                 }
             }
             validateExpressionFunctions(s, context, srcFile, srcLine);
+            validatePropertyAccesses(s, localVars, file, context, srcFile, srcLine);
             return;
         }
 
@@ -583,6 +690,9 @@ public class SemanticAnalyzer {
         if (s.contains("=") && !s.contains("==") && !s.contains("!=") && !s.contains("<=") && !s.contains(">=")) {
             String[] parts = s.split("=", 2);
             String left = parts[0].trim().replaceAll("\\s+", "");
+            if (localVars.containsKey(left) && localVars.get(left).startsWith("@loop:")) {
+                throw new AnalysisException("Cannot assign to loop variable '" + left + "' in " + context, srcFile, srcLine, 1);
+            }
             if (left.startsWith("entity.")) {
                 left = left.substring(7);
             }
@@ -597,13 +707,215 @@ public class SemanticAnalyzer {
             }
             validatePropertyAccesses(parts[1], localVars, file, context, srcFile, srcLine);
             validateExpressionFunctions(parts[1], context, srcFile, srcLine);
-            validateEnumConstants(left, parts[1], model, file, context, srcFile, srcLine);
+            validateEnumConstants(left, parts[1], model, file, context, srcFile, srcLine, localVars);
             return;
         }
 
         throw new AnalysisException("Unsupported action statement in " + context + ": '" + s + "'. "
                 + "Zenith action statements must be an assignment ('field = value'), 'create Model { ... }', 'update Model { ... }', 'send MailName(...)', 'notify(to, message)', or 'return ...'.",
                 srcFile, srcLine, 1);
+    }
+
+    private void validateForEachStatement(String source, ModelDef model, ZenithFile file, Set<String> modelNames,
+            String context, String srcFile, int srcLine, Map<String, String> localVars, String bodyType) {
+        java.util.regex.Matcher header = java.util.regex.Pattern
+                .compile("^for\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(.*?)\\s*\\{", java.util.regex.Pattern.DOTALL)
+                .matcher(source.trim());
+        if (!header.find()) throw new AnalysisException("Invalid for loop; expected for item : items { ... }", srcFile, srcLine, 1);
+        String variable = header.group(1);
+        String iterable = header.group(2).trim();
+        if (RESERVED_ACTION_VARS.contains(variable) || localVars.containsKey(variable)) {
+            throw new AnalysisException("Loop variable '" + variable + "' shadows a reserved or existing action variable", srcFile, srcLine, 1);
+        }
+        int open = header.end() - 1;
+        int close = matchingActionBrace(source, open);
+        if (close < 0 || !source.substring(close + 1).trim().replace(";", "").isEmpty()) {
+            throw new AnalysisException("Invalid or unclosed for loop body", srcFile, srcLine, 1);
+        }
+
+        String elementType = null;
+        java.util.regex.Matcher root = java.util.regex.Pattern
+                .compile("^([A-Za-z_][A-Za-z0-9_]*)(?:\\.([A-Za-z_][A-Za-z0-9_]*))?$")
+                .matcher(iterable.replaceAll("\\s*\\.\\s*", "."));
+        if (root.matches()) {
+            String owner = root.group(1);
+            if ("body".equals(owner) && bodyType != null && file != null && root.group(2) != null) {
+                DtoDef dto = file.findDto(bodyType);
+                FieldDef field = dto == null ? null : dto.getFields().stream()
+                        .filter(candidate -> candidate.getName().equalsIgnoreCase(root.group(2))).findFirst().orElse(null);
+                if (field != null && field.getType().isList()) elementType = field.getType().getElementTypeRef().getName();
+            } else if (localVars.containsKey(owner) && !"body".equals(owner)) {
+                String ownerType = localVars.get(owner);
+                if (ownerType.startsWith("@loop:")) ownerType = ownerType.substring("@loop:".length());
+                ModelDef ownerModel = file.findModel(ownerType);
+                FieldDef field = ownerModel == null ? null : ownerModel.findField(root.group(2));
+                if (field != null && field.getType().isList()) elementType = field.getType().getElementTypeRef().getName();
+                if (elementType == null && ownerModel != null) {
+                    RelationDef relation = ownerModel.findRelation(root.group(2));
+                    if (relation != null && relation.getRelationType() == RelationType.ONE_TO_MANY) {
+                        elementType = relation.getTargetModel();
+                    }
+                }
+            } else if (root.group(2) != null && model != null
+                    && (model.findField(root.group(1)) != null || model.findRelation(root.group(1)) != null)) {
+                FieldDef field = model.findField(root.group(1));
+                if (field != null && field.getType().isList()) elementType = field.getType().getElementTypeRef().getName();
+                if (elementType == null) {
+                    RelationDef relation = model.findRelation(root.group(1));
+                    if (relation != null && relation.getRelationType() == RelationType.ONE_TO_MANY) {
+                        elementType = relation.getTargetModel();
+                    }
+                }
+            }
+        }
+        if (elementType == null && iterable.matches("(?s).*(?:[A-Za-z_][A-Za-z0-9_]*\\.)?[A-Za-z_][A-Za-z0-9_]*\\(\\).*")) {
+            throw new AnalysisException("Cannot infer list element type for for loop iterable '" + iterable + "'", srcFile, srcLine, 1);
+        }
+        if (elementType == null) {
+            throw new AnalysisException("For loop iterable '" + iterable + "' must be a known List<T> value", srcFile, srcLine, 1);
+        }
+        if (elementType.contains("<") || "List".equalsIgnoreCase(elementType)) {
+            throw new AnalysisException("Nested list iteration is not supported; the for loop variable must have a scalar, DTO, enum, or model element type", srcFile, srcLine, 1);
+        }
+        if (!isScalarReturnType(elementType) && !modelNames.contains(elementType)
+                && file.findDto(elementType) == null && file.findEnum(elementType) == null) {
+            throw new AnalysisException("Unknown list element type '" + elementType + "' in for loop", srcFile, srcLine, 1);
+        }
+        validatePropertyAccesses(iterable, localVars, file, context, srcFile, srcLine);
+        Map<String, String> bodyVars = new HashMap<>(localVars);
+        bodyVars.put(variable, "@loop:" + elementType);
+        validateActionBlockStatements(source.substring(open + 1, close), model, file, modelNames, context, srcFile, srcLine, bodyVars, bodyType);
+    }
+
+    private void validatePublishStatement(String source, ModelDef model, ZenithFile file, Map<String, String> localVars,
+            String context, String srcFile, int srcLine) {
+        if (model == null) throw new AnalysisException("Stream publication is currently supported only inside transactional model endpoint actions", srcFile, srcLine, 1);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^publish\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\((.*)\\)$", java.util.regex.Pattern.DOTALL).matcher(source);
+        if (!matcher.matches()) throw new AnalysisException("Invalid publish statement; expected publish StreamName(field = expression, ...)", srcFile, srcLine, 1);
+        StreamDef stream = file.getStreams().stream().filter(candidate -> candidate.getName().equalsIgnoreCase(matcher.group(1))).findFirst().orElse(null);
+        if (stream == null) throw new AnalysisException("Publish references unknown stream '" + matcher.group(1) + "'", srcFile, srcLine, 1);
+        EventDef event = file.findEvent(stream.getPayload());
+        Map<String, String> supplied = new HashMap<>();
+        for (String part : splitPublishArguments(matcher.group(2))) {
+            int equals = part.indexOf('=');
+            if (equals < 1) throw new AnalysisException("Publish arguments must use field = expression", srcFile, srcLine, 1);
+            String fieldName = part.substring(0, equals).trim();
+            String expression = part.substring(equals + 1).trim();
+            if (expression.isEmpty()) throw new AnalysisException("Missing expression for event field '" + fieldName + "'", srcFile, srcLine, 1);
+            FieldDef field = event.getFields().stream().filter(candidate -> candidate.getName().equalsIgnoreCase(fieldName)).findFirst().orElse(null);
+            if (field == null) throw new AnalysisException("Event '" + event.getName() + "' has no field '" + fieldName + "'", srcFile, srcLine, 1);
+            if (supplied.put(fieldName.toLowerCase(), expression) != null) throw new AnalysisException("Duplicate publish field '" + fieldName + "'", srcFile, srcLine, 1);
+            validatePropertyAccesses(expression, localVars, file, context, srcFile, srcLine);
+            validateExpressionFunctions(expression, context, srcFile, srcLine);
+            String targetType = field.getType().getName().toLowerCase();
+            if (expression.startsWith("\"") && !(targetType.equals("string") || targetType.equals("text")))
+                throw new AnalysisException("String literal is incompatible with event field '" + fieldName + "' of type '" + field.getType().getName() + "'", srcFile, srcLine, 1);
+            if (expression.matches("-?[0-9]+(\\.[0-9]+)?") && !Set.of("int", "integer", "long", "float", "double", "decimal", "bigdecimal").contains(targetType))
+                throw new AnalysisException("Numeric literal is incompatible with event field '" + fieldName + "' of type '" + field.getType().getName() + "'", srcFile, srcLine, 1);
+            if (("true".equalsIgnoreCase(expression) || "false".equalsIgnoreCase(expression)) && !(targetType.equals("boolean") || targetType.equals("bool")))
+                throw new AnalysisException("Boolean literal is incompatible with event field '" + fieldName + "' of type '" + field.getType().getName() + "'", srcFile, srcLine, 1);
+            if (model != null && isSimpleIdentifier(expression) && model.findField(expression) == null
+                    && !localVars.containsKey(expression) && !Set.of("id", "body", "entity", "now").contains(expression)) {
+                // Endpoint path variables and built-in values are resolved by the generated service signature.
+                boolean isPathVariable = model.getCustomEndpoints().stream().anyMatch(ep -> ep.getPath().matches(".*[/{]" + java.util.regex.Pattern.quote(expression) + "[}].*"));
+                if (!isPathVariable && !"null".equalsIgnoreCase(expression)) throw new AnalysisException("Cannot resolve publish expression '" + expression + "'", srcFile, srcLine, 1);
+            }
+        }
+        for (FieldDef field : event.getFields()) {
+            if (!field.isOptional() && !supplied.containsKey(field.getName().toLowerCase())) throw new AnalysisException("Publish to '" + stream.getName() + "' is missing required event field '" + field.getName() + "'", srcFile, srcLine, 1);
+        }
+    }
+
+    private List<String> splitPublishArguments(String body) {
+        List<String> parts = new ArrayList<>(); StringBuilder current = new StringBuilder();
+        int depth = 0; boolean quoted = false;
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            if (c == '"' && (i == 0 || body.charAt(i - 1) != '\\')) quoted = !quoted;
+            if (!quoted) { if (c == '(') depth++; else if (c == ')') depth--; }
+            if (c == ',' && !quoted && depth == 0) { if (!current.toString().trim().isEmpty()) parts.add(current.toString().trim()); current.setLength(0); }
+            else current.append(c);
+        }
+        if (!current.toString().trim().isEmpty()) parts.add(current.toString().trim());
+        return parts;
+    }
+
+    private boolean isSimpleIdentifier(String expression) { return expression.matches("[A-Za-z_][A-Za-z0-9_]*"); }
+
+    private void validateTryCatchStatement(String source, ModelDef model, ZenithFile file, Set<String> modelNames,
+            String context, String srcFile, int srcLine, Map<String, String> localVars) {
+        int open = source.indexOf('{');
+        int close = matchingActionBrace(source, open);
+        if (close < 0) throw new AnalysisException("Unclosed try block", srcFile, srcLine, 1);
+        validateActionBlockStatements(source.substring(open + 1, close), model, file, modelNames, context, srcFile, srcLine,
+                new HashMap<>(localVars));
+        int cursor = close + 1;
+        int catches = 0;
+        while (cursor < source.length()) {
+            while (cursor < source.length() && (Character.isWhitespace(source.charAt(cursor)) || source.charAt(cursor) == ';')) cursor++;
+            if (cursor == source.length()) break;
+            if (!source.startsWith("catch", cursor)) throw new AnalysisException("Expected catch clause", srcFile, srcLine, 1);
+            int parenOpen = source.indexOf('(', cursor + 5);
+            int parenClose = parenOpen < 0 ? -1 : source.indexOf(')', parenOpen);
+            if (parenClose < 0) throw new AnalysisException("Invalid catch clause", srcFile, srcLine, 1);
+            String[] binding = source.substring(parenOpen + 1, parenClose).trim().split("\\s+");
+            if (binding.length != 2) throw new AnalysisException("Catch requires an exception type and variable", srcFile, srcLine, 1);
+            open = source.indexOf('{', parenClose);
+            close = matchingActionBrace(source, open);
+            if (open < 0 || close < 0) throw new AnalysisException("Invalid catch block", srcFile, srcLine, 1);
+            Map<String, String> catchVars = new HashMap<>(localVars);
+            if (catchVars.containsKey(binding[1]) || RESERVED_ACTION_VARS.contains(binding[1])) {
+                throw new AnalysisException("Catch variable '" + binding[1] + "' shadows an existing action variable", srcFile, srcLine, 1);
+            }
+            catchVars.put(binding[1], "Exception");
+            validateActionBlockStatements(source.substring(open + 1, close), model, file, modelNames, context, srcFile, srcLine, catchVars);
+            cursor = close + 1;
+            catches++;
+        }
+        if (catches == 0) throw new AnalysisException("A try block must have at least one catch clause", srcFile, srcLine, 1);
+    }
+
+    private void validateActionBlockStatements(String body, ModelDef model, ZenithFile file, Set<String> modelNames,
+            String context, String srcFile, int srcLine, Map<String, String> variables) {
+        validateActionBlockStatements(body, model, file, modelNames, context, srcFile, srcLine, variables, null);
+    }
+
+    private void validateActionBlockStatements(String body, ModelDef model, ZenithFile file, Set<String> modelNames,
+            String context, String srcFile, int srcLine, Map<String, String> variables, String bodyType) {
+        int start = 0, depth = 0;
+        boolean quoted = false, escaped = false;
+        for (int i = 0; i <= body.length(); i++) {
+            char c = i == body.length() ? ';' : body.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+            } else if (c == '"') quoted = true;
+            else if (c == '{') depth++;
+            else if (c == '}') depth--;
+            if (c == ';' && depth == 0 && !quoted) {
+                String statement = body.substring(start, i).trim();
+                if (!statement.isEmpty()) validateActionStatement(statement, model, file, modelNames, context, srcFile, srcLine, variables, bodyType);
+                start = i + 1;
+            }
+        }
+    }
+
+    private int matchingActionBrace(String source, int open) {
+        if (open < 0) return -1;
+        int depth = 0;
+        boolean quoted = false, escaped = false;
+        for (int i = open; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+            } else if (c == '"') quoted = true;
+            else if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return i;
+        }
+        return -1;
     }
 
     private void validateExpressionFunctions(String expr, String context, String srcFile, int srcLine) {
@@ -635,7 +947,7 @@ public class SemanticAnalyzer {
     }
 
     private void validateEnumConstants(String targetField, String rightExpr, ModelDef model, ZenithFile file,
-            String context, String srcFile, int srcLine) {
+            String context, String srcFile, int srcLine, Map<String, String> localVars) {
         if (rightExpr == null || file == null || file.getEnums().isEmpty())
             return;
 
@@ -692,6 +1004,20 @@ public class SemanticAnalyzer {
             if (targetEnum != null) {
                 String token = normalizedExpr.trim();
                 if (token.matches("^[a-zA-Z0-9_]+$")) {
+                    // Check if token refers to a known local variable, parameter, model field, or reserved keyword
+                    if (localVars != null && localVars.containsKey(token)) {
+                        return;
+                    }
+                    if (RESERVED_ACTION_VARS.contains(token) || "null".equalsIgnoreCase(token)) {
+                        return;
+                    }
+                    if (model != null && (model.findField(token) != null || model.findRelation(token) != null)) {
+                        return;
+                    }
+                    if (context != null && context.contains("{" + token + "}")) {
+                        return;
+                    }
+
                     boolean validConstant = false;
                     for (String val : targetEnum.getValues()) {
                         if (val.equalsIgnoreCase(token)) {
@@ -904,8 +1230,19 @@ public class SemanticAnalyzer {
         java.util.regex.Matcher m = dotPattern.matcher(stripped);
         while (m.find()) {
             String root = m.group(1);
-            if (root.equals("entity") || root.equals("currentUser") || root.equals("body") || root.equals("java")
+            if (root.equals("entity") || root.equals("currentUser") || root.equals("java")
                     || root.equals("Math") || root.equals("ShipmentStatus")) {
+                continue;
+            }
+            if (root.equals("body")) {
+                String bodyType = localVars.get("body");
+                DtoDef bodyDto = file.findDto(bodyType);
+                if (bodyDto != null) {
+                    String firstProperty = m.group(2).split("\\.")[0];
+                    if (bodyDto.getFields().stream().noneMatch(field -> field.getName().equalsIgnoreCase(firstProperty))) {
+                        throw new AnalysisException("Property '" + firstProperty + "' does not exist on request DTO '" + bodyDto.getName() + "' in " + context, srcFile, srcLine, 1);
+                    }
+                }
                 continue;
             }
             if (file.findEnum(root) != null) {
@@ -914,6 +1251,15 @@ public class SemanticAnalyzer {
             // Check if root is in localVars
             if (localVars.containsKey(root)) {
                 String targetModelName = localVars.get(root);
+                if (targetModelName.startsWith("@loop:")) targetModelName = targetModelName.substring("@loop:".length());
+                DtoDef targetDto = file.findDto(targetModelName);
+                if (targetDto != null) {
+                    String[] segments = m.group(2).split("\\.");
+                    if (targetDto.getFields().stream().noneMatch(field -> field.getName().equalsIgnoreCase(segments[0]))) {
+                        throw new AnalysisException("Property '" + segments[0] + "' does not exist on DTO '" + targetDto.getName() + "' in " + context, srcFile, srcLine, 1);
+                    }
+                    continue;
+                }
                 ModelDef targetModel = file.findModel(targetModelName);
                 if (targetModel != null) {
                     String fullProp = m.group(2);
@@ -944,6 +1290,9 @@ public class SemanticAnalyzer {
                         throw new AnalysisException("Property '" + seg + "' does not exist on model '"
                                 + currentModel.getName() + "' in " + context, srcFile, srcLine, 1);
                     }
+                } else if (!"Exception".equals(targetModelName) || !"message".equals(m.group(2))) {
+                    throw new AnalysisException("Cannot access property '" + m.group(2) + "' on value of type '"
+                            + targetModelName + "' in " + context, srcFile, srcLine, 1);
                 }
             } else if (!root.matches("^[A-Z].*")) {
                 // Undeclared variable reference

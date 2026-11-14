@@ -2,11 +2,14 @@ config {
     app: "NexusCommerce"
     package: "com.nexus.commerce"
     basePath: "/api/v1"
-    port: 8080
-    database: postgres
+    port: 8081
+    database: h2
     auth: jwt
     swagger: true
     flyway: true
+    proxy:nginx
+    ssl:true
+    replicas : 3
     storage: minio
     storageBucket: "nexus-media"
 }

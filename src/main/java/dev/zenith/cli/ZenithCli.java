@@ -3,6 +3,8 @@ package dev.zenith.cli;
 import dev.zenith.analyzer.SemanticAnalyzer;
 import dev.zenith.ast.ModelDef;
 import dev.zenith.ast.ZenithFile;
+import dev.zenith.deploy.ServerProfileManager;
+import dev.zenith.deploy.SshDeployer;
 import dev.zenith.generator.JavaSourceFile;
 import dev.zenith.generator.ProjectGenerator;
 
@@ -56,6 +58,12 @@ public class ZenithCli {
                     break;
                 case "mcp":
                     handleMcp(args);
+                    break;
+                case "server":
+                    handleServer(args);
+                    break;
+                case "deploy":
+                    handleDeploy(args);
                     break;
                 case "doctor":
                     handleDoctor(args);
@@ -494,6 +502,70 @@ public class ZenithCli {
         }
     }
 
+    private static void handleServer(String[] args) {
+        if (args.length < 2) {
+            System.err.println("Usage: zenith server <add|test|ls> [options]");
+            return;
+        }
+        String sub = args[1].toLowerCase();
+        if ("add".equals(sub)) {
+            if (args.length < 6) {
+                System.err.println("Usage: zenith server add <name> --host <ip> --user <user> [--key <path>]");
+                return;
+            }
+            String name = args[2];
+            ServerProfileManager.ServerConfig cfg = new ServerProfileManager.ServerConfig();
+            for (int i = 3; i < args.length; i++) {
+                if ("--host".equals(args[i]) && i + 1 < args.length) cfg.host = args[++i];
+                else if ("--user".equals(args[i]) && i + 1 < args.length) cfg.user = args[++i];
+                else if ("--port".equals(args[i]) && i + 1 < args.length) cfg.port = Integer.parseInt(args[++i]);
+                else if ("--key".equals(args[i]) && i + 1 < args.length) cfg.keyPath = args[++i];
+            }
+            ServerProfileManager.saveServer(name, cfg);
+            System.out.println(">> Server profile '" + name + "' saved.");
+        } else if ("test".equals(sub)) {
+            if (args.length < 3) { System.err.println("Usage: zenith server test <name>"); return; }
+            SshDeployer.testConnection(args[2]);
+        } else if ("ls".equals(sub)) {
+            Map<String, ServerProfileManager.ServerConfig> servers = ServerProfileManager.loadServers();
+            System.out.println(">> Configured Servers:");
+            servers.forEach((k, v) -> System.out.println(" - " + k + " (" + v.user + "@" + v.host + ")"));
+        }
+    }
+
+    private static void handleDeploy(String[] args) {
+        if (args.length < 2) {
+            System.err.println("Usage: zenith deploy <cmd> --server <name> [options]");
+            return;
+        }
+        String cmd = args[1].toLowerCase();
+        String serverName = null;
+        for (int i = 2; i < args.length; i++) {
+            if ("--server".equals(args[i]) && i + 1 < args.length) serverName = args[++i];
+        }
+        
+        if (serverName == null) { System.err.println("Missing --server <name>"); return; }
+
+        switch (cmd) {
+            case "deploy":
+                String appDir = "generated-app";
+                for (int i = 2; i < args.length; i++) {
+                    if ("--dir".equals(args[i]) && i + 1 < args.length) appDir = args[++i];
+                }
+                SshDeployer.deployProject(serverName, appDir);
+                break;
+            case "logs":
+                SshDeployer.streamLogs(serverName, true);
+                break;
+            case "status":
+                SshDeployer.checkStatus(serverName);
+                break;
+            case "restart":
+                SshDeployer.restartApp(serverName);
+                break;
+        }
+    }
+
     private static void handleStudio(String[] args) throws IOException {
         int port = 3000;
         Path schemaPath = null;
@@ -572,19 +644,30 @@ public class ZenithCli {
     private static void printHelp() {
         System.out.println(BANNER);
         System.out.println("Zenith CLI - The high-level Web DSL targeting Spring Boot & Java 17\n");
-        System.out.println("Usage:");
-        System.out.println(
-                "  zenith studio [file.zen] [-p <port>] [--desktop]  Launch Zenith Studio (add --desktop for native app window)");
-        System.out.println("  zenith build <file.zen> [-o <out-dir>]    Compile schema to a full Spring Boot 3 app");
-        System.out
-                .println("  zenith watch <file.zen> [-o <out-dir>]    Watch schema file and auto-recompile on change");
-        System.out.println("  zenith validate <file.zen>                Validate schema syntax and semantics");
-        System.out.println("  zenith inspect <file.zen>                 Show summary of models and endpoints");
-        System.out.println("  zenith init [file.zen]                    Create a starter schema file");
-        System.out.println("  zenith mcp                                Launch Zenith MCP Server for AI coding agents (Claude, Cursor, Antigravity)");
-        System.out.println(
-                "  zenith doctor                             Diagnose Java, Maven, Docker and system environment");
-        System.out.println("  zenith version                            Display installed Zenith version");
-        System.out.println("  zenith help                               Show this help message\n");
+        System.out.println("Usage: zenith <command> [arguments] [options]\n");
+        System.out.println("Commands:");
+        System.out.println("  studio [file.zen] [-p|--port <port>] [--desktop|-d] [--pro]");
+        System.out.println("                                      Launch Zenith Studio (optionally with a schema or desktop window)");
+        System.out.println("  build <file.zen> [-o|--output <dir>]");
+        System.out.println("                                      Generate a Spring Boot 3 application");
+        System.out.println("  watch <file.zen> [-o|--output <dir>]");
+        System.out.println("                                      Rebuild the generated application when the schema changes");
+        System.out.println("  validate <file.zen>                 Validate schema syntax and semantics");
+        System.out.println("  inspect <file.zen>                  Show schema models and generated endpoints");
+        System.out.println("  init [file.zen]                     Create a starter schema (defaults to schema.zen)");
+        System.out.println("  server add <name> --host <host> --user <user> [--port <port>] [--key <path>]");
+        System.out.println("                                      Save an SSH server profile");
+        System.out.println("  server test <name>                  Test an SSH server profile connection");
+        System.out.println("  server ls                           List saved server profiles");
+        System.out.println("  deploy deploy --server <name> [--dir <app-dir>]");
+        System.out.println("                                      Deploy an application (default directory: generated-app)");
+        System.out.println("  deploy logs|status|restart --server <name>");
+        System.out.println("                                      Stream logs, check status, or restart the remote application");
+        System.out.println("  mcp                                 Start the Zenith MCP server on stdin/stdout");
+        System.out.println("  doctor                              Diagnose Java, Maven, Docker, and system environment");
+        System.out.println("  version                             Display the installed Zenith version");
+        System.out.println("  help                                Show this help message\n");
+        System.out.println("Global aliases: --version, -v, --help, -h");
+        System.out.println("Build/watch output options: -o and --output are equivalent.");
     }
 }
