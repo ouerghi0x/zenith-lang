@@ -34,11 +34,9 @@ Useful links:
 
 Watch a narrated 16:9 walkthrough of the one-to-one example. It covers the schema, ERD, generated Java repository tree, Spring Boot startup, and live Account and Profile CRUD requests. See the [example schema](zenith-exemples/one-to-one/main.zen).
 
-<video controls preload="none" width="100%" poster="docs/assets/one-to-one-studio-demo-poster.jpg">
-  <source src="docs/assets/one-to-one-studio-demo.mp4" type="video/mp4">
-  <track kind="captions" src="docs/assets/one-to-one-studio-demo.en.vtt" srclang="en" label="English" default>
-  Your browser does not support embedded video. [Open or download the MP4](docs/assets/one-to-one-studio-demo.mp4).
-</video>
+[![Play the narrated one-to-one Zenith Studio walkthrough](docs/assets/one-to-one-studio-demo-poster.jpg)](docs/assets/one-to-one-studio-demo.mp4)
+
+[Watch or download the MP4](docs/assets/one-to-one-studio-demo.mp4) · [English captions](docs/assets/one-to-one-studio-demo.en.vtt)
 
 ## Contents
 
