@@ -28,10 +28,23 @@ Useful links:
 - [TaskFlow example](zenith-exemples/taskflow/main.zen)
 - [CLI commands](#cli-commands--dx-phase-4)
 
+## Demo
+
+### One-to-one API in Zenith Studio
+
+Watch a narrated 16:9 walkthrough of the one-to-one example. It covers the schema, ERD, generated Java repository tree, Spring Boot startup, and live Account and Profile CRUD requests. See the [example schema](zenith-exemples/one-to-one/main.zen).
+
+<video controls preload="none" width="100%" poster="docs/assets/one-to-one-studio-demo-poster.jpg">
+  <source src="docs/assets/one-to-one-studio-demo.mp4" type="video/mp4">
+  <track kind="captions" src="docs/assets/one-to-one-studio-demo.en.vtt" srclang="en" label="English" default>
+  Your browser does not support embedded video. [Open or download the MP4](docs/assets/one-to-one-studio-demo.mp4).
+</video>
+
 ## Contents
 
 - [Overview](#the-zenith-solution)
 - [Quick start](#quick-start)
+- [Demo](#demo)
 - [CLI and Studio](#cli-commands--dx-phase-4)
 - [Language features](#enterprise-features-phase-2--3)
 - [Generated project and testing](#testing-the-generated-project)
@@ -233,16 +246,6 @@ Launches **Zenith Studio** — a full-featured visual architecture IDE running l
 - **Docker Compose Controls**: Use the Docker tab's **Compose Up** and **Compose Down** controls to start or stop the generated project's Docker Compose services, with container output available in Studio.
 - **VPS Deployment over SSH**: Register an SSH server profile, select it in the Docker tab, then deploy the generated project or inspect logs, status, and restart services from Studio. The VPS must have SSH access and Docker Compose available.
 - **Repository Tree & ZIP Export**: Emitted Java files inspection and one-click full Spring Boot ZIP export.
-
-#### Studio walkthrough: one-to-one API
-
-Watch a narrated 16:9 walkthrough of a one-to-one schema in Zenith Studio. It covers the ERD, generated Java repository tree, Spring Boot startup, and ten live Account and Profile CRUD requests. The [example schema](zenith-exemples/one-to-one/main.zen) is included in this repository.
-
-<video controls preload="none" width="100%" poster="docs/assets/one-to-one-studio-demo-poster.jpg">
-  <source src="docs/assets/one-to-one-studio-demo.mp4" type="video/mp4">
-  <track kind="captions" src="docs/assets/one-to-one-studio-demo.en.vtt" srclang="en" label="English" default>
-  Your browser does not support embedded video. [Open or download the MP4](docs/assets/one-to-one-studio-demo.mp4).
-</video>
 
 For example, register and check a VPS from the Zenith terminal:
 
