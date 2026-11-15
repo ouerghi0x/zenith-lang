@@ -4,13 +4,58 @@
 
 # Zenith DSL
 
-> **A modern, concise language on top of Java that eliminates Spring Boot boilerplate.**
+Declare validated Spring Boot APIs in `.zen`. For Java teams who want production-ready backends with less boilerplate.
 
+[![Build](https://img.shields.io/badge/Build-build--cli.bat-2563eb?logo=windows-terminal&logoColor=white)](#clone-and-build-zenith-windows)
+[![Latest release](https://img.shields.io/github/v/release/ouerghi0x/zenith-lang?display_name=tag)](https://github.com/ouerghi0x/zenith-lang/releases)
+![Java 17](https://img.shields.io/badge/Java-17-orange?logo=openjdk&logoColor=white)
+![Spring Boot 3](https://img.shields.io/badge/Spring%20Boot-3-6db33f?logo=springboot&logoColor=white)
 [![YouTube Architectural Walkthrough](https://img.shields.io/badge/YouTube-Watch%20Architectural%20Benchmark-red?logo=youtube&style=for-the-badge)](https://www.youtube.com/watch?v=2znqx9ANIKc)
 
 Zenith is a domain-specific language (DSL) for building Spring Boot APIs. Define models, relations, validation, and endpoints in `.zen` files. Zenith generates a standard Spring Boot 3 and Java 17 application.
 
 ## Quick Start
+
+### Clone and build Zenith (Windows)
+
+Open Command Prompt and clone the repository:
+
+```cmd
+git clone https://github.com/ouerghi0x/zenith-lang.git
+cd zenith-lang
+```
+
+Build the CLI and update `bin\zenith.jar`:
+
+```cmd
+build-cli.bat
+```
+
+### Build and install the VS Code extension
+
+From the repository root, package the extension and install it into VS Code:
+
+```cmd
+update-extension.bat
+```
+
+The script creates a `.vsix` package in `zenith-vscode` and installs it with `code --install-extension`. If you use a VS Code-compatible editor or want to install the package manually, open **Extensions** and use the menu in the top-right:
+
+1. Open the Extensions view and click its `...` menu.
+
+   ![Open the Extensions menu](assets/tuto_vscode_setup_extension/1.png)
+
+2. Choose **Install from VSIX...**.
+
+   ![Choose Install from VSIX](assets/tuto_vscode_setup_extension/2.png)
+
+3. Select the generated `zenith-lang-*.vsix` file in the `zenith-vscode` folder.
+
+   ![Select the Zenith VSIX package](assets/tuto_vscode_setup_extension/3.png)
+
+After installation, press **Ctrl+Shift+P**, run **Developer: Reload Window**, and reopen a `.zen` file to activate Zenith syntax highlighting.
+
+### Build and run the one-to-one example
 
 Validate and generate the included one-to-one example:
 
@@ -42,6 +87,7 @@ Watch a narrated 16:9 walkthrough of the one-to-one example. It covers the schem
 
 - [Overview](#the-zenith-solution)
 - [Quick start](#quick-start)
+- [Clone, build, and install the VS Code extension](#clone-and-build-zenith-windows)
 - [Demo](#demo)
 - [CLI and Studio](#cli-commands--dx-phase-4)
 - [Language features](#enterprise-features-phase-2--3)
@@ -1266,7 +1312,7 @@ Browse the [Contributor Roadmap](CONTRIBUTOR_ROADMAP.md) for suggested areas to 
 
 ## License
 
-Zenith is open-source software licensed under the **[Apache License 2.0](LICENSE)**.
+The base license for Zenith is the **[Apache License 2.0](LICENSE)**. This repository also publishes an additional limitation-of-liability clarification in [LICENSE-ADDITIONAL-TERMS.md](LICENSE-ADDITIONAL-TERMS.md). Project trademark notices are listed in [NOTICE](NOTICE).
 
 ### Clarification on Generated Code
 
